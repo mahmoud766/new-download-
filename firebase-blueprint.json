@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles",
+      "description": "User profile information and preferences",
+      "type": "document",
+      "path": "users/{userId}",
+      "fields": {
+        "uid": { "type": "string", "description": "User UID" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "email": { "type": "string", "description": "User email" },
+        "photoURL": { "type": "string", "description": "Avatar URL" },
+        "createdAt": { "type": "timestamp", "description": "Account creation time" }
+      }
+    },
+    "history": {
+      "title": "Download History",
+      "description": "User downloaded videos, audio, and media items",
+      "type": "document",
+      "path": "users/{userId}/history/{historyId}",
+      "fields": {
+        "title": { "type": "string", "description": "Media title" },
+        "url": { "type": "string", "description": "Original URL" },
+        "platform": { "type": "string", "description": "Platform name" },
+        "thumbnail": { "type": "string", "description": "Thumbnail image" },
+        "quality": { "type": "string", "description": "Downloaded format or resolution" },
+        "timestamp": { "type": "timestamp", "description": "Date downloaded" }
+      }
+    },
+    "chats": {
+      "title": "Chat Sessions",
+      "description": "AI Assistant multi-turn chat threads",
+      "type": "document",
+      "path": "users/{userId}/chats/{chatId}",
+      "fields": {
+        "role": { "type": "string", "description": "user or model" },
+        "text": { "type": "string", "description": "Message text" },
+        "timestamp": { "type": "timestamp", "description": "Creation timestamp" }
+      }
+    },
+    "creations": {
+      "title": "AI Studio Media Assets",
+      "description": "Generated Veo videos, Imagen illustrations, and Lyria music clips",
+      "type": "document",
+      "path": "users/{userId}/creations/{creationId}",
+      "fields": {
+        "type": { "type": "string", "description": "video, image, or music" },
+        "prompt": { "type": "string", "description": "Input prompt" },
+        "url": { "type": "string", "description": "Media URL" },
+        "createdAt": { "type": "timestamp", "description": "Creation timestamp" }
+      }
+    },
+    "analytics_daily_visitors": {
+      "title": "Daily Visitor Trends",
+      "description": "Daily metrics for visitors, page views, and downloads",
+      "type": "document",
+      "path": "analytics_daily_visitors/{dateId}",
+      "fields": {
+        "date": { "type": "string", "description": "YYYY-MM-DD format" },
+        "label": { "type": "string", "description": "Arabic label display" },
+        "visitors": { "type": "number", "description": "Unique visitors count" },
+        "pageViews": { "type": "number", "description": "Total pageviews" },
+        "downloads": { "type": "number", "description": "Successful downloads" }
+      }
+    },
+    "analytics_top_pages": {
+      "title": "Top Performing Pages",
+      "description": "Statistics for highest performing downloader & tool pages",
+      "type": "document",
+      "path": "analytics_top_pages/{pageId}",
+      "fields": {
+        "pagePath": { "type": "string", "description": "URL path or slug" },
+        "pageTitle": { "type": "string", "description": "Readable page title" },
+        "views": { "type": "number", "description": "Total page views" },
+        "downloads": { "type": "number", "description": "Successful media downloads" },
+        "avgDuration": { "type": "string", "description": "Average duration spent" }
+      }
+    },
+    "analytics_platform_traffic": {
+      "title": "Platform Traffic Statistics",
+      "description": "Distribution of downloads and traffic per social media platform",
+      "type": "document",
+      "path": "analytics_platform_traffic/{platformId}",
+      "fields": {
+        "platform": { "type": "string", "description": "Platform name (TikTok, Facebook, etc.)" },
+        "share": { "type": "number", "description": "Traffic share percentage" },
+        "downloads": { "type": "number", "description": "Total downloads" },
+        "color": { "type": "string", "description": "HEX color code for chart" }
+      }
+    }
+  }
+}

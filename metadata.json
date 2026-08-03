@@ -1,0 +1,6 @@
+{
+  "name": "OmniDownloader Remix Pro",
+  "description": "Enterprise-grade multi-platform video downloader for TikTok, Facebook, Instagram, YouTube, Snapchat and more with multi-language support, high performance UI, and SEO optimization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

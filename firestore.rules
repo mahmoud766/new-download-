@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if request is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the requesting user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User document and nested collections rule
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Analytics collections (read/write for system/admin dashboard initialization)
+    match /analytics_daily_visitors/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /analytics_top_pages/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /analytics_platform_traffic/{documentId} {
+      allow read, write: if true;
+    }
+  }
+}
