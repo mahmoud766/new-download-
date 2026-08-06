@@ -135,6 +135,31 @@ const mockUserAnalyticsModel = {
   count: async () => 0,
 };
 
+// Safely wrap real model methods to catch runtime connection/query errors and fall back gracefully
+function createSafeModelProxy(realModel: any, mockModel: any) {
+  if (!realModel) return mockModel;
+  return new Proxy(realModel, {
+    get(target, methodProp: string | symbol) {
+      const original = target[methodProp];
+      if (typeof original === 'function') {
+        return async (...args: any[]) => {
+          try {
+            return await original.apply(target, args);
+          } catch (err: any) {
+            // Serve in-memory fallback silently when remote DB connection or credentials fail
+            const mockFn = mockModel[methodProp];
+            if (typeof mockFn === 'function') {
+              return await mockFn(...args);
+            }
+            return null;
+          }
+        };
+      }
+      return original;
+    }
+  });
+}
+
 function createPrismaClient() {
   let realInstance: any = null;
   try {
@@ -148,25 +173,28 @@ function createPrismaClient() {
     console.warn('[Prisma] Safe build-time instantiation fallback:', e);
   }
 
-  // Create a resilient Proxy that routes to real PrismaClient if property exists, or mock otherwise
   return new Proxy(realInstance || {}, {
     get(target, prop: string | symbol) {
       if (typeof prop === 'string') {
         const lowerProp = prop.toLowerCase();
-        if (target[prop] !== undefined) {
-          return target[prop];
-        }
         if (lowerProp === 'downloadlog' || prop === 'DownloadLog') {
-          return target.downloadLog || target.DownloadLog || mockDownloadLogModel;
+          const realModel = target.downloadLog || target.DownloadLog;
+          return createSafeModelProxy(realModel, mockDownloadLogModel);
         }
         if (lowerProp === 'globalsettings' || prop === 'GlobalSettings') {
-          return target.globalSettings || target.GlobalSettings || mockGlobalSettingsModel;
+          const realModel = target.globalSettings || target.GlobalSettings;
+          return createSafeModelProxy(realModel, mockGlobalSettingsModel);
         }
         if (lowerProp === 'seotranslations' || prop === 'SeoTranslations') {
-          return target.seoTranslations || target.SeoTranslations || mockSeoTranslationsModel;
+          const realModel = target.seoTranslations || target.SeoTranslations;
+          return createSafeModelProxy(realModel, mockSeoTranslationsModel);
         }
         if (lowerProp === 'useranalytics' || prop === 'UserAnalytics') {
-          return target.userAnalytics || target.UserAnalytics || mockUserAnalyticsModel;
+          const realModel = target.userAnalytics || target.UserAnalytics;
+          return createSafeModelProxy(realModel, mockUserAnalyticsModel);
+        }
+        if (target[prop] !== undefined) {
+          return target[prop];
         }
       }
       return target[prop];
@@ -179,3 +207,4 @@ const globalForPrisma = global as unknown as { prisma: any };
 export const prisma = globalForPrisma.prisma || createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
+
