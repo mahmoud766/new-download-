@@ -83,7 +83,7 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   app.use(express.json());
 
