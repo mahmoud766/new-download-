@@ -1,0 +1,32 @@
+// Prisma Schema for OmniFetch Pro Global Settings & SEO Engine
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model GlobalSettings {
+  id                String   @id @default("default")
+  adsenseClientId   String   @default("ca-pub-1234567890000000")
+  googleAnalyticsId String   @default("G-XXXXXXXXXX")
+  trustpilotUrl     String   @default("https://www.trustpilot.com/review/omnifetchpro.com")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model SeoTranslations {
+  id              String   @id @default(cuid())
+  language        String   // e.g. "en", "ar", "es"
+  platform        String   // e.g. "tiktok", "youtube", "instagram"
+  h1Title         String
+  metaDescription String
+  keywords        String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([language, platform])
+}

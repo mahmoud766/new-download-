@@ -35,6 +35,11 @@ import {
   saveStoredPlatformsConfig,
 } from '../../lib/adminStorage';
 import { PLATFORMS_CONFIG } from '../../config/siteConfig';
+import {
+  saveFirestoreGlobalSettings,
+  saveFirestoreSeoTranslation,
+  triggerOnDemandRevalidation,
+} from '../../lib/firebase';
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -154,7 +159,7 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
     }
   }, []);
 
-  const handleApplyGeneratedSchemas = () => {
+  const handleApplyGeneratedSchemas = async () => {
     const orgJson = generateOrgSchema();
     const siteJson = generateWebSiteSchema();
     const updated = {
@@ -164,12 +169,14 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
     };
     setSeo(updated);
     saveGlobalSeoConfig(updated);
-    onShowToast('تم توليد وتطبيق المخططات البرمجية JSON-LD في الإعدادات العامة للـ SEO بنجاح!');
+    await saveFirestoreGlobalSettings(updated);
+    onShowToast('تم توليد وتطبيق المخططات البرمجية JSON-LD وتنفيذ On-Demand Revalidation بنجاح! ⚡');
   };
 
-  const handleSaveGlobalSeo = () => {
+  const handleSaveGlobalSeo = async () => {
     saveGlobalSeoConfig(seo);
-    onShowToast('تم حفظ إعدادات الـ Global SEO والمخططات Schema JSON-LD بنجاح!');
+    await saveFirestoreGlobalSettings(seo);
+    onShowToast('تم حفظ إعدادات الـ Global SEO والمخططات Schema JSON-LD وتنفيذ On-Demand Revalidation بنجاح! ⚡');
   };
 
   const handleSaveRobots = () => {
@@ -214,7 +221,7 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
     onShowToast('تم نسخ كود الـ JSON-LD للحافظة!');
   };
 
-  const handleApplyBulkSeo = () => {
+  const handleApplyBulkSeo = async () => {
     if (selectedBulkPlatforms.length === 0) {
       onShowToast('الرجاء اختيار منصة واحدة على الأقل لتطبيق الـ SEO الجماعي!');
       return;
@@ -223,9 +230,9 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
     const currentConfigs = getStoredPlatformsConfig();
     const updatedConfigs = { ...currentConfigs };
 
-    selectedBulkPlatforms.forEach((slug) => {
+    for (const slug of selectedBulkPlatforms) {
       const existing = updatedConfigs[slug] || PLATFORMS_CONFIG[slug];
-      if (!existing) return;
+      if (!existing) continue;
 
       const platformName = existing.name || slug;
 
@@ -237,7 +244,7 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
         .map((k) => k.trim())
         .filter(Boolean);
 
-      updatedConfigs[slug] = {
+      const platformSeoObj = {
         ...existing,
         seoKeywords: newKw.length > 0 ? newKw : existing.seoKeywords,
         titleTemplate: {
@@ -250,10 +257,26 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
           ar: newDesc,
         },
       };
-    });
+
+      updatedConfigs[slug] = platformSeoObj;
+
+      // Save to Firestore
+      await saveFirestoreSeoTranslation('ar', slug, {
+        metaTitle: newTitle,
+        metaDescription: newDesc,
+        keywords: newKw.join(', '),
+      });
+      await saveFirestoreSeoTranslation('en', slug, {
+        metaTitle: newTitle,
+        metaDescription: newDesc,
+        keywords: newKw.join(', '),
+      });
+    }
 
     saveStoredPlatformsConfig(updatedConfigs);
-    onShowToast(`تم تطبيق قالب الـ SEO بنجاح على ${selectedBulkPlatforms.length} منصة!`);
+    await triggerOnDemandRevalidation(selectedBulkPlatforms.map((s) => `/${s}`));
+
+    onShowToast(`تم تطبيق قالب الـ SEO وإعادة التنشيط الفوري (On-Demand Revalidated ⚡) بنجاح على ${selectedBulkPlatforms.length} منصة!`);
   };
 
   const isValidJson = (str: string) => {

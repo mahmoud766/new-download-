@@ -1,0 +1,22 @@
+# OmniFetch Pro
+
+> Universal Online Video Downloader for TikTok, YouTube, Instagram, Facebook, Twitter, and Snapchat without watermarks.
+
+## Core Capabilities
+- Extracts HD MP4 videos and 320kbps MP3 audio streams from public social media posts.
+- Removes watermarks from TikTok, Instagram Reels, and YouTube Shorts.
+- Free to use with zero registration requirements and Progressive Web App support.
+
+## Endpoints
+- [Home Page](https://omnifetchpro.com/): Free universal social media downloader interface
+- [TikTok Downloader](https://omnifetchpro.com/tiktok): Download TikTok videos without watermark
+- [YouTube Downloader](https://omnifetchpro.com/youtube): Convert YouTube videos and Shorts to MP4 and MP3
+- [Instagram Downloader](https://omnifetchpro.com/instagram): Save Instagram Reels, Stories, and IGTV videos
+- [Facebook Downloader](https://omnifetchpro.com/facebook): High-definition Facebook video saver
+- [Twitter Downloader](https://omnifetchpro.com/twitter): Fast Twitter / X video and GIF extractor
+- [Media Fetch API](https://omnifetchpro.com/api/fetch-media): Programmatic REST endpoint for media extraction
+
+## Optional
+- [Full LLM Specification](https://omnifetchpro.com/llms-full.txt): Detailed API schemas and architecture
+- [Privacy Policy](https://omnifetchpro.com/privacy): Data handling and privacy compliance
+- [Terms of Service](https://omnifetchpro.com/terms): Terms of platform usage

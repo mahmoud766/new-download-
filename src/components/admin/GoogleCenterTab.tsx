@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Save, Search, BarChart2, DollarSign, Activity, Zap, CheckCircle2, RefreshCw } from 'lucide-react';
 import { SiteSettings, SupportedLanguage } from '../../types';
 import { saveSiteSettings } from '../../lib/storage';
+import { saveFirestoreGlobalSettings } from '../../lib/firebase';
 
 interface Props {
   settings: SiteSettings;
@@ -22,17 +23,22 @@ export const GoogleCenterTab: React.FC<Props> = ({
   const [clarity, setClarity] = useState(settings.clarityId);
   const [fbPixel, setFbPixel] = useState(settings.fbPixelId);
 
-  const handleSave = () => {
-    const updated = saveSiteSettings({
+  const handleSave = async () => {
+    const updatedData = {
       ...settings,
       ga4Id: ga4,
       gtmId: gtm,
       adsenseClientId: adsense,
       clarityId: clarity,
       fbPixelId: fbPixel,
-    });
+    };
+    const updated = saveSiteSettings(updatedData);
     onUpdateSettings(updated);
-    onShowToast('تم حفظ معرفات وتكامل أدوات Google والتحليلات بنجاح!');
+
+    // Save directly to Firestore and trigger On-Demand Revalidation
+    await saveFirestoreGlobalSettings(updatedData);
+
+    onShowToast('تم حفظ معرفات وتكامل أدوات Google والتحليلات وإعادة التنشيط الفوري (On-Demand Revalidated ⚡) بنجاح!');
   };
 
   const handleTriggerIndexingApi = () => {

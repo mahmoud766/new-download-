@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { WifiOff, ShieldAlert, Wrench } from 'lucide-react';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { WifiOff, ShieldAlert } from 'lucide-react';
 import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './types';
 import { isRTL, detectUserLanguage } from './i18n/translations';
 import { getDownloadHistory, getSiteSettings } from './lib/storage';
 
-// Components
+// Critical On-Screen Components
 import { Navbar } from './components/Navbar';
 import { HeroDownloader } from './components/HeroDownloader';
 import { ResultCard } from './components/ResultCard';
@@ -16,16 +16,22 @@ import { FAQSection } from './components/FAQSection';
 import { ReviewsSection } from './components/ReviewsSection';
 import { Footer } from './components/Footer';
 import { SeoHead } from './components/SeoHead';
-import { DownloadHistoryModal } from './components/DownloadHistoryModal';
-import { QrCodeModal } from './components/QrCodeModal';
-import { AdminDashboard } from './components/AdminDashboard';
-import { BlogSection } from './components/BlogSection';
-import { LegalPage } from './components/LegalPage';
 import { Toast } from './components/Toast';
 import { PwaPrompt } from './components/PwaPrompt';
-import { AiStudioModal } from './components/AiStudioModal';
-import { QuickActionsModal } from './components/QuickActionsModal';
-import { DebugLogsModal } from './components/DebugLogsModal';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { TrendingDownloadsSection } from './components/TrendingDownloadsSection';
+
+// Lazy Loaded Off-Screen & Heavy Modal Components (Bundle Optimization)
+const AdminDashboard = lazy(() => import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const AiStudioModal = lazy(() => import('./components/AiStudioModal').then((m) => ({ default: m.AiStudioModal })));
+const BlogSection = lazy(() => import('./components/BlogSection').then((m) => ({ default: m.BlogSection })));
+const LegalPage = lazy(() => import('./components/LegalPage').then((m) => ({ default: m.LegalPage })));
+const DownloadHistoryModal = lazy(() => import('./components/DownloadHistoryModal').then((m) => ({ default: m.DownloadHistoryModal })));
+const QrCodeModal = lazy(() => import('./components/QrCodeModal').then((m) => ({ default: m.QrCodeModal })));
+const QuickActionsModal = lazy(() => import('./components/QuickActionsModal').then((m) => ({ default: m.QuickActionsModal })));
+const DebugLogsModal = lazy(() => import('./components/DebugLogsModal').then((m) => ({ default: m.DebugLogsModal })));
+const SecretAdminAccessGateModal = lazy(() => import('./components/SecretAdminAccessGateModal').then((m) => ({ default: m.SecretAdminAccessGateModal })));
+const ExtraToolsSection = lazy(() => import('./components/ExtraToolsSection').then((m) => ({ default: m.ExtraToolsSection })));
 
 export default function App() {
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>(() => detectUserLanguage());
@@ -42,8 +48,71 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   // Page Routing State
-  const [activeView, setActiveView] = useState<'home' | 'blog' | 'admin' | 'legal'>('home');
+  const [activeView, setActiveView] = useState<'home' | 'blog' | 'admin' | 'legal'>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/admin') || path.includes('/admin-download')) {
+        try {
+          const unlocked =
+            sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+            window.location.search.includes('admin_secret') ||
+            window.location.search.includes('secret');
+          if (unlocked) return 'admin';
+        } catch {}
+      } else if (path.includes('/blog')) {
+        return 'blog';
+      } else if (path.includes('/legal')) {
+        return 'legal';
+      }
+    }
+    return 'home';
+  });
   const [legalType, setLegalType] = useState<'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact'>('privacy');
+
+  // Secret Admin Access Security Gate State
+  const [showSecretGate, setShowSecretGate] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/admin') || path.includes('/admin-download')) {
+        try {
+          const unlocked =
+            sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+            window.location.search.includes('admin_secret') ||
+            window.location.search.includes('secret');
+          return !unlocked;
+        } catch {}
+        return true;
+      }
+    }
+    return false;
+  });
+
+  // Listen to URL path changes (popstate)
+  useEffect(() => {
+    const checkPath = () => {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/admin') || path.includes('/admin-download')) {
+        try {
+          const unlocked =
+            sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+            window.location.search.includes('admin_secret') ||
+            window.location.search.includes('secret');
+          if (unlocked) {
+            setActiveView('admin');
+            setShowSecretGate(false);
+          } else {
+            setShowSecretGate(true);
+          }
+        } catch {
+          setShowSecretGate(true);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', checkPath);
+    checkPath();
+    return () => window.removeEventListener('popstate', checkPath);
+  }, []);
 
   // Result & Modals State
   const [currentResult, setCurrentResult] = useState<MediaResult | null>(null);
@@ -99,6 +168,19 @@ export default function App() {
       window.removeEventListener('omnifetch_open_debug_modal', handleCustomOpenDebugModal);
     };
   }, []);
+
+  // Auto-scroll to result preview card when video result is extracted
+  useEffect(() => {
+    if (currentResult) {
+      const timer = setTimeout(() => {
+        const resultSection = document.getElementById('result-preview-section');
+        if (resultSection) {
+          resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [currentResult]);
 
   useEffect(() => {
     const handleSettingsUpdated = (e: any) => {
@@ -199,6 +281,19 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenAdmin = () => {
+    // Check if secret session unlocked or secret query param in URL
+    const isUnlocked = sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+      window.location.search.includes('admin_secret') ||
+      window.location.search.includes('secret');
+
+    if (isUnlocked) {
+      setActiveView('admin');
+    } else {
+      setShowSecretGate(true);
+    }
+  };
+
   return (
     <div className={`min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white flex flex-col justify-between overflow-x-hidden transition-colors duration-300 ${
       theme === 'light' ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-100'
@@ -216,7 +311,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           onOpenHistory={() => setHistoryOpen(true)}
-          onOpenAdmin={() => setActiveView('admin')}
+          onOpenAdmin={handleOpenAdmin}
           onOpenBlog={() => setActiveView('blog')}
           onOpenAiStudio={() => setAiStudioOpen(true)}
           onOpenLegal={handleOpenLegal}
@@ -244,11 +339,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Top Header Leaderboard Ad */}
-        <div className="max-w-7xl mx-auto px-4 pt-2">
-          <AdBanner slot="header_banner" />
-        </div>
-
         {/* MAIN VIEWER ROUTER */}
         <main>
           {activeView === 'home' && (
@@ -261,11 +351,22 @@ export default function App() {
                 onSelectPlatform={handleSelectPlatform}
                 onResultFetched={(res) => {
                   setCurrentResult(res);
-                  setToastMessage('Video extracted successfully!');
+                  setToastMessage(currentLang === 'ar' ? 'تم استخراج الفيديو بنجاح!' : 'Video extracted successfully!');
+                  setTimeout(() => {
+                    const el = document.getElementById('result-preview-section');
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }, 100);
                 }}
                 onError={(msg) => setToastMessage(msg)}
                 onReset={() => setCurrentResult(null)}
               />
+
+              {/* Header Leaderboard Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4">
+                <AdBanner slot="header_banner" />
+              </div>
 
               {/* Mid-Result Pre-Download Ad Slot */}
               <div className="max-w-7xl mx-auto px-4">
@@ -274,7 +375,7 @@ export default function App() {
 
               {/* Fetched Result Presentation Card */}
               {currentResult && (
-                <div className="max-w-7xl mx-auto px-4">
+                <div id="result-preview-section" className="max-w-7xl mx-auto px-4 scroll-mt-24">
                   <ResultCard
                     result={currentResult}
                     currentLang={currentLang}
@@ -286,11 +387,27 @@ export default function App() {
                 </div>
               )}
 
+              {/* Trending Downloads High-Conversion Carousel */}
+              <TrendingDownloadsSection
+                currentLang={currentLang}
+                onExtractUrl={(url) => {
+                  window.scrollTo({ top: 300, behavior: 'smooth' });
+                }}
+              />
+
               {/* Supported Platforms Grid */}
               <PlatformCards
                 currentLang={currentLang}
                 onSelectPlatform={handleSelectPlatform}
               />
+
+              {/* Integrated Media Power Tools */}
+              <Suspense fallback={null}>
+                <ExtraToolsSection
+                  currentLang={currentLang}
+                  onShowToast={(msg) => setToastMessage(msg)}
+                />
+              </Suspense>
 
               {/* How it Works - 3 Steps */}
               <StepsSection currentLang={currentLang} />
@@ -307,22 +424,26 @@ export default function App() {
           )}
 
           {activeView === 'blog' && (
-            <BlogSection currentLang={currentLang} onBack={() => setActiveView('home')} />
+            <Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-indigo-400 font-bold">جاري تحميل المدونة...</div>}>
+              <BlogSection currentLang={currentLang} onBack={() => setActiveView('home')} />
+            </Suspense>
           )}
 
           {activeView === 'legal' && (
-            <LegalPage
-              type={legalType}
-              currentLang={currentLang}
-              onBack={() => setActiveView('home')}
-              onShowToast={(msg) => setToastMessage(msg)}
-            />
+            <Suspense fallback={<div className="min-h-[60vh] flex items-center justify-center text-indigo-400 font-bold">جاري تحميل الصفحة...</div>}>
+              <LegalPage
+                type={legalType}
+                currentLang={currentLang}
+                onBack={() => setActiveView('home')}
+                onShowToast={(msg) => setToastMessage(msg)}
+              />
+            </Suspense>
           )}
         </main>
       </div>
 
       {/* Sticky Footer Ad Banner */}
-      <div className="max-w-7xl mx-auto px-4 pb-2">
+      <div className="max-w-7xl mx-auto px-4 my-2">
         <AdBanner slot="footer_banner" />
       </div>
 
@@ -333,68 +454,89 @@ export default function App() {
         onSelectPlatform={handleSelectPlatform}
         onOpenLegal={handleOpenLegal}
         onOpenBlog={() => setActiveView('blog')}
-        onOpenAdmin={() => setActiveView('admin')}
+        onOpenAdmin={handleOpenAdmin}
       />
 
-      {/* MODALS & OVERLAYS */}
-      <AiStudioModal
-        isOpen={aiStudioOpen}
-        onClose={() => setAiStudioOpen(false)}
-        currentLang={currentLang}
-        onShowToast={(msg) => setToastMessage(msg)}
-      />
-
-      {historyOpen && (
-        <DownloadHistoryModal
+      {/* MODALS & OVERLAYS (SUSPENSE LAZY) */}
+      <Suspense fallback={null}>
+        <AiStudioModal
+          isOpen={aiStudioOpen}
+          onClose={() => setAiStudioOpen(false)}
           currentLang={currentLang}
-          onClose={() => setHistoryOpen(false)}
-          onSelectResult={(item) => {
-            setCurrentResult(item);
-            setActiveView('home');
-          }}
-        />
-      )}
-
-      {qrModalUrl && (
-        <QrCodeModal
-          url={qrModalUrl}
-          currentLang={currentLang}
-          onClose={() => setQrModalUrl(null)}
-        />
-      )}
-
-      {activeView === 'admin' && (
-        <AdminDashboard
-          currentLang={currentLang}
-          initialTab={adminInitialTab}
-          onClose={() => setActiveView('home')}
           onShowToast={(msg) => setToastMessage(msg)}
         />
-      )}
 
-      {/* Quick Actions Overlay (Shortcut Ctrl+Shift+A) */}
-      <QuickActionsModal
-        isOpen={quickActionsOpen}
-        onClose={() => setQuickActionsOpen(false)}
-        onOpenAdminTab={(tab) => {
-          setAdminInitialTab(tab);
-          setActiveView('admin');
-          window.dispatchEvent(new CustomEvent('omnifetch_navigate_admin_tab', { detail: tab }));
-        }}
-        onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
-        onShowToast={(msg) => setToastMessage(msg)}
-        siteSettings={siteSettings}
-        theme={theme}
-      />
+        {historyOpen && (
+          <DownloadHistoryModal
+            currentLang={currentLang}
+            onClose={() => setHistoryOpen(false)}
+            onSelectResult={(item) => {
+              setCurrentResult(item);
+              setActiveView('home');
+            }}
+          />
+        )}
 
-      {/* Hidden Debug Logs Overlay (Shortcut Ctrl+Shift+D) */}
-      <DebugLogsModal
-        isOpen={debugLogsOpen}
-        onClose={() => setDebugLogsOpen(false)}
-        onSelectUrlForRetry={(url) => {
-          setActiveView('home');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
+        {qrModalUrl && (
+          <QrCodeModal
+            url={qrModalUrl}
+            currentLang={currentLang}
+            onClose={() => setQrModalUrl(null)}
+          />
+        )}
+
+        {/* Secret Admin Gate Security Modal */}
+        {showSecretGate && (
+          <SecretAdminAccessGateModal
+            currentLang={currentLang}
+            onClose={() => setShowSecretGate(false)}
+            onUnlocked={() => {
+              setShowSecretGate(false);
+              setActiveView('admin');
+            }}
+            onShowToast={(msg) => setToastMessage(msg)}
+          />
+        )}
+
+        {activeView === 'admin' && (
+          <AdminDashboard
+            currentLang={currentLang}
+            initialTab={adminInitialTab}
+            onClose={() => setActiveView('home')}
+            onShowToast={(msg) => setToastMessage(msg)}
+          />
+        )}
+
+        {/* Quick Actions Overlay (Shortcut Ctrl+Shift+A) */}
+        <QuickActionsModal
+          isOpen={quickActionsOpen}
+          onClose={() => setQuickActionsOpen(false)}
+          onOpenAdminTab={(tab) => {
+            setAdminInitialTab(tab);
+            handleOpenAdmin();
+            window.dispatchEvent(new CustomEvent('omnifetch_navigate_admin_tab', { detail: tab }));
+          }}
+          onToggleTheme={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
+          onShowToast={(msg) => setToastMessage(msg)}
+          siteSettings={siteSettings}
+          theme={theme}
+        />
+
+        {/* Hidden Debug Logs Overlay (Shortcut Ctrl+Shift+D) */}
+        <DebugLogsModal
+          isOpen={debugLogsOpen}
+          onClose={() => setDebugLogsOpen(false)}
+          onSelectUrlForRetry={() => {
+            setActiveView('home');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+        />
+      </Suspense>
+
+      {/* GDPR & AdSense Cookie Consent Banner */}
+      <CookieConsentBanner
+        currentLang={currentLang}
+        onOpenCookiePolicy={() => handleOpenLegal('cookies')}
       />
 
       {/* Toast Notification Alert */}

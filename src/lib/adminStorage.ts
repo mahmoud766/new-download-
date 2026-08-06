@@ -48,7 +48,7 @@ export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
   metaTitle: 'OmniFetch - Free All-in-One Video Downloader (TikTok, FB, IG, YT)',
   metaDescription: 'Download TikTok videos without watermark, Facebook Reels, Instagram Stories, YouTube Shorts and Snapchat videos in HD for free.',
   keywords: 'video downloader, tiktok downloader no watermark, facebook video downloader, instagram reel saver, youtube shorts downloader',
-  canonicalUrl: 'https://omnifetch.com',
+  canonicalUrl: 'https://omnifetchpro.com',
   robotsDirective: 'index, follow, max-image-preview:large, max-snippet:-1',
   ogImage: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=1200&q=80',
   twitterHandle: '@OmniFetchPro',
@@ -56,17 +56,17 @@ export const DEFAULT_GLOBAL_SEO: GlobalSeoConfig = {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     'name': 'OmniFetch Pro',
-    'url': 'https://omnifetch.com',
-    'logo': 'https://omnifetch.com/logo.png',
+    'url': 'https://omnifetchpro.com',
+    'logo': 'https://omnifetchpro.com/logo.png',
   }, null, 2),
   websiteSchema: JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     'name': 'OmniFetch',
-    'url': 'https://omnifetch.com',
+    'url': 'https://omnifetchpro.com',
     'potentialAction': {
       '@type': 'SearchAction',
-      'target': 'https://omnifetch.com/?q={search_term_string}',
+      'target': 'https://omnifetchpro.com/?q={search_term_string}',
       'query-input': 'required name=search_term_string'
     }
   }, null, 2),
@@ -141,12 +141,11 @@ export const DEFAULT_SECURITY: SecurityConfig = {
 
 export const DEFAULT_ROBOTS_TXT = `User-agent: *
 Allow: /
-Disallow: /admin
+Disallow: /admin-download
 Disallow: /api/
 Disallow: /private/
 
-Sitemap: https://omnifetch.com/sitemap.xml
-Sitemap: https://omnifetch.com/sitemap-blogs.xml
+Sitemap: https://omnifetchpro.com/sitemap.xml
 `;
 
 // Helper to apply SEO meta tags to document head
@@ -208,9 +207,12 @@ export function getGlobalSeoConfig(): GlobalSeoConfig {
   }
 }
 
+import { saveFirestoreGlobalSettings } from './firebase';
+
 export function saveGlobalSeoConfig(config: GlobalSeoConfig): void {
   localStorage.setItem(GLOBAL_SEO_KEY, JSON.stringify(config));
   applySeoToDocument(config);
+  saveFirestoreGlobalSettings({ globalSeo: config }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getRedirectRules(): RedirectRule[] {
@@ -224,6 +226,7 @@ export function getRedirectRules(): RedirectRule[] {
 
 export function saveRedirectRules(rules: RedirectRule[]): void {
   localStorage.setItem(REDIRECTS_KEY, JSON.stringify(rules));
+  saveFirestoreGlobalSettings({ redirectRules: rules }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getManagedPages(): ManagedPage[] {
@@ -237,6 +240,7 @@ export function getManagedPages(): ManagedPage[] {
 
 export function saveManagedPages(pages: ManagedPage[]): void {
   localStorage.setItem(PAGES_KEY, JSON.stringify(pages));
+  saveFirestoreGlobalSettings({ managedPages: pages }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getAdminUsers(): AdminUser[] {
@@ -250,6 +254,7 @@ export function getAdminUsers(): AdminUser[] {
 
 export function saveAdminUsers(users: AdminUser[]): void {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  saveFirestoreGlobalSettings({ adminUsers: users }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getApiHealthList(): ApiHealthStatus[] {
@@ -263,6 +268,7 @@ export function getApiHealthList(): ApiHealthStatus[] {
 
 export function saveApiHealthList(apis: ApiHealthStatus[]): void {
   localStorage.setItem(APIS_KEY, JSON.stringify(apis));
+  saveFirestoreGlobalSettings({ apiHealthList: apis }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getSecurityConfig(): SecurityConfig {
@@ -276,6 +282,7 @@ export function getSecurityConfig(): SecurityConfig {
 
 export function saveSecurityConfig(sec: SecurityConfig): void {
   localStorage.setItem(SECURITY_KEY, JSON.stringify(sec));
+  saveFirestoreGlobalSettings({ securityConfig: sec }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getRobotsTxt(): string {
@@ -289,6 +296,7 @@ export function getRobotsTxt(): string {
 
 export function saveRobotsTxt(txt: string): void {
   localStorage.setItem(ROBOTS_KEY, txt);
+  saveFirestoreGlobalSettings({ robotsTxt: txt }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getSmtpConfig(): SmtpConfig {
@@ -302,6 +310,7 @@ export function getSmtpConfig(): SmtpConfig {
 
 export function saveSmtpConfig(config: SmtpConfig): void {
   localStorage.setItem(SMTP_CONFIG_KEY, JSON.stringify(config));
+  saveFirestoreGlobalSettings({ smtpConfig: config }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getEmailAlertSettings(): EmailAlertSettings {
@@ -315,6 +324,7 @@ export function getEmailAlertSettings(): EmailAlertSettings {
 
 export function saveEmailAlertSettings(settings: EmailAlertSettings): void {
   localStorage.setItem(EMAIL_ALERTS_KEY, JSON.stringify(settings));
+  saveFirestoreGlobalSettings({ emailAlertSettings: settings }).catch((e) => console.warn('Firestore sync warning:', e));
 }
 
 export function getStoredPlatformsConfig(): Record<string, PlatformConfig> {
@@ -331,4 +341,5 @@ export function saveStoredPlatformsConfig(platforms: Record<string, PlatformConf
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_platforms_updated', { detail: platforms }));
   }
+  saveFirestoreGlobalSettings({ platformsConfig: platforms }).catch((e) => console.warn('Firestore sync warning:', e));
 }

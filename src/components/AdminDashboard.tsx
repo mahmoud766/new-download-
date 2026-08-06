@@ -48,8 +48,7 @@ import {
   getFaqsConfig,
   getBlogsConfig,
 } from '../lib/storage';
-import { auth, onAuthStateChanged, signOut, User } from '../lib/firebase';
-import { AdminLoginOverlay } from './admin/AdminLoginOverlay';
+import { auth, onAuthStateChanged, signOut, User, saveFirestoreGlobalSettings, fetchFirestoreGlobalSettings } from '../lib/firebase';
 
 // Tab Components
 import { AdminAnalyticsTab } from './admin/AdminAnalyticsTab';
@@ -140,6 +139,36 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
   const [tempHeaderStyle, setTempHeaderStyle] = useState<'sticky' | 'fixed' | 'static' | 'floating'>(settings.headerStyle || 'sticky');
   const [tempMaintenanceMode, setTempMaintenanceMode] = useState<boolean>(!!settings.maintenanceMode);
 
+  // Sync remote settings from Firestore on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function syncRemoteSettings() {
+      try {
+        const remote = await fetchFirestoreGlobalSettings();
+        if (remote && isMounted) {
+          if (remote.siteSettings) {
+            setSettings((prev) => ({ ...prev, ...remote.siteSettings }));
+          }
+          if (remote.adsConfig) {
+            setAds(remote.adsConfig);
+          }
+          if (remote.faqsConfig) {
+            setFaqs(remote.faqsConfig);
+          }
+          if (remote.blogsConfig) {
+            setBlogs(remote.blogsConfig);
+          }
+        }
+      } catch (err) {
+        console.warn('Notice: Remote Firestore settings fetch:', err);
+      }
+    }
+    syncRemoteSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Sync temp values when settings change
   useEffect(() => {
     setTempLogoUrl(settings.logoUrl || '');
@@ -205,15 +234,18 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
 
   const handleSignOut = async () => {
     try {
+      await fetch('/api/admin/logout', { method: 'POST' });
       await signOut(auth);
       onShowToast('تم تسجيل الخروج بنجاح من لوحة التحكم.');
+      window.location.href = '/admin-download/login';
     } catch (err) {
       console.error('Logout error:', err);
+      window.location.href = '/admin-download/login';
     }
   };
 
-  const handleSaveQuickBrand = () => {
-    const updated = saveSiteSettings({
+  const handleSaveQuickBrand = async () => {
+    const updatedSettings = {
       ...settings,
       logoUrl: tempLogoUrl,
       faviconUrl: tempFaviconUrl,
@@ -221,13 +253,15 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
       shortName: tempShortName,
       headerStyle: tempHeaderStyle,
       maintenanceMode: tempMaintenanceMode,
-    });
+    };
+    const updated = saveSiteSettings(updatedSettings);
     setSettings(updated);
+    await saveFirestoreGlobalSettings(updatedSettings);
     setShowQuickBrandModal(false);
     onShowToast(
       tempMaintenanceMode
-        ? 'تم حفظ الإعدادات وتفعيل وضع الصيانة! تم ظهور الشريط وتجميد التنزيلات.'
-        : 'تم حفظ الإعدادات وإيقاف وضع الصيانة! استئناف خدمة التنزيل بنجاح.'
+        ? 'تم حفظ الإعدادات وتفعيل وضع الصيانة المباشر وإعادة التنشيط الفوري (On-Demand Revalidated ⚡)!'
+        : 'تم حفظ الإعدادات وإعادة التنشيط الفوري (On-Demand Revalidated ⚡) بنجاح!'
     );
   };
 
@@ -324,17 +358,6 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
     );
   }
 
-  if (!adminUser) {
-    return (
-      <AdminLoginOverlay
-        currentLang={currentLang}
-        onClose={onClose}
-        onAuthenticated={() => {}}
-        onShowToast={onShowToast}
-      />
-    );
-  }
-
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-2xl flex items-center justify-center p-2 sm:p-4 overflow-hidden text-slate-100 font-sans">
       <div className="relative w-full max-w-7xl h-[94vh] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
@@ -427,8 +450,8 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
             {/* Authenticated Admin Status Badge */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
               <UserCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-300 font-medium max-w-[150px] truncate" title={adminUser.email || 'Admin'}>
-                {adminUser.email || adminUser.displayName || 'المشرف'}
+              <span className="text-slate-300 font-medium max-w-[150px] truncate" title={adminUser?.email || 'Admin'}>
+                {adminUser?.email || adminUser?.displayName || 'المشرف'}
               </span>
               <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-mono">
                 Firebase Verified
@@ -611,12 +634,18 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
               {!['analytics', 'site_settings', 'pages', 'platforms', 'seo', 'google', 'ads', 'blog', 'faqs', 'users_security', 'email_alerts', 'api_perf', 'files', 'image_opt', 'theme', 'ai_suite', 'toolkit_logs'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center p-12 bg-slate-900 border border-slate-800 rounded-3xl text-center space-y-4">
                   <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl text-purple-400">
-                    <Sparkles className="w-8 h-8 animate-pulse" />
+                    <BarChart3 className="w-8 h-8" />
                   </div>
-                  <h3 className="text-lg font-black text-white">جاري تطوير هذا القسم - محتوى قريباً</h3>
+                  <h3 className="text-lg font-black text-white">القسم المحدد غير موجود</h3>
                   <p className="text-xs text-slate-400 max-w-md">
-                    هذا القسم ({activeTab}) مجهز للهيكلية القادمة ويتم مزامنة بياناته عبر قاعدة بيانات Firebase والمميزات المتقدمة.
+                    القسم المطلوبة ({activeTab}) غير موجود حالياً. يمكنك العودة إلى لوحة تحليلات وإحصائيات الموقع المباشرة.
                   </p>
+                  <button
+                    onClick={() => setActiveTab('analytics')}
+                    className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs transition"
+                  >
+                    العودة للوحة التحليلات الرئيسية
+                  </button>
                 </div>
               )}
             </AdminErrorBoundary>

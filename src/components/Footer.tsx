@@ -2,7 +2,8 @@ import { SupportedLanguage, PlatformSlug } from '../types';
 import { LANGUAGES, t } from '../i18n/translations';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { AdBanner } from './AdBanner';
-import { Download, Globe, Heart, ShieldCheck, Sparkles } from 'lucide-react';
+import { triggerPwaInstall } from './PwaPrompt';
+import { Download, Globe, Heart, ShieldCheck, Sparkles, Smartphone } from 'lucide-react';
 
 interface FooterProps {
   currentLang: SupportedLanguage;
@@ -24,7 +25,7 @@ export function Footer({
   const platforms = Object.values(PLATFORMS_CONFIG).filter((p) => p.slug !== 'all');
 
   return (
-    <footer className="w-full bg-slate-950 border-t border-slate-800/80 pt-12 pb-8 text-slate-400 text-xs text-left">
+    <footer className="w-full bg-slate-950 border-t border-slate-800/80 pt-12 pb-8 text-slate-300 text-xs text-left">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
         {/* Footer Top Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
@@ -40,7 +41,7 @@ export function Footer({
               <span className="text-xl font-black text-white tracking-tight">OmniFetch Pro</span>
             </div>
 
-            <p className="text-slate-400 text-xs leading-relaxed max-w-sm">
+            <p className="text-slate-300 text-xs leading-relaxed max-w-sm">
               {t('siteSubtitle', currentLang)}
             </p>
 
@@ -50,10 +51,10 @@ export function Footer({
                 <button
                   key={lang.code}
                   onClick={() => onSelectLang(lang.code)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 border transition-all ${
+                  className={`px-3 py-2 min-h-[44px] rounded-lg text-[11px] font-bold flex items-center gap-1 border transition-all ${
                     currentLang === lang.code
                       ? 'bg-indigo-600 text-white border-indigo-500'
-                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                      : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white'
                   }`}
                 >
                   <span>{lang.flag}</span>
@@ -65,15 +66,15 @@ export function Footer({
 
           {/* Col 2: Supported Platforms */}
           <div className="space-y-3">
-            <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
               {t('supportedPlatforms', currentLang)}
-            </h4>
+            </h3>
             <ul className="space-y-1.5 text-xs">
               {platforms.slice(0, 6).map((p) => (
                 <li key={p.slug}>
                   <button
                     onClick={() => onSelectPlatform(p.slug)}
-                    className="hover:text-indigo-400 transition-colors"
+                    className="hover:text-indigo-400 py-1 transition-colors min-h-[44px] flex items-center"
                   >
                     {p.name} Downloader
                   </button>
@@ -84,13 +85,13 @@ export function Footer({
 
           {/* Col 3: More Platforms */}
           <div className="space-y-3">
-            <h4 className="text-sm font-bold text-white uppercase tracking-wider">Shorts & Reels</h4>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Shorts & Reels</h3>
             <ul className="space-y-1.5 text-xs">
               {platforms.slice(6).map((p) => (
                 <li key={p.slug}>
                   <button
                     onClick={() => onSelectPlatform(p.slug)}
-                    className="hover:text-indigo-400 transition-colors"
+                    className="hover:text-indigo-400 py-1 transition-colors min-h-[44px] flex items-center"
                   >
                     {p.name} Downloader
                   </button>
@@ -101,36 +102,42 @@ export function Footer({
 
           {/* Col 4: Legal & Contact */}
           <div className="space-y-3">
-            <h4 className="text-sm font-bold text-white uppercase tracking-wider">Legal & Support</h4>
+            <h3 className="text-sm font-bold text-white uppercase tracking-wider">Legal & Support</h3>
             <ul className="space-y-1.5 text-xs">
               <li>
-                <button onClick={() => onOpenLegal('privacy')} className="hover:text-indigo-400">
+                <button onClick={() => onOpenLegal('privacy')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('privacyPolicy', currentLang)}
                 </button>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('terms')} className="hover:text-indigo-400">
+                <button onClick={() => onOpenLegal('terms')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('termsOfService', currentLang)}
                 </button>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('dmca')} className="hover:text-indigo-400">
+                <button onClick={() => onOpenLegal('dmca')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('dmca', currentLang)}
                 </button>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('cookies')} className="hover:text-indigo-400">
+                <button onClick={() => onOpenLegal('cookies')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('cookiePolicy', currentLang)}
                 </button>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('contact')} className="hover:text-indigo-400">
+                <button onClick={() => onOpenLegal('contact')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('contactUs', currentLang)}
                 </button>
               </li>
               <li>
-                <button onClick={onOpenBlog} className="hover:text-indigo-400 text-emerald-400 font-bold">
+                <button onClick={onOpenBlog} className="hover:text-indigo-400 text-emerald-400 font-bold py-1 min-h-[44px] flex items-center">
                   {t('blog', currentLang)}
+                </button>
+              </li>
+              <li>
+                <button onClick={triggerPwaInstall} className="hover:text-purple-300 text-purple-400 font-bold py-1 min-h-[44px] flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-purple-400" />
+                  <span>{t('installPwa', currentLang)}</span>
                 </button>
               </li>
             </ul>
@@ -141,15 +148,11 @@ export function Footer({
         <AdBanner slot="footer_banner" />
 
         {/* Bottom Copyright */}
-        <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
+        <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-300">
           <div>{t('footerRights', currentLang)}</div>
 
           <div className="flex items-center gap-4">
-            <button onClick={onOpenAdmin} className="hover:text-slate-300 transition-colors">
-              {t('adminDashboard', currentLang)}
-            </button>
-            <span>•</span>
-            <span className="flex items-center gap-1 text-slate-400">
+            <span className="flex items-center gap-1 text-slate-300">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span>100% Safe & Clean</span>
             </span>

@@ -3,8 +3,10 @@ import { SupportedLanguage } from '../types';
 export const LANGUAGES: { code: SupportedLanguage; name: string; nativeName: string; flag: string; rtl: boolean }[] = [
   { code: 'ar', name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦', rtl: true },
   { code: 'en', name: 'English', nativeName: 'English', flag: '🇺🇸', rtl: false },
-  { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷', rtl: false },
   { code: 'es', name: 'Spanish', nativeName: 'Español', flag: '🇪🇸', rtl: false },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português', flag: '🇧🇷', rtl: false },
+  { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳', rtl: false },
+  { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷', rtl: false },
   { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪', rtl: false },
   { code: 'it', name: 'Italian', nativeName: 'Italiano', flag: '🇮🇹', rtl: false },
 ];
@@ -14,12 +16,12 @@ export function isRTL(lang: SupportedLanguage): boolean {
 }
 
 export function detectUserLanguage(): SupportedLanguage {
-  if (typeof window === 'undefined' || !navigator) return 'ar';
+  if (typeof window === 'undefined' || !navigator) return 'en';
 
   // Check saved language preference first
   try {
     const saved = localStorage.getItem('omnifetch_user_lang');
-    if (saved && ['ar', 'en', 'fr', 'es', 'de', 'it'].includes(saved)) {
+    if (saved && ['ar', 'en', 'fr', 'es', 'de', 'it', 'pt', 'hi'].includes(saved)) {
       return saved as SupportedLanguage;
     }
   } catch {
@@ -29,9 +31,9 @@ export function detectUserLanguage(): SupportedLanguage {
   // Fallback to checking navigator.languages or navigator.language
   const userLangs = navigator.languages && navigator.languages.length > 0
     ? navigator.languages
-    : [navigator.language || (navigator as any).userLanguage || 'ar'];
+    : [navigator.language || (navigator as any).userLanguage || 'en'];
 
-  const supportedCodes: SupportedLanguage[] = ['ar', 'en', 'fr', 'es', 'de', 'it'];
+  const supportedCodes: SupportedLanguage[] = ['ar', 'en', 'fr', 'es', 'de', 'it', 'pt', 'hi'];
 
   for (const lang of userLangs) {
     if (!lang) continue;
@@ -41,7 +43,7 @@ export function detectUserLanguage(): SupportedLanguage {
     }
   }
 
-  return 'ar';
+  return 'en';
 }
 
 export const uiTranslations: Record<SupportedLanguage, Record<string, string>> = {
@@ -135,6 +137,7 @@ export const uiTranslations: Record<SupportedLanguage, Record<string, string>> =
     step2Desc: 'ضع الرابط في مربع البحث أعلى الصفحة واضغط على زر "تحميل".',
     step3Title: '3. اختر الجودة واحفظ',
     step3Desc: 'اختر الجودة المناسبة (HD, 4K, MP3) واضغط على زر التحميل المباشر.',
+    trustpilotReviewNudge: 'هل أعجبك OmniFetch؟ اترك لنا تقييماً سريعاً 5 نجوم على Trustpilot! ⭐',
   },
   en: {
     siteTitle: 'OmniFetch Pro - Fastest Free Online Video Downloader Without Watermark',
@@ -224,6 +227,7 @@ export const uiTranslations: Record<SupportedLanguage, Record<string, string>> =
     step2Desc: 'Insert the link in our search box above and hit the "Download" button.',
     step3Title: '3. Save in HD / MP3',
     step3Desc: 'Select your preferred format (HD, 4K, MP3) and download directly to your device.',
+    trustpilotReviewNudge: 'Happy with OmniFetch? Leave a quick 5-star review on Trustpilot! ⭐',
   },
   fr: {
     siteTitle: 'OmniFetch Pro - Téléchargeur de vidéos gratuit et rapide sans filigrane',
@@ -556,6 +560,105 @@ export const uiTranslations: Record<SupportedLanguage, Record<string, string>> =
     step2Desc: 'Incolla il link nel campo di ricerca.',
     step3Title: '3. Scarica',
     step3Desc: 'Scegli la qualità e salva il file.',
+    trustpilotReviewNudge: 'Ti piace OmniFetch? Lascia una rapida recensione a 5 stelle su Trustpilot! ⭐',
+  },
+  pt: {
+    siteTitle: 'OmniFetch Pro - Baixador de Vídeos Grátis Sem Marca d\'Água',
+    siteSubtitle: 'Baixe vídeos em HD, reels e áudios do TikTok, Facebook, Instagram, YouTube e Snapchat em MP4 e MP3 com um clique.',
+    heroTitle: 'Baixador de Vídeos Universal de Alta Velocidade',
+    heroTagline: 'Suporta Todas as Plataformas | Sem Marca d\'Água | 100% Grátis',
+    inputPlaceholder: 'Cole o link do vídeo aqui (ex: TikTok, Instagram, YouTube, Facebook)...',
+    pasteBtn: 'Colar',
+    downloadBtn: 'Baixar Vídeo',
+    processing: 'Buscando mídia e extraindo formatos...',
+    dropZoneText: 'Ou arraste e solte o link aqui',
+    supportedPlatforms: 'Plataformas Suportadas',
+    featuresTitle: 'Por que escolher o OmniFetch Pro?',
+    stepsTitle: 'Como Baixar Vídeos em 3 Passos Simples',
+    faqTitle: 'Perguntas Frequentes',
+    reviewsTitle: 'Avaliações dos Usuários',
+    noWatermark: 'Sem Marca d\'Água',
+    highSpeed: 'Conversão Ultra Rápida',
+    unlimited: 'Downloads Ilimitados',
+    safeSecure: '100% Seguro e Privado',
+    copyLink: 'Copiar Link',
+    copied: 'Copiado!',
+    qrCode: 'Código QR Mobile',
+    share: 'Compartilhar',
+    exportToCloud: 'Exportar para Nuvem',
+    downloadMp4: 'Baixar MP4',
+    downloadHd: 'Baixar HD',
+    download4k: 'Baixar 4K',
+    downloadAudio: 'Baixar Áudio MP3',
+    downloadHistory: 'Histórico de Downloads',
+    recentDownloads: 'Downloads Recentes',
+    clearHistory: 'Limpar Histórico',
+    noHistory: 'Nenhum download recente.',
+    adminDashboard: 'Painel do Administrador',
+    blog: 'Blog',
+    allPlatforms: 'Todas as Plataformas',
+    close: 'Fechar',
+    installPwa: 'Instalar Aplicativo',
+    pwaDesc: 'Instale o OmniFetch Pro no seu dispositivo para acesso rápido.',
+    install: 'Instalar Agora',
+    footerRights: 'Todos os direitos reservados © 2026 OmniFetch Pro.',
+    privacyPolicy: 'Política de Privacidade',
+    termsOfService: 'Termos de Serviço',
+    dmca: 'Política DMCA',
+    disclaimer: 'Isenção de Responsabilidade',
+    cookiePolicy: 'Política de Cookies',
+    aboutUs: 'Sobre Nós',
+    contactUs: 'Fale Conosco',
+    trustpilotReviewNudge: 'Gostou do OmniFetch? Deixe uma avaliação rápida de 5 estrelas no Trustpilot! ⭐',
+  },
+  hi: {
+    siteTitle: 'OmniFetch Pro - वाटरमार्क के बिना सबसे तेज मुफ़्त ऑनलाइन वीडियो डाउनलोडर',
+    siteSubtitle: 'TikTok, Facebook, Instagram, YouTube और Snapchat से HD वीडियो, रील्स और MP3 ऑडियो एक क्लिक में डाउनलोड करें।',
+    heroTitle: 'यूनिवर्सल हाई-स्पीड वीडियो डाउनलोडर',
+    heroTagline: 'सभी सोशल मीडिया प्लेटफॉर्म समर्थित | बिना वाटरमार्क | 100% मुफ़्त',
+    inputPlaceholder: 'यहाँ वीडियो लिंक पेस्ट करें (जैसे TikTok, Instagram, YouTube, Facebook)...',
+    pasteBtn: 'पेस्ट करें',
+    downloadBtn: 'वीडियो डाउनलोड करें',
+    processing: 'मीडिया फॉर्मेट खोजा जा रहा है...',
+    dropZoneText: 'या लिंक यहाँ ड्रैग और ड्रॉप करें',
+    supportedPlatforms: 'समर्थित प्लेटफॉर्म',
+    featuresTitle: 'OmniFetch Pro क्यों चुनें?',
+    stepsTitle: '3 आसान चरणों में वीडियो कैसे डाउनलोड करें',
+    faqTitle: 'अक्सर पूछे जाने वाले प्रश्न',
+    reviewsTitle: 'उपयोगकर्ता समीक्षाएं',
+    noWatermark: 'बिना वाटरमार्क',
+    highSpeed: 'सुपर-फास्ट रूपांतरण',
+    unlimited: 'अनलिमिटेड मुफ़्त डाउनलोड',
+    safeSecure: '100% सुरक्षित एवं निजी',
+    copyLink: 'लिंक कॉपी करें',
+    copied: 'कॉपी हो गया!',
+    qrCode: 'मोबाइल क्यूआर कोड',
+    share: 'शेयर करें',
+    exportToCloud: 'क्लाउड में सेव करें',
+    downloadMp4: 'MP4 डाउनलोड करें',
+    downloadHd: 'HD डाउनलोड करें',
+    download4k: '4K डाउनलोड करें',
+    downloadAudio: 'MP3 ऑडियो डाउनलोड करें',
+    downloadHistory: 'डाउनलोड इतिहास',
+    recentDownloads: 'हाल के डाउनलोड',
+    clearHistory: 'इतिहास साफ़ करें',
+    noHistory: 'अभी तक कोई डाउनलोड नहीं।',
+    adminDashboard: 'एडमिन डैशबोर्ड',
+    blog: 'ब्लॉग',
+    allPlatforms: 'सभी प्लेटफॉर्म',
+    close: 'बंद करें',
+    installPwa: 'ऐप इंस्टॉल करें',
+    pwaDesc: 'तुरंत एक्सेस के लिए अपने डिवाइस पर OmniFetch Pro इंस्टॉल करें।',
+    install: 'अभी इंस्टॉल करें',
+    footerRights: 'सर्वाधिकार सुरक्षित © 2026 OmniFetch Pro।',
+    privacyPolicy: 'गोपनीयता नीति',
+    termsOfService: 'सेवा की शर्तें',
+    dmca: 'DMCA नीति',
+    disclaimer: 'अस्वीकरण',
+    cookiePolicy: 'कुकी नीति',
+    aboutUs: 'हमारे बारे में',
+    contactUs: 'संपर्क करें',
+    trustpilotReviewNudge: 'क्या आपको OmniFetch पसंद आया? Trustpilot पर त्वरित 5-स्टार समीक्षा छोड़ें! ⭐',
   }
 };
 

@@ -4,6 +4,7 @@ import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { t } from '../i18n/translations';
 import { processVideoFetch } from '../lib/providers';
 import { saveToHistory } from '../lib/storage';
+import { recordRealExtraction } from '../lib/firebase';
 import {
   Download,
   Clipboard,
@@ -191,6 +192,7 @@ export function HeroDownloader({
       }
 
       saveToHistory(result);
+      recordRealExtraction(result);
       onResultFetched(result);
     } catch (err: any) {
       const msg = err.message || t('errorFetchFailed', currentLang);
@@ -229,7 +231,7 @@ export function HeroDownloader({
             {activePlatform.titleTemplate[currentLang] || activePlatform.name}
           </span>
           <span className="hidden sm:inline-block w-1.5 h-1.5 rounded-full bg-indigo-400" />
-          <span className="hidden sm:inline-block text-slate-400 font-normal">v2026.1</span>
+          <span className="hidden sm:inline-block text-slate-300 font-normal">v2026.1</span>
         </div>
 
         {/* Main Hero Headline */}
@@ -265,9 +267,12 @@ export function HeroDownloader({
           )}
 
           {/* Download Mode Switcher Tabs */}
-          <div className="mb-4 flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-950/80 border border-slate-800/80">
+          <div className="mb-4 flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-950/80 border border-slate-800/80" role="tablist" aria-label="Download modes">
             <button
               type="button"
+              role="tab"
+              aria-selected={downloadMode === 'single'}
+              aria-label="Single URL download mode"
               onClick={() => {
                 setDownloadMode('single');
                 setErrorMsg(null);
@@ -275,7 +280,7 @@ export function HeroDownloader({
               className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 ${
                 downloadMode === 'single'
                   ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  : 'text-slate-200 hover:text-white hover:bg-slate-900'
               }`}
             >
               <Zap className="w-4 h-4 text-amber-400" />
@@ -284,6 +289,9 @@ export function HeroDownloader({
 
             <button
               type="button"
+              role="tab"
+              aria-selected={downloadMode === 'batch'}
+              aria-label="Batch URL download mode"
               onClick={() => {
                 setDownloadMode('batch');
                 setErrorMsg(null);
@@ -291,7 +299,7 @@ export function HeroDownloader({
               className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 relative ${
                 downloadMode === 'batch'
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-600/30'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  : 'text-slate-200 hover:text-white hover:bg-slate-900'
               }`}
             >
               <Layers className="w-4 h-4 text-purple-300" />
@@ -307,9 +315,14 @@ export function HeroDownloader({
               /* Single Link Input Field */
               <div className="relative flex flex-col sm:flex-row items-center gap-2">
                 <div className="relative w-full flex items-center">
+                  <label htmlFor="video-url-input" className="sr-only">
+                    Video URL to download
+                  </label>
                   <input
+                    id="video-url-input"
                     ref={inputRef}
-                    type="text"
+                    type="url"
+                    aria-label="Video URL to download"
                     disabled={isMaintenanceMode}
                     value={urlInput}
                     onChange={(e) => checkAndSetInputText(e.target.value)}
@@ -320,7 +333,7 @@ export function HeroDownloader({
                         ? `Paste ${activePlatform.name} URL (${activePlatform.placeholderUrl})...`
                         : t('inputPlaceholder', currentLang)
                     }
-                    className="w-full h-14 sm:h-16 pl-4 pr-24 sm:pr-28 rounded-2xl bg-slate-950/80 border border-slate-800/80 text-white placeholder-slate-500 font-medium text-sm sm:text-base focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full h-14 sm:h-16 pl-4 pr-24 sm:pr-28 rounded-2xl bg-slate-950/80 border border-slate-800/80 text-white placeholder-slate-400 font-medium text-sm sm:text-base focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all shadow-inner disabled:opacity-60 disabled:cursor-not-allowed"
                   />
 
                   {/* Paste & Clear buttons inside input */}
@@ -329,6 +342,7 @@ export function HeroDownloader({
                       <button
                         type="button"
                         onClick={() => setUrlInput('')}
+                        aria-label="Clear URL input"
                         className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
                         title="Clear"
                       >
@@ -339,6 +353,7 @@ export function HeroDownloader({
                         type="button"
                         disabled={isMaintenanceMode}
                         onClick={handlePasteSingle}
+                        aria-label="Paste URL from clipboard"
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-bold hover:bg-indigo-500/20 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Clipboard className="w-3.5 h-3.5" />
@@ -352,6 +367,7 @@ export function HeroDownloader({
                 <button
                   type="submit"
                   disabled={loading || isMaintenanceMode}
+                  aria-label="Download media video"
                   className={`w-full sm:w-auto h-14 sm:h-16 px-8 rounded-2xl text-white font-black text-base sm:text-lg shadow-xl transition-all flex items-center justify-center gap-2.5 whitespace-nowrap ${
                     isMaintenanceMode
                       ? 'bg-rose-900/80 border border-rose-600/50 cursor-not-allowed text-rose-200'
@@ -380,10 +396,15 @@ export function HeroDownloader({
               /* Batch Download Textarea Box */
               <div className="space-y-3 text-left">
                 <div className="relative">
+                  <label htmlFor="batch-urls-textarea" className="sr-only">
+                    Batch Video URLs list
+                  </label>
                   <textarea
+                    id="batch-urls-textarea"
                     rows={4}
                     disabled={isMaintenanceMode}
                     value={batchText}
+                    aria-label="Batch Video URLs list to download"
                     onChange={(e) => {
                       setBatchText(e.target.value);
                       if (errorMsg) setErrorMsg(null);
@@ -455,9 +476,9 @@ export function HeroDownloader({
           </form>
 
           {/* Drag and Drop helper & Batch Download Launch Trigger */}
-          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
             <div className="flex items-center gap-1.5">
-              <UploadCloud className="w-3.5 h-3.5 text-slate-400" />
+              <UploadCloud className="w-3.5 h-3.5 text-slate-300" />
               <span>{t('dropZoneText', currentLang)}</span>
             </div>
 
@@ -511,26 +532,26 @@ export function HeroDownloader({
           )}
         </div>
 
-        {/* Platform Selector Pills */}
+          {/* Platform Selector Pills */}
         <div className="pt-4 flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
           {platformsPills.map((p) => (
             <button
               key={p.slug}
               onClick={() => onSelectPlatform(p.slug)}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+              className={`flex items-center gap-2 px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold transition-all border ${
                 currentPlatform === p.slug
                   ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-500/20 scale-105'
                   : 'bg-slate-900/80 text-slate-300 border-slate-800 hover:bg-slate-800 hover:border-slate-700'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-slate-400" />
+              <span className="w-2 h-2 rounded-full bg-slate-300" />
               <span>{p.name}</span>
             </button>
           ))}
         </div>
 
         {/* Quick Trust Badges */}
-        <div className="pt-2 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400 font-semibold">
+        <div className="pt-2 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-300 font-semibold">
           <div className="flex items-center gap-1.5">
             <Zap className="w-4 h-4 text-amber-400" />
             <span>{t('highSpeed', currentLang)}</span>

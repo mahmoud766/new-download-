@@ -46,6 +46,17 @@ export function ReviewsSection({ currentLang }: ReviewsProps) {
           <p className="text-sm text-slate-400">
             Rated 4.9/5 stars by over 500,000 satisfied users worldwide.
           </p>
+          <div className="pt-2">
+            <a
+              href="https://www.trustpilot.com/evaluate/omnifetchpro.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold transition-all hover:scale-105"
+            >
+              <Star className="w-4 h-4 fill-emerald-400 text-emerald-400" />
+              <span>Review us on Trustpilot</span>
+            </a>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

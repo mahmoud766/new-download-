@@ -1,4 +1,4 @@
-export type SupportedLanguage = 'ar' | 'en' | 'fr' | 'es' | 'de' | 'it';
+export type SupportedLanguage = 'ar' | 'en' | 'fr' | 'es' | 'de' | 'it' | 'pt' | 'hi';
 
 export interface AuthorInfo {
   name: string;
@@ -55,6 +55,9 @@ export type PlatformSlug =
   | 'threads'
   | 'linkedin';
 
+export type LocalizedText = Partial<Record<SupportedLanguage, string>> & { en: string; ar?: string; [key: string]: string | undefined };
+export type LocalizedList = Partial<Record<SupportedLanguage, string[]>> & { en: string[]; ar?: string[]; [key: string]: string[] | undefined };
+
 export interface PlatformConfig {
   slug: PlatformSlug;
   name: string;
@@ -62,11 +65,11 @@ export interface PlatformConfig {
   color: string;
   badgeBg: string;
   badgeText: string;
-  description: Record<SupportedLanguage, string>;
-  titleTemplate: Record<SupportedLanguage, string>;
-  subtitle: Record<SupportedLanguage, string>;
+  description: LocalizedText;
+  titleTemplate: LocalizedText;
+  subtitle: LocalizedText;
   seoKeywords: string[];
-  features: Record<SupportedLanguage, string[]>;
+  features: LocalizedList;
   supportedFormats: string[];
   placeholderUrl: string;
   popular: boolean;
@@ -75,8 +78,8 @@ export interface PlatformConfig {
 export interface FAQItem {
   id: string;
   platform: PlatformSlug | 'general';
-  question: Record<SupportedLanguage, string>;
-  answer: Record<SupportedLanguage, string>;
+  question: LocalizedText;
+  answer: LocalizedText;
   order: number;
 }
 
@@ -92,9 +95,9 @@ export interface AdPlacementConfig {
 export interface BlogPost {
   id: string;
   slug: string;
-  title: Record<SupportedLanguage, string>;
-  excerpt: Record<SupportedLanguage, string>;
-  content: Record<SupportedLanguage, string>;
+  title: LocalizedText;
+  excerpt: LocalizedText;
+  content: LocalizedText;
   category: 'tutorials' | 'tips' | 'platform-news' | 'tech';
   author: string;
   publishedAt: string;

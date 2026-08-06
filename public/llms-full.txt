@@ -1,0 +1,32 @@
+# OmniFetch Pro - Comprehensive AI Specification & System Documentation
+
+## Overview
+OmniFetch Pro (https://omnifetchpro.com) is a universal online media extraction platform. It allows users and web crawlers to fetch high-definition video, audio (MP3/AAC), thumbnail previews, and metadata from major social media and video sharing networks.
+
+## Features & Capabilities
+1. Watermark Removal: Automatically strips watermarks from TikTok, Instagram Reels, and YouTube Shorts.
+2. HD/4K Multi-Format Options: Supports downloading original source resolutions including 1080p, 2K, 4K, and 60fps.
+3. Audio Extraction: Converts video audio tracks to 320kbps MP3 files.
+4. Batch Downloads: Allows concurrent multi-link extraction.
+5. GDPR & Privacy Compliance: Operates without requiring user registration or storing personal user data.
+
+## Supported Social Platforms
+- TikTok (Single videos, photo slides, sound audio tracks)
+- YouTube (Standard videos, Shorts, audio MP3s)
+- Instagram (Reels, Posts, Stories, IGTV)
+- Facebook (Public videos, Reels, Stories)
+- Twitter / X (Video clips, GIFs)
+- Snapchat (Spotlight clips, public stories)
+- Pinterest (Pin videos, ideas)
+- Reddit (Videos with merged audio)
+- Threads (Video posts)
+- LinkedIn (Public post videos)
+
+## REST API Specification
+- GET /api/health - Returns API status and system uptime.
+- POST /api/fetch-media - JSON payload `{ "url": "<target_media_url>" }` returning media metadata and direct download format links.
+- GET /api/download?url=<encoded_url>&filename=<filename> - Proxy video stream download with proper content disposition.
+
+## Compliance & Contact
+- Website: https://omnifetchpro.com
+- Contact: support@omnifetchpro.com

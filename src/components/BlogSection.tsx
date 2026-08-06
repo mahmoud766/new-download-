@@ -1,8 +1,23 @@
 import { useState, useEffect } from 'react';
 import { SupportedLanguage, BlogPost } from '../types';
 import { getBlogsConfig } from '../lib/storage';
-import { t } from '../i18n/translations';
-import { BookOpen, Search, Clock, Eye, ArrowLeft, Tag, Calendar, User, Sparkles } from 'lucide-react';
+import { SEO_ARTICLES_CATALOG } from '../config/seoArticlesData';
+import {
+  BookOpen,
+  Search,
+  Clock,
+  Eye,
+  ArrowLeft,
+  Tag,
+  Calendar,
+  User,
+  Sparkles,
+  Flame,
+  ChevronRight,
+  ChevronLeft,
+  Download,
+  Share2,
+} from 'lucide-react';
 
 interface BlogProps {
   currentLang: SupportedLanguage;
@@ -14,110 +29,164 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
   const [selectedPost, setSelectedPost] = useState<BlogPost | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const postsPerPage = 12;
+
+  const isRtl = currentLang === 'ar';
 
   useEffect(() => {
-    setBlogs(getBlogsConfig());
+    const customBlogs = getBlogsConfig();
+    // Combine custom stored blogs with 100 SEO articles catalog
+    const merged = [...customBlogs, ...SEO_ARTICLES_CATALOG];
+    setBlogs(merged);
   }, []);
 
   const categories = [
-    { id: 'all', name: 'All Topics' },
-    { id: 'tutorials', name: 'Tutorials & Guides' },
-    { id: 'platform-news', name: 'Platform News' },
-    { id: 'tips', name: 'Speed & Quality Tips' },
+    { id: 'all', name: isRtl ? 'جميع المقالات (100+)' : 'All Articles (100+)' },
+    { id: 'tutorials', name: isRtl ? 'الشروحات والأدلة' : 'Tutorials & Guides' },
+    { id: 'tips', name: isRtl ? 'نصائح السرعة والجودة' : 'Speed & Quality Tips' },
+    { id: 'platform-news', name: isRtl ? 'أخبار المنصات' : 'Platform News' },
+    { id: 'tech', name: isRtl ? 'المواصفات التقنية' : 'Tech Specifications' },
   ];
 
   const filteredBlogs = blogs.filter((post) => {
-    const titleText = (post.title[currentLang] || post.title.en).toLowerCase();
-    const excerptText = (post.excerpt[currentLang] || post.excerpt.en).toLowerCase();
+    const titleText = (post.title[currentLang] || post.title.ar || post.title.en || '').toLowerCase();
+    const excerptText = (post.excerpt[currentLang] || post.excerpt.ar || post.excerpt.en || '').toLowerCase();
     const query = searchQuery.toLowerCase();
 
-    const matchesSearch = titleText.includes(query) || excerptText.includes(query);
+    const matchesSearch = titleText.includes(query) || excerptText.includes(query) || post.tags?.some(t => t.toLowerCase().includes(query));
     const matchesCategory = selectedCategory === 'all' || post.category === selectedCategory;
 
     return matchesSearch && matchesCategory;
   });
 
+  const totalPages = Math.ceil(filteredBlogs.length / postsPerPage);
+  const currentPosts = filteredBlogs.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
+
   if (selectedPost) {
-    const title = selectedPost.title[currentLang] || selectedPost.title.en;
-    const content = selectedPost.content[currentLang] || selectedPost.content.en;
+    const title = selectedPost.title[currentLang] || selectedPost.title.ar || selectedPost.title.en;
+    const content = selectedPost.content[currentLang] || selectedPost.content.ar || selectedPost.content.en;
 
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12 space-y-6 animate-fade-in text-left">
+      <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12 space-y-6 animate-fade-in text-right rtl:text-right ltr:text-left">
         <button
           onClick={() => setSelectedPost(null)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs transition-all"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs transition-all shadow-md"
         >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Back to Articles</span>
+          <ArrowLeft className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
+          <span>{isRtl ? 'العودة لقائمة المقالات' : 'Back to Articles'}</span>
         </button>
 
-        <div className="space-y-4 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-indigo-400">
-            <span className="px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/30 uppercase">
+        <article className="space-y-6 bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl">
+          <div className="flex flex-wrap items-center gap-3 text-xs font-bold text-purple-400">
+            <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 uppercase">
               {selectedPost.category}
             </span>
             <span>•</span>
             <span className="text-slate-400 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5" />
+              <Calendar className="w-3.5 h-3.5 text-purple-400" />
               {selectedPost.publishedAt}
             </span>
             <span>•</span>
             <span className="text-slate-400 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              {selectedPost.readTimeMinutes} min read
+              <Clock className="w-3.5 h-3.5 text-pink-400" />
+              {selectedPost.readTimeMinutes} {isRtl ? 'دقائق قراءة' : 'min read'}
+            </span>
+            <span>•</span>
+            <span className="text-slate-400 flex items-center gap-1">
+              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+              {selectedPost.views.toLocaleString()} {isRtl ? 'مشاهدة' : 'views'}
             </span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-black text-white leading-tight">{title}</h1>
 
-          <div className="flex items-center gap-2 text-xs text-slate-400 pt-2 border-t border-slate-800/80">
-            <User className="w-4 h-4 text-emerald-400" />
-            <span>Written by {selectedPost.author}</span>
+          <div className="flex items-center justify-between border-y border-slate-800/80 py-3 text-xs text-slate-400">
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-emerald-400" />
+              <span className="font-bold text-slate-200">{selectedPost.author}</span>
+            </div>
+            <button
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({ title, url: window.location.href });
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg transition-colors font-bold"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>{isRtl ? 'مشاركة المقال' : 'Share Article'}</span>
+            </button>
           </div>
 
-          <div className="aspect-video rounded-2xl overflow-hidden bg-slate-950 my-6">
+          <div className="aspect-video rounded-2xl overflow-hidden bg-slate-950 my-6 border border-slate-800 shadow-xl">
             <img src={selectedPost.coverImage} alt={title} className="w-full h-full object-cover" />
           </div>
 
-          <div className="prose prose-invert max-w-none text-slate-300 text-sm sm:text-base leading-relaxed whitespace-pre-wrap pt-4">
+          {/* Article Body */}
+          <div className="prose prose-invert max-w-none text-slate-200 text-sm sm:text-base leading-relaxed whitespace-pre-wrap pt-2">
             {content}
           </div>
-        </div>
+
+          {/* Bottom Quick Download CTA */}
+          <div className="p-6 bg-gradient-to-r from-purple-900/60 via-slate-900 to-indigo-900/60 border border-purple-500/30 rounded-2xl space-y-3 mt-8">
+            <h2 className="text-base font-black text-white flex items-center gap-2">
+              <Download className="w-5 h-5 text-purple-400" />
+              <span>{isRtl ? 'جاهز لتنزيل فيديوهاتك المفضل الآن؟' : 'Ready to Download Your Videos Now?'}</span>
+            </h2>
+            <p className="text-xs text-slate-300">
+              {isRtl
+                ? 'جرب أداة OmniDownloader الاستثنائية مجاناً بدون علامة مائية وبأعلى جودة 4K.'
+                : 'Try OmniDownloader for free with zero watermark and maximum 4K speed.'}
+            </p>
+            <button
+              onClick={onBack}
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow-lg shadow-purple-900/40 transition-all"
+            >
+              {isRtl ? 'الانتقال لأداة التحميل الرئيسية' : 'Go to Main Downloader'}
+            </button>
+          </div>
+        </article>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12 space-y-8 animate-fade-in text-left">
-      {/* Header */}
+    <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12 space-y-8 animate-fade-in text-right rtl:text-right ltr:text-left">
+      {/* Header Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
           <button
             onClick={onBack}
-            className="flex items-center gap-2 mb-2 text-xs font-bold text-indigo-400 hover:underline"
+            className="flex items-center gap-2 mb-2 text-xs font-bold text-purple-400 hover:underline"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Downloader</span>
+            <ArrowLeft className={`w-3.5 h-3.5 ${isRtl ? 'rotate-180' : ''}`} />
+            <span>{isRtl ? 'العودة للواجهة الرئيسية' : 'Back to Downloader'}</span>
           </button>
-          <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight flex items-center gap-2">
-            <BookOpen className="w-7 h-7 text-emerald-400" />
-            <span>OmniFetch Knowledge Hub</span>
+          <h1 className="text-2xl sm:text-4xl font-black text-white flex items-center gap-3">
+            <BookOpen className="w-8 h-8 text-purple-500" />
+            <span>{isRtl ? 'دليل ومقالات أومني دونلودر الشامل (100 مقال SEO)' : 'OmniDownloader SEO Knowledge Hub'}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Tutorials, watermark removal guides, and video downloading tips.
+            {isRtl
+              ? 'مكتبة المقالات والشروحات التقنية المتخصصة لتنزيل الفيديوهات من كافة المنصات بأعلى جودة وبدون علامات مائية.'
+              : 'Explore 100+ comprehensive SEO articles & tutorials on downloading HD videos from all social platforms.'}
           </p>
         </div>
 
         {/* Search Bar */}
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+        <div className="relative w-full sm:w-80">
           <input
             type="text"
+            placeholder={isRtl ? 'ابحث في 100 مقال...' : 'Search 100 articles...'}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search articles..."
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
           />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
         </div>
       </div>
 
@@ -126,11 +195,14 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
         {categories.map((cat) => (
           <button
             key={cat.id}
-            onClick={() => setSelectedCategory(cat.id)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            onClick={() => {
+              setSelectedCategory(cat.id);
+              setCurrentPage(1);
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
               selectedCategory === cat.id
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                ? 'bg-purple-600 text-white border-purple-400/50 shadow-lg shadow-purple-900/40'
+                : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white'
             }`}
           >
             {cat.name}
@@ -140,49 +212,82 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
 
       {/* Articles Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredBlogs.map((post) => {
-          const titleText = post.title[currentLang] || post.title.en;
-          const excerptText = post.excerpt[currentLang] || post.excerpt.en;
+        {currentPosts.map((post) => {
+          const postTitle = post.title[currentLang] || post.title.ar || post.title.en;
+          const postExcerpt = post.excerpt[currentLang] || post.excerpt.ar || post.excerpt.en;
 
           return (
             <div
               key={post.id}
               onClick={() => setSelectedPost(post)}
-              className="group cursor-pointer rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 shadow-xl overflow-hidden flex flex-col justify-between transition-all duration-300 hover:-translate-y-1"
+              className="group bg-slate-900/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl hover:shadow-purple-950/40 transition-all duration-300 flex flex-col justify-between cursor-pointer"
             >
-              <div>
-                <div className="aspect-video overflow-hidden bg-slate-950">
-                  <img
-                    src={post.coverImage}
-                    alt={titleText}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
-
-                <div className="p-5 space-y-2">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                    <span className="uppercase text-indigo-400">{post.category}</span>
-                    <span>{post.readTimeMinutes} min read</span>
-                  </div>
-
-                  <h3 className="text-base font-bold text-white group-hover:text-indigo-300 transition-colors line-clamp-2">
-                    {titleText}
-                  </h3>
-
-                  <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">
-                    {excerptText}
-                  </p>
-                </div>
+              <div className="aspect-video overflow-hidden bg-slate-950 relative">
+                <img
+                  src={post.coverImage}
+                  alt={postTitle}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <span className="absolute top-2.5 right-2.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md text-purple-300 border border-purple-500/30 rounded-lg text-[10px] font-bold">
+                  {post.category}
+                </span>
               </div>
 
-              <div className="p-5 pt-0 text-xs font-bold text-indigo-400 flex items-center justify-between">
-                <span>Read Full Guide</span>
-                <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+              <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400 mb-2">
+                    <Calendar className="w-3 h-3 text-purple-400" />
+                    <span>{post.publishedAt}</span>
+                    <span>•</span>
+                    <Clock className="w-3 h-3 text-pink-400" />
+                    <span>{post.readTimeMinutes} min</span>
+                  </div>
+
+                  <h3 className="text-sm font-bold text-white group-hover:text-purple-300 transition-colors line-clamp-2 leading-snug">
+                    {postTitle}
+                  </h3>
+
+                  <p className="text-xs text-slate-400 line-clamp-3 mt-2 leading-relaxed">
+                    {postExcerpt}
+                  </p>
+                </div>
+
+                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-purple-400">
+                  <span>{isRtl ? 'اقرأ المقال الكامل' : 'Read Full Article'}</span>
+                  <ChevronRight className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
+                </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-6">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            disabled={currentPage === 1}
+            className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+          >
+            <ChevronLeft className={`w-5 h-5 ${isRtl ? 'rotate-180' : ''}`} />
+          </button>
+
+          <span className="text-xs font-bold text-slate-300">
+            {isRtl
+              ? `صفحة ${currentPage} من ${totalPages}`
+              : `Page ${currentPage} of ${totalPages}`}
+          </span>
+
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300 disabled:opacity-40 hover:bg-slate-800"
+          >
+            <ChevronRight className={`w-5 h-5 ${isRtl ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

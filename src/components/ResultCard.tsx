@@ -32,6 +32,7 @@ import {
   Edit3,
   RotateCcw,
   FileText,
+  Star,
 } from 'lucide-react';
 import { BatchDownloadModal } from './BatchDownloadModal';
 import { DownloadProgressBar } from './DownloadProgressBar';
@@ -176,6 +177,7 @@ export function ResultCard({
   const [cloudExportFormat, setCloudExportFormat] = useState<MediaFormat | null>(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showBatchModal, setShowBatchModal] = useState(false);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   // Container & Audio Extraction Selection State
   const [selectedContainers, setSelectedContainers] = useState<Record<string, string>>({});
@@ -496,6 +498,7 @@ export function ResultCard({
 
             setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
             onShowToast(t('downloadStarted', currentLang));
+            setDownloadSuccess(true);
             resolve();
           } else {
             // Read error JSON or message if available
@@ -608,6 +611,7 @@ export function ResultCard({
           </button>
           <button
             onClick={onClose}
+            aria-label="Close result preview"
             className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
             title="Close"
           >
@@ -678,9 +682,9 @@ export function ResultCard({
 
           {/* Title & Author Info */}
           <div className="space-y-2">
-            <h3 className="text-base sm:text-lg font-black text-white line-clamp-2 leading-snug">
+            <h2 className="text-base sm:text-lg font-black text-white line-clamp-2 leading-snug">
               {result.title}
-            </h3>
+            </h2>
 
             {result.author && (
               <div className="flex items-center gap-2.5 pt-1">
@@ -688,17 +692,21 @@ export function ResultCard({
                   <img
                     src={result.author.avatar}
                     alt={result.author.name}
+                    width="32"
+                    height="32"
+                    loading="lazy"
+                    decoding="async"
                     className="w-8 h-8 rounded-full border border-slate-700"
                   />
                 )}
                 <div>
                   <div className="text-xs font-bold text-slate-200">{result.author.name}</div>
-                  <div className="text-[11px] text-slate-400">{result.author.username}</div>
+                  <div className="text-[11px] text-slate-300">{result.author.username}</div>
                 </div>
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-slate-400 font-medium border-t border-slate-800/80">
+            <div className="flex flex-wrap items-center gap-3 pt-2 text-xs text-slate-300 font-medium border-t border-slate-800/80">
               {result.viewsCount && (
                 <div className="flex items-center gap-1">
                   <Eye className="w-3.5 h-3.5 text-indigo-400" />
@@ -718,10 +726,10 @@ export function ResultCard({
         {/* Right Col: Download Options List */}
         <div className="lg:col-span-7 space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-amber-400" />
               <span>Available Qualities & Formats</span>
-            </h4>
+            </h3>
             <span className="text-xs text-indigo-400 font-bold">100% Free Direct Link</span>
           </div>
 
@@ -1092,6 +1100,27 @@ export function ResultCard({
               </button>
             </div>
           </div>
+
+          {/* Trustpilot Review Nudge (Post-Download Success) */}
+          {downloadSuccess && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 border border-emerald-500/40 shadow-lg shadow-emerald-500/10 flex items-center justify-between flex-wrap gap-3 transition-all animate-fade-in">
+              <div className="flex items-center gap-2.5 text-xs text-slate-200 font-medium">
+                <span className="p-1.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shrink-0">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                </span>
+                <span>{t('trustpilotReviewNudge', currentLang)}</span>
+              </div>
+              <a
+                href="https://www.trustpilot.com/evaluate/omnifetchpro.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95 shrink-0"
+              >
+                <span>Review on Trustpilot</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-950" />
+              </a>
+            </div>
+          )}
         </div>
       </div>
 

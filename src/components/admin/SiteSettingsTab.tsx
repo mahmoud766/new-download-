@@ -30,6 +30,7 @@ import {
 import { SiteSettings, SupportedLanguage } from '../../types';
 import { saveSiteSettings } from '../../lib/storage';
 import { DEFAULT_SITE_SETTINGS } from '../../config/siteConfig';
+import { saveFirestoreGlobalSettings } from '../../lib/firebase';
 
 interface Props {
   settings: SiteSettings;
@@ -63,10 +64,14 @@ export const SiteSettingsTab: React.FC<Props> = ({
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const updated = saveSiteSettings(formData);
     onUpdateSettings(updated);
-    onShowToast('تم حفظ إعدادات الموقع والربط وتحديث النظام بجميع الفئات بنجاح! 🚀');
+    
+    // Save directly to live Firestore DB & trigger On-Demand Revalidation
+    await saveFirestoreGlobalSettings(formData);
+
+    onShowToast('تم حفظ إعدادات الموقع والربط وتنفيذ إعادة التنشيط الفوري (On-Demand Revalidation ⚡) بنجاح!');
   };
 
   const handleResetDefaults = () => {

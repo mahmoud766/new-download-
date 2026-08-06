@@ -35,7 +35,7 @@ export function StepsSection({ currentLang }: StepsProps) {
           <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
             {t('stepsTitle', currentLang)}
           </h2>
-          <p className="text-sm sm:text-base text-slate-400 max-w-xl mx-auto">
+          <p className="text-sm sm:text-base text-slate-300 max-w-xl mx-auto">
             No software installation required. Follow these 3 simple steps on any phone or desktop browser.
           </p>
         </div>
@@ -55,7 +55,7 @@ export function StepsSection({ currentLang }: StepsProps) {
               </span>
 
               <h3 className="text-lg font-bold text-white">{step.title}</h3>
-              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">{step.desc}</p>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">{step.desc}</p>
             </div>
           ))}
         </div>

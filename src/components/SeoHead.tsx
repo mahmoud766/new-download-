@@ -63,19 +63,26 @@ export function SeoHead({ platform = 'all', language, pageTitle, pageDescription
     canonical.setAttribute('href', canonicalUrl);
   }, [title, description, canonicalUrl, globalSeo]);
 
-  // Generate WebApplication & FAQ Schema JSON-LD
+  // Generate WebApplication & GEO Schema JSON-LD
   const webAppSchema = {
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
-    name: title,
-    url: canonicalUrl,
+    name: 'OmniFetch Pro',
+    url: 'https://omnifetchpro.com',
+    description: 'Universal online video downloader for TikTok, YouTube, Instagram, and Facebook. Download MP4 without watermark and MP3 audio for free.',
     applicationCategory: 'MultimediaApplication',
-    operatingSystem: 'Windows, macOS, Android, iOS, Linux',
+    operatingSystem: 'All',
     offers: {
       '@type': 'Offer',
       price: '0',
       priceCurrency: 'USD',
     },
+    featureList: [
+      'TikTok video downloader no watermark',
+      'YouTube to MP3 converter',
+      'Instagram Reels downloader',
+      'Fast and free',
+    ],
   };
 
   const breadcrumbSchema = {
@@ -105,6 +112,12 @@ export function SeoHead({ platform = 'all', language, pageTitle, pageDescription
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webAppSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      {globalSeo.organizationSchema && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: globalSeo.organizationSchema }} />
+      )}
+      {globalSeo.websiteSchema && (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: globalSeo.websiteSchema }} />
+      )}
     </>
   );
 }

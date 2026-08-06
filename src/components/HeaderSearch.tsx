@@ -209,25 +209,11 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
           onOpenHistory();
           setIsOpen(false);
         },
-      },
-      {
-        id: 'tool-admin',
-        type: 'tool',
-        title: 'لوحة التحكم والإدارة (Admin Dashboard)',
-        description: 'إدارة السيو، الإعلانات، تحليلات الزوار، والأنظمة في الوقت الفعلي.',
-        keywords: 'إدارة ادمن تحليلات dashboard analytics settings seo ads',
-        category: 'الأدوات والميزات السريعة',
-        badge: 'ADMIN',
-        iconType: 'LayoutDashboard',
-        action: () => {
-          onOpenAdmin();
-          setIsOpen(false);
-        },
       }
     );
 
     return items;
-  }, [currentLang, onSelectPlatform, onOpenBlog, onOpenHistory, onOpenAdmin, onOpenAiStudio, onOpenLegal, onOpenBatchModal]);
+  }, [currentLang, onSelectPlatform, onOpenBlog, onOpenHistory, onOpenAiStudio, onOpenLegal, onOpenBatchModal]);
 
   // Configure Fuse.js search engine
   const fuseEngine = useMemo(() => {

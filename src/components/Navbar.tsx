@@ -4,6 +4,7 @@ import { LANGUAGES, t } from '../i18n/translations';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { getSiteSettings } from '../lib/storage';
 import { HeaderSearch } from './HeaderSearch';
+import { triggerPwaInstall } from './PwaPrompt';
 import {
   Globe,
   Sun,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   Zap,
   Command,
+  Smartphone,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -111,7 +113,7 @@ export function Navbar({
                   {siteSettings.shortName || 'PRO'}
                 </span>
               </div>
-              <p className="hidden sm:block text-[11px] text-slate-400 font-medium">
+              <p className="hidden sm:block text-[11px] text-slate-300 font-medium">
                 Universal Video Downloader
               </p>
             </div>
@@ -200,18 +202,20 @@ export function Navbar({
               <span>AI Studio</span>
             </button>
 
-            {/* Admin Dashboard */}
-            <button
-              onClick={onOpenAdmin}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800/80 hover:text-white transition-all"
-            >
-              <LayoutDashboard className="w-4 h-4 text-purple-400" />
-              <span>{t('adminDashboard', currentLang)}</span>
-            </button>
           </nav>
 
           {/* Right Controls: Full-Site Search, Quick Actions, History, Lang, Theme, Admin */}
           <div className="hidden md:flex items-center gap-2.5">
+            {/* PWA App Install Button */}
+            <button
+              onClick={triggerPwaInstall}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600/20 to-teal-600/20 hover:from-emerald-600/30 hover:to-teal-600/30 text-emerald-300 border border-emerald-500/40 transition-all shadow-sm group"
+              title={t('installPwa', currentLang)}
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden lg:inline">{t('install', currentLang)}</span>
+            </button>
+
             {/* Quick Actions Overlay Trigger Button */}
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('omnifetch_open_quick_actions'))}
@@ -295,7 +299,8 @@ export function Navbar({
             {/* Theme Toggle */}
             <button
               onClick={onToggleTheme}
-              className="p-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-300 hover:text-white border border-slate-700/60 transition-all"
+              aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-slate-800/90 hover:bg-slate-700/90 text-slate-300 hover:text-white border border-slate-700/60 transition-all"
               title="Toggle Light/Dark Theme"
             >
               {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-indigo-400" />}
@@ -316,7 +321,8 @@ export function Navbar({
             />
             <button
               onClick={onOpenHistory}
-              className="relative p-2 rounded-xl bg-slate-800 text-amber-400 border border-slate-700"
+              aria-label="View download history"
+              className="relative p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-slate-800 text-amber-400 border border-slate-700"
             >
               <History className="w-5 h-5" />
               {historyCount > 0 && (
@@ -327,7 +333,8 @@ export function Navbar({
             </button>
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-xl bg-slate-800 text-slate-200 border border-slate-700"
+              aria-label="Toggle mobile menu"
+              className="p-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl bg-slate-800 text-slate-200 border border-slate-700"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -378,6 +385,19 @@ export function Navbar({
             </div>
           </div>
 
+          <div className="pt-2 border-t border-slate-800">
+            <button
+              onClick={() => {
+                triggerPwaInstall();
+                setMobileMenuOpen(false);
+              }}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg border border-purple-400/30 active:scale-95 transition-all"
+            >
+              <Smartphone className="w-4 h-4 text-amber-300" />
+              <span>{t('installPwa', currentLang)}</span>
+            </button>
+          </div>
+
           <div className="flex items-center justify-between pt-2 border-t border-slate-800">
             <button
               onClick={() => {
@@ -388,16 +408,6 @@ export function Navbar({
             >
               <BookOpen className="w-4 h-4 text-emerald-400" />
               <span>{t('blog', currentLang)}</span>
-            </button>
-            <button
-              onClick={() => {
-                onOpenAdmin();
-                setMobileMenuOpen(false);
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-200 border border-slate-800"
-            >
-              <LayoutDashboard className="w-4 h-4 text-purple-400" />
-              <span>{t('adminDashboard', currentLang)}</span>
             </button>
           </div>
 

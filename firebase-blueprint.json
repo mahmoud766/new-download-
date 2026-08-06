@@ -87,6 +87,58 @@
         "downloads": { "type": "number", "description": "Total downloads" },
         "color": { "type": "string", "description": "HEX color code for chart" }
       }
+    },
+    "trending_downloads": {
+      "title": "Real Trending Downloads",
+      "description": "Live real-time list of most popular videos extracted and saved by users",
+      "type": "document",
+      "path": "trending_downloads/{downloadId}",
+      "fields": {
+        "title": { "type": "string", "description": "Video title" },
+        "platform": { "type": "string", "description": "Platform slug" },
+        "platformName": { "type": "string", "description": "Platform display name" },
+        "thumbnail": { "type": "string", "description": "Thumbnail image URL" },
+        "url": { "type": "string", "description": "Original video URL" },
+        "duration": { "type": "string", "description": "Duration string" },
+        "extractionsCount": { "type": "number", "description": "Number of times extracted" },
+        "views": { "type": "string", "description": "Views count label" },
+        "likes": { "type": "string", "description": "Likes count label" },
+        "quality": { "type": "string", "description": "Quality badge" },
+        "badge": { "type": "string", "description": "Trending status badge" },
+        "lastExtractedAt": { "type": "timestamp", "description": "Timestamp of last extraction" }
+      }
+    },
+    "global_settings": {
+      "title": "Global Site Settings & Tracking",
+      "description": "Live real-time configuration for AdSense, Analytics, Meta Pixel, header scripts, and SEO controls",
+      "type": "document",
+      "path": "global_settings/{configId}",
+      "fields": {
+        "googleAdsenseId": { "type": "string", "description": "ca-pub-XXXXXXXXXXXXXXXX" },
+        "googleAnalyticsId": { "type": "string", "description": "G-XXXXXXXXXX" },
+        "metaPixelId": { "type": "string", "description": "Meta Pixel numeric ID" },
+        "headerScripts": { "type": "string", "description": "Raw HTML/JS header tracking code" },
+        "footerScripts": { "type": "string", "description": "Raw HTML/JS body/footer tracking code" },
+        "siteName": { "type": "string", "description": "Global branding title" },
+        "siteDescription": { "type": "string", "description": "Global fallback meta description" },
+        "updatedAt": { "type": "timestamp", "description": "Last modified timestamp" }
+      }
+    },
+    "seo_translations": {
+      "title": "Multilingual Programmatic SEO Controls",
+      "description": "Localized metadata, H1 headings, keywords, and open graph configs per lang and platform",
+      "type": "document",
+      "path": "seo_translations/{translationKey}",
+      "fields": {
+        "langCode": { "type": "string", "description": "ar, en, es, pt, hi" },
+        "pageSlug": { "type": "string", "description": "tiktok, youtube, instagram, facebook, etc." },
+        "h1Title": { "type": "string", "description": "Target H1 heading on landing page" },
+        "metaTitle": { "type": "string", "description": "Meta title tag" },
+        "metaDescription": { "type": "string", "description": "Meta description tag" },
+        "targetKeywords": { "type": "array", "description": "List of high-volume target keywords" },
+        "ogImage": { "type": "string", "description": "Open Graph social sharing image URL" },
+        "lastRevalidatedAt": { "type": "timestamp", "description": "ISR revalidation trigger time" }
+      }
     }
   }
 }

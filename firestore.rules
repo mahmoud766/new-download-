@@ -32,5 +32,17 @@ service cloud.firestore {
     match /analytics_platform_traffic/{documentId} {
       allow read, write: if true;
     }
+
+    match /trending_downloads/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /global_settings/{documentId} {
+      allow read, write: if true;
+    }
+
+    match /seo_translations/{documentId} {
+      allow read, write: if true;
+    }
   }
 }

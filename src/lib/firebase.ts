@@ -263,3 +263,276 @@ export async function fetchPlatformTrafficFromFirestore(): Promise<PlatformTraff
   }
 }
 
+// 9. Real Trending Downloads Tracker
+export interface RealTrendingItem {
+  id: string;
+  title: string;
+  platform: string;
+  platformName: string;
+  thumbnail: string;
+  url: string;
+  duration: string;
+  extractionsCount: number;
+  views: string;
+  likes: string;
+  quality: string;
+  badge: string;
+  lastExtractedAt?: any;
+  isRealUserExtraction?: boolean;
+}
+
+export async function recordRealExtraction(result: {
+  originalUrl: string;
+  title: string;
+  platform: string;
+  platformName: string;
+  thumbnail?: string;
+  duration?: string;
+  formats?: { quality: string }[];
+  viewsCount?: string;
+  likesCount?: string;
+}) {
+  if (!result || !result.originalUrl) return;
+
+  try {
+    const cleanUrl = result.originalUrl.trim();
+    // Safe hash function for doc ID to handle Unicode/Arabic characters without btoa crash
+    let hash = 0;
+    for (let i = 0; i < cleanUrl.length; i++) {
+      hash = (hash << 5) - hash + cleanUrl.charCodeAt(i);
+      hash |= 0;
+    }
+    const safeDocId = 'real_vid_' + Math.abs(hash).toString(36);
+    const docRef = doc(db, 'trending_downloads', safeDocId);
+
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const currentData = snap.data();
+      const newCount = (currentData.extractionsCount || 1) + 1;
+      await setDoc(
+        docRef,
+        {
+          extractionsCount: newCount,
+          lastExtractedAt: serverTimestamp(),
+          title: result.title || currentData.title,
+          thumbnail: result.thumbnail || currentData.thumbnail,
+          isRealUserExtraction: true,
+        },
+        { merge: true }
+      );
+    } else {
+      const topQuality = result.formats && result.formats[0] ? result.formats[0].quality : 'HD No Watermark';
+      const newItem: RealTrendingItem = {
+        id: safeDocId,
+        title: result.title || 'فيديو تم استخراجه من الموقع',
+        platform: (result.platform || 'video').toLowerCase(),
+        platformName: result.platformName || 'Video',
+        thumbnail: result.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
+        url: cleanUrl,
+        duration: result.duration || '0:45',
+        extractionsCount: 1,
+        views: result.viewsCount || '1.2K',
+        likes: result.likesCount || '350',
+        quality: topQuality,
+        badge: '🔥 استخراج حي من زائر',
+        lastExtractedAt: serverTimestamp(),
+        isRealUserExtraction: true,
+      };
+      await setDoc(docRef, newItem);
+    }
+  } catch (err) {
+    console.error('Error recording real extraction in Firestore:', err);
+  }
+}
+
+export function subscribeRealTrendingDownloads(
+  onUpdate: (items: RealTrendingItem[]) => void
+): () => void {
+  const colRef = collection(db, 'trending_downloads');
+  const q = query(colRef, orderBy('extractionsCount', 'desc'), limit(12));
+
+  const defaultItems: RealTrendingItem[] = [
+    {
+      id: 'tr_1',
+      title: 'أجمل المظاهر الطبيعية والرياضية 4K بدون علامة مائية',
+      platform: 'tiktok',
+      platformName: 'TikTok',
+      thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
+      url: 'https://www.tiktok.com/@discover/video/712345678901234',
+      duration: '0:45',
+      extractionsCount: 1840,
+      views: '2.8M',
+      likes: '450K',
+      quality: 'HD No Watermark',
+      badge: '🔥 الأكثر طلباً اليوم',
+    },
+    {
+      id: 'tr_2',
+      title: 'كليب أستوديو موسيقا وهندسة صوتية HD 1080p',
+      platform: 'youtube',
+      platformName: 'YouTube Shorts',
+      thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+      url: 'https://www.youtube.com/watch?v=XaTh1xAZ0Sg',
+      duration: '1:12',
+      extractionsCount: 1420,
+      views: '1.4M',
+      likes: '190K',
+      quality: '4K MP4 & MP3',
+      badge: '⚡ استخراج سريع',
+    },
+    {
+      id: 'tr_3',
+      title: 'وصفات طهي إيطالية مبتكرة وسريعة - ريلز إنستغرام',
+      platform: 'instagram',
+      platformName: 'Instagram Reel',
+      thumbnail: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
+      url: 'https://www.instagram.com/reel/C3x4y5z6a7b/',
+      duration: '0:30',
+      extractionsCount: 980,
+      views: '980K',
+      likes: '120K',
+      quality: '1080p Full HD',
+      badge: '🌟 شعبية واسعة',
+    },
+    {
+      id: 'tr_4',
+      title: 'لقطات مضحكة ومواقف كوميدية للحيوانات الأليفة',
+      platform: 'facebook',
+      platformName: 'Facebook Video',
+      thumbnail: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=600&auto=format&fit=crop&q=80',
+      url: 'https://www.facebook.com/watch/?v=9876543210123',
+      duration: '2:15',
+      extractionsCount: 3100,
+      views: '3.1M',
+      likes: '510K',
+      quality: 'HD MP4',
+      badge: '🏆 الأعلى تحميلاً',
+    },
+  ];
+
+  const unsubscribe = onSnapshot(
+    q,
+    async (snap) => {
+      if (snap.empty) {
+        for (const item of defaultItems) {
+          const docRef = doc(db, 'trending_downloads', item.id);
+          await setDoc(docRef, item, { merge: true });
+        }
+        onUpdate(defaultItems);
+      } else {
+        const items = snap.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<RealTrendingItem, 'id'>),
+        }));
+        // Sort real visitor extractions to the top first
+        items.sort((a, b) => {
+          if (a.isRealUserExtraction && !b.isRealUserExtraction) return -1;
+          if (!a.isRealUserExtraction && b.isRealUserExtraction) return 1;
+          return (b.extractionsCount || 0) - (a.extractionsCount || 0);
+        });
+        onUpdate(items);
+      }
+    },
+    (error) => {
+      console.error('Error listening to trending_downloads:', error);
+      onUpdate(defaultItems);
+    }
+  );
+
+  return unsubscribe;
+}
+
+// 10. Fetch & Save Global Settings (AdSense, GA4, Meta Pixel, Header/Footer Scripts, Site Name)
+export async function fetchFirestoreGlobalSettings() {
+  try {
+    const docRef = doc(db, 'global_settings', 'main');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+  } catch (err) {
+    console.error('Error fetching global_settings from Firestore:', err);
+  }
+  return null;
+}
+
+export async function saveFirestoreGlobalSettings(settingsData: Record<string, any>) {
+  try {
+    const docRef = doc(db, 'global_settings', 'main');
+    await setDoc(docRef, { ...settingsData, updatedAt: serverTimestamp() }, { merge: true });
+    // Trigger On-Demand Revalidation
+    await triggerOnDemandRevalidation(['/']);
+    return true;
+  } catch (err) {
+    console.error('Error saving global_settings to Firestore:', err);
+    return false;
+  }
+}
+
+// 11. Fetch & Save SEO Translations (Language, Platform, Slug, Keywords, Titles)
+export async function fetchFirestoreSeoTranslations() {
+  try {
+    const colRef = collection(db, 'seo_translations');
+    const snap = await getDocs(colRef);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+  } catch (err) {
+    console.error('Error fetching seo_translations from Firestore:', err);
+  }
+  return [];
+}
+
+export async function saveFirestoreSeoTranslation(
+  langCode: string,
+  platformSlug: string,
+  seoData: Record<string, any>
+) {
+  try {
+    const docId = `${langCode}_${platformSlug}`;
+    const docRef = doc(db, 'seo_translations', docId);
+    await setDoc(
+      docRef,
+      {
+        langCode,
+        platformSlug,
+        ...seoData,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    // Trigger On-Demand Revalidation
+    await triggerOnDemandRevalidation(['/', `/${platformSlug}`]);
+    return true;
+  } catch (err) {
+    console.error('Error saving seo_translation to Firestore:', err);
+    return false;
+  }
+}
+
+// 12. On-Demand Revalidation Trigger API Helper
+export async function triggerOnDemandRevalidation(routes: string[] = ['/']) {
+  try {
+    const res = await fetch('/api/revalidate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-revalidation-token': 'OMNIFETCH_PRO_ISR_SECRET_2026',
+      },
+      body: JSON.stringify({ routes }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      console.log('[On-Demand Revalidation] Cache purged & CDN revalidated:', data);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('omnifetch_revalidated', { detail: data }));
+      }
+      return data;
+    }
+  } catch (e) {
+    console.warn('[On-Demand Revalidation] Notice:', e);
+  }
+  return null;
+}
+
+
