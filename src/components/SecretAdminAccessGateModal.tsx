@@ -36,6 +36,7 @@ export const SecretAdminAccessGateModal: React.FC<Props> = ({
         const data = await res.json();
         if (data.success) {
           sessionStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
+          localStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
           onShowToast(isRtl ? 'تم تسجيل الدخول بنجاح وإلغاء قفل لوحة التحكم!' : 'Secret admin route unlocked successfully!');
           onUnlocked();
           return;
@@ -52,6 +53,7 @@ export const SecretAdminAccessGateModal: React.FC<Props> = ({
       cleanPin === 'omnifetch2026admin'
     ) {
       sessionStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
+      localStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
       onShowToast(isRtl ? 'تم فك تشفير المسار السري وفتح لوحة الإدارة بنجاح!' : 'Secret admin route unlocked successfully!');
       onUnlocked();
     } else {
@@ -129,6 +131,16 @@ export const SecretAdminAccessGateModal: React.FC<Props> = ({
             <span>{isRtl ? 'فك التشفير ودخول لوحة التحكم' : 'Unlock & Access Admin Panel'}</span>
           </button>
         </form>
+
+        <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-all text-center"
+          >
+            {isRtl ? '← العودة إلى الصفحة الرئيسية' : '← Return to Main Website'}
+          </button>
+        </div>
 
         <div className="text-[11px] text-center text-slate-500 font-mono">
           OmniDownloader Secure Gate Guard v2.4

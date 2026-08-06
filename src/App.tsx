@@ -53,14 +53,8 @@ export default function App() {
   const [activeView, setActiveView] = useState<'home' | 'blog' | 'admin' | 'legal'>(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
-      if (path.includes('/admin') || path.includes('/admin-download')) {
-        try {
-          const unlocked =
-            sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
-            window.location.search.includes('admin_secret') ||
-            window.location.search.includes('secret');
-          if (unlocked) return 'admin';
-        } catch {}
+      if (path.includes('/admin') || path.includes('/admin-download') || path.includes('/admin-login')) {
+        return 'admin';
       } else if (path.includes('/blog')) {
         return 'blog';
       } else if (path.includes('/legal')) {
@@ -75,10 +69,11 @@ export default function App() {
   const [showSecretGate, setShowSecretGate] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname.toLowerCase();
-      if (path.includes('/admin') || path.includes('/admin-download')) {
+      if (path.includes('/admin') || path.includes('/admin-download') || path.includes('/admin-login')) {
         try {
           const unlocked =
             sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+            localStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
             window.location.search.includes('admin_secret') ||
             window.location.search.includes('secret');
           return !unlocked;
@@ -93,21 +88,24 @@ export default function App() {
   useEffect(() => {
     const checkPath = () => {
       const path = window.location.pathname.toLowerCase();
-      if (path.includes('/admin') || path.includes('/admin-download')) {
+      if (path.includes('/admin') || path.includes('/admin-download') || path.includes('/admin-login')) {
+        setActiveView('admin');
         try {
           const unlocked =
             sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+            localStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
             window.location.search.includes('admin_secret') ||
             window.location.search.includes('secret');
-          if (unlocked) {
-            setActiveView('admin');
-            setShowSecretGate(false);
-          } else {
-            setShowSecretGate(true);
-          }
+          setShowSecretGate(!unlocked);
         } catch {
           setShowSecretGate(true);
         }
+      } else if (path.includes('/blog')) {
+        setActiveView('blog');
+        setShowSecretGate(false);
+      } else if (path.includes('/legal')) {
+        setActiveView('legal');
+        setShowSecretGate(false);
       }
     };
 
@@ -291,15 +289,16 @@ export default function App() {
   };
 
   const handleOpenAdmin = () => {
-    // Check if secret session unlocked or secret query param in URL
-    const isUnlocked = sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+    setActiveView('admin');
+    const isUnlocked =
+      sessionStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
+      localStorage.getItem('omnifetch_admin_secret_unlocked') === 'true' ||
       window.location.search.includes('admin_secret') ||
       window.location.search.includes('secret');
 
-    if (isUnlocked) {
-      setActiveView('admin');
-    } else {
-      setShowSecretGate(true);
+    setShowSecretGate(!isUnlocked);
+    if (!window.location.pathname.toLowerCase().includes('/admin')) {
+      window.history.pushState({}, '', '/admin/login');
     }
   };
 
@@ -503,20 +502,32 @@ export default function App() {
         {showSecretGate && (
           <SecretAdminAccessGateModal
             currentLang={currentLang}
-            onClose={() => setShowSecretGate(false)}
+            onClose={() => {
+              setShowSecretGate(false);
+              setActiveView('home');
+              if (window.location.pathname.toLowerCase().includes('/admin')) {
+                window.history.pushState({}, '', '/');
+              }
+            }}
             onUnlocked={() => {
               setShowSecretGate(false);
               setActiveView('admin');
+              if (!window.location.pathname.toLowerCase().includes('/admin')) {
+                window.history.pushState({}, '', '/admin/login');
+              }
             }}
             onShowToast={(msg) => setToastMessage(msg)}
           />
         )}
 
-        {activeView === 'admin' && (
+        {activeView === 'admin' && !showSecretGate && (
           <AdminDashboard
             currentLang={currentLang}
             initialTab={adminInitialTab}
-            onClose={() => setActiveView('home')}
+            onClose={() => {
+              setActiveView('home');
+              window.history.pushState({}, '', '/');
+            }}
             onShowToast={(msg) => setToastMessage(msg)}
           />
         )}

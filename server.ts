@@ -1120,7 +1120,9 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = fs.existsSync(path.join(process.cwd(), 'dist', 'index.html'))
+      ? path.join(process.cwd(), 'dist')
+      : process.cwd();
     app.use(
       express.static(distPath, {
         maxAge: '1d',
@@ -1140,8 +1142,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     });
   }
 
-  app.listen(Number(process.env.PORT) || 3000, '0.0.0.0', () => {
-    console.log(`[OmniFetch Pro] Server running on http://0.0.0.0:${Number(process.env.PORT) || 3000}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[OmniFetch Pro] Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
