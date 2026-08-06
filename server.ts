@@ -82,7 +82,9 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT: number | string = process.env.PORT 
+    ? (isNaN(Number(process.env.PORT)) ? process.env.PORT : Number(process.env.PORT)) 
+    : 3000;
 
   app.use(express.json());
 
@@ -1140,9 +1142,15 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[OmniFetch Pro] Server running on http://0.0.0.0:${PORT}`);
-  });
+  if (typeof PORT === 'number') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[OmniFetch Pro] Server running on port ${PORT}`);
+    });
+  } else {
+    app.listen(PORT, () => {
+      console.log(`[OmniFetch Pro] Server running on pipe/socket ${PORT}`);
+    });
+  }
 }
 
 startServer();
