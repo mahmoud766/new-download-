@@ -21,6 +21,7 @@ import {
   Zap,
   Command,
   Smartphone,
+  Database,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -214,6 +215,16 @@ export function Navbar({
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
               <span className="hidden lg:inline">{t('install', currentLang)}</span>
+            </button>
+
+            {/* Hostinger DB Installer Trigger Button */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('open_hostinger_installer'))}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-600/20 to-orange-600/20 hover:from-amber-600/30 hover:to-orange-600/30 text-amber-300 border border-amber-500/40 transition-all shadow-sm group"
+              title="إعداد قاعدة بيانات Hostinger (Web Installer)"
+            >
+              <Database className="w-3.5 h-3.5 text-amber-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden xl:inline">قاعدة بيانات Hostinger</span>
             </button>
 
             {/* Quick Actions Overlay Trigger Button */}

@@ -21,6 +21,8 @@ import { PwaPrompt } from './components/PwaPrompt';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { TrendingDownloadsSection } from './components/TrendingDownloadsSection';
 
+import { HostingerDbInstallerModal } from './components/HostingerDbInstallerModal';
+
 // Lazy Loaded Off-Screen & Heavy Modal Components (Bundle Optimization)
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const AiStudioModal = lazy(() => import('./components/AiStudioModal').then((m) => ({ default: m.AiStudioModal })));
@@ -118,6 +120,7 @@ export default function App() {
   const [currentResult, setCurrentResult] = useState<MediaResult | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [aiStudioOpen, setAiStudioOpen] = useState(false);
+  const [hostingerInstallerOpen, setHostingerInstallerOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [debugLogsOpen, setDebugLogsOpen] = useState(false);
   const [adminInitialTab, setAdminInitialTab] = useState('analytics');
@@ -158,14 +161,20 @@ export default function App() {
       setDebugLogsOpen(true);
     };
 
+    const handleCustomOpenHostingerInstaller = () => {
+      setHostingerInstallerOpen(true);
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('omnifetch_open_quick_actions', handleCustomOpenQuickActions);
     window.addEventListener('omnifetch_open_debug_modal', handleCustomOpenDebugModal);
+    window.addEventListener('open_hostinger_installer', handleCustomOpenHostingerInstaller);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('omnifetch_open_quick_actions', handleCustomOpenQuickActions);
       window.removeEventListener('omnifetch_open_debug_modal', handleCustomOpenDebugModal);
+      window.removeEventListener('open_hostinger_installer', handleCustomOpenHostingerInstaller);
     };
   }, []);
 
@@ -458,6 +467,11 @@ export default function App() {
       />
 
       {/* MODALS & OVERLAYS (SUSPENSE LAZY) */}
+      <HostingerDbInstallerModal
+        isOpen={hostingerInstallerOpen}
+        onClose={() => setHostingerInstallerOpen(false)}
+      />
+
       <Suspense fallback={null}>
         <AiStudioModal
           isOpen={aiStudioOpen}

@@ -381,6 +381,16 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Hostinger DB Web Installer Button */}
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('open_hostinger_installer'))}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all shadow-sm"
+              title="ربط/إعداد قاعدة بيانات Hostinger MySQL"
+            >
+              <HardDrive className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">قاعدة بيانات Hostinger</span>
+            </button>
+
             {/* Quick Maintenance Mode Toggle Button */}
             <button
               onClick={() => {

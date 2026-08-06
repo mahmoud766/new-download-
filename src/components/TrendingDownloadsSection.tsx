@@ -13,6 +13,7 @@ import {
   subscribeRealTrendingDownloads,
   recordRealExtraction,
 } from '../lib/firebase';
+import { fetchHostingerTrendingItems, recordHostingerExtraction } from '../lib/hostingerDb';
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -24,15 +25,29 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
   const [trendingList, setTrendingList] = useState<RealTrendingItem[]>([]);
 
   useEffect(() => {
-    const unsub = subscribeRealTrendingDownloads((items) => {
-      setTrendingList(items);
+    // 1. Fetch from Hostinger MySQL API
+    fetchHostingerTrendingItems().then((items) => {
+      if (items && items.length > 0) {
+        setTrendingList(items);
+      }
     });
-    return () => unsub();
+
+    // 2. Subscribe to live Firebase updates safely
+    try {
+      const unsub = subscribeRealTrendingDownloads((items) => {
+        if (items && items.length > 0) {
+          setTrendingList(items);
+        }
+      });
+      return () => unsub();
+    } catch (e) {
+      console.warn('Firebase subscription skipped:', e);
+    }
   }, []);
 
   const handleExtractCard = (item: RealTrendingItem) => {
-    // Record real extraction event in Firestore
-    recordRealExtraction({
+    // Record extraction in Hostinger MySQL
+    recordHostingerExtraction({
       originalUrl: item.url,
       title: item.title,
       platform: item.platform,
@@ -41,7 +56,24 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
       duration: item.duration,
       viewsCount: item.views,
       likesCount: item.likes,
-    });
+    }).catch(() => {});
+
+    // Record extraction in Firestore safely
+    try {
+      recordRealExtraction({
+        originalUrl: item.url,
+        title: item.title,
+        platform: item.platform,
+        platformName: item.platformName,
+        thumbnail: item.thumbnail,
+        duration: item.duration,
+        viewsCount: item.views,
+        likesCount: item.likes,
+      });
+    } catch (e) {
+      // safe ignore
+    }
+
     // Trigger URL extraction in main hero search bar
     onExtractUrl(item.url);
   };
