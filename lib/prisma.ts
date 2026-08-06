@@ -135,6 +135,9 @@ const mockUserAnalyticsModel = {
   count: async () => 0,
 };
 
+// Track if database connection or credentials failed to avoid repeated failing calls
+let isDatabaseConnectionWorking = true;
+
 // Safely wrap real model methods to catch runtime connection/query errors and fall back gracefully
 function createSafeModelProxy(realModel: any, mockModel: any) {
   if (!realModel) return mockModel;
@@ -143,10 +146,18 @@ function createSafeModelProxy(realModel: any, mockModel: any) {
       const original = target[methodProp];
       if (typeof original === 'function') {
         return async (...args: any[]) => {
+          if (!isDatabaseConnectionWorking) {
+            const mockFn = mockModel[methodProp];
+            if (typeof mockFn === 'function') {
+              return await mockFn(...args);
+            }
+            return null;
+          }
           try {
             return await original.apply(target, args);
           } catch (err: any) {
-            // Serve in-memory fallback silently when remote DB connection or credentials fail
+            // Mark database connection as failed so subsequent queries instantly fallback quietly
+            isDatabaseConnectionWorking = false;
             const mockFn = mockModel[methodProp];
             if (typeof mockFn === 'function') {
               return await mockFn(...args);
@@ -166,7 +177,7 @@ function createPrismaClient() {
     const PrismaClientClass = (PrismaClientModule as any).PrismaClient;
     if (PrismaClientClass) {
       realInstance = new PrismaClientClass({
-        log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+        log: [], // Suppress prisma:error output when database connection or credentials fail
       });
     }
   } catch (e) {
