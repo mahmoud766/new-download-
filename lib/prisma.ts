@@ -18,6 +18,21 @@ const MockPrismaClass = class {
     findMany: async () => [],
     upsert: async (args: any) => args.create,
   };
+  downloadLog = {
+    findMany: async () => [],
+    findFirst: async () => null,
+    create: async (args: any) => ({ id: 'mock_id', ...args.data }),
+    update: async (args: any) => ({ id: 'mock_id', ...args.data }),
+    upsert: async (args: any) => args.create,
+    count: async () => 0,
+    groupBy: async () => [],
+    deleteMany: async () => ({ count: 0 }),
+  };
+  userAnalytics = {
+    findMany: async () => [],
+    create: async (args: any) => ({ id: 'mock_id', ...args.data }),
+    count: async () => 0,
+  };
 };
 
 function createPrismaClient() {
@@ -38,4 +53,3 @@ const globalForPrisma = global as unknown as { prisma: any };
 export const prisma = globalForPrisma.prisma || createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
-

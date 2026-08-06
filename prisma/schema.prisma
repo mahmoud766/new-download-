@@ -1,4 +1,4 @@
-// Prisma Schema for OmniFetch Pro Global Settings & SEO Engine
+// Prisma Schema for OmniFetch Pro Global Settings, SEO Engine & Live Analytics / Download Logs
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -29,4 +29,29 @@ model SeoTranslations {
   updatedAt       DateTime @updatedAt
 
   @@unique([language, platform])
+}
+
+model DownloadLog {
+  id            String   @id @default(cuid())
+  url           String
+  title         String
+  platform      String
+  thumbnail     String?
+  quality       String?
+  ipAddress     String?
+  downloadCount Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([platform])
+  @@index([url])
+}
+
+model UserAnalytics {
+  id        String   @id @default(cuid())
+  event     String
+  details   String?
+  ipAddress String?
+  country   String?
+  createdAt DateTime @default(now())
 }

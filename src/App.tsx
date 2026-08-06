@@ -21,8 +21,6 @@ import { PwaPrompt } from './components/PwaPrompt';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { TrendingDownloadsSection } from './components/TrendingDownloadsSection';
 
-import { HostingerDbInstallerModal } from './components/HostingerDbInstallerModal';
-
 // Lazy Loaded Off-Screen & Heavy Modal Components (Bundle Optimization)
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const AiStudioModal = lazy(() => import('./components/AiStudioModal').then((m) => ({ default: m.AiStudioModal })));
@@ -466,10 +464,6 @@ export default function App() {
       />
 
       {/* MODALS & OVERLAYS (SUSPENSE LAZY) */}
-      <HostingerDbInstallerModal
-        isOpen={hostingerInstallerOpen}
-        onClose={() => setHostingerInstallerOpen(false)}
-      />
 
       <Suspense fallback={null}>
         <AiStudioModal

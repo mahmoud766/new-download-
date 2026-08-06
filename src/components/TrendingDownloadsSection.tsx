@@ -8,12 +8,20 @@ import {
   Zap,
 } from 'lucide-react';
 import { SupportedLanguage } from '../types';
-import {
-  RealTrendingItem,
-  subscribeRealTrendingDownloads,
-  recordRealExtraction,
-} from '../lib/firebase';
-import { fetchHostingerTrendingItems, recordHostingerExtraction } from '../lib/hostingerDb';
+
+export interface TrendingItem {
+  id: string;
+  url: string;
+  title: string;
+  platform: string;
+  platformName?: string;
+  thumbnail: string;
+  duration?: string;
+  quality?: string;
+  downloadCount: number;
+  views?: string;
+  likes?: string;
+}
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -22,56 +30,47 @@ interface Props {
 
 export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtractUrl }) => {
   const isRtl = currentLang === 'ar';
-  const [trendingList, setTrendingList] = useState<RealTrendingItem[]>([]);
+  const [trendingList, setTrendingList] = useState<TrendingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchTrendingData = async () => {
+    try {
+      const res = await fetch('/api/trending');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.items)) {
+          setTrendingList(data.items);
+        }
+      }
+    } catch (err) {
+      console.warn('Error fetching trending items from PostgreSQL API:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // 1. Fetch from Hostinger MySQL API
-    fetchHostingerTrendingItems().then((items) => {
-      if (items && items.length > 0) {
-        setTrendingList(items);
-      }
-    });
-
-    // 2. Subscribe to live Firebase updates safely
-    try {
-      const unsub = subscribeRealTrendingDownloads((items) => {
-        if (items && items.length > 0) {
-          setTrendingList(items);
-        }
-      });
-      return () => unsub();
-    } catch (e) {
-      console.warn('Firebase subscription skipped:', e);
-    }
+    fetchTrendingData();
   }, []);
 
-  const handleExtractCard = (item: RealTrendingItem) => {
-    // Record extraction in Hostinger MySQL
-    recordHostingerExtraction({
-      originalUrl: item.url,
-      title: item.title,
-      platform: item.platform,
-      platformName: item.platformName,
-      thumbnail: item.thumbnail,
-      duration: item.duration,
-      viewsCount: item.views,
-      likesCount: item.likes,
-    }).catch(() => {});
-
-    // Record extraction in Firestore safely
+  const handleExtractCard = async (item: TrendingItem) => {
+    // Record / increment extraction in PostgreSQL Supabase
     try {
-      recordRealExtraction({
-        originalUrl: item.url,
-        title: item.title,
-        platform: item.platform,
-        platformName: item.platformName,
-        thumbnail: item.thumbnail,
-        duration: item.duration,
-        viewsCount: item.views,
-        likesCount: item.likes,
+      await fetch('/api/trending', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: item.url,
+          title: item.title,
+          platform: item.platform,
+          thumbnail: item.thumbnail,
+          quality: item.quality || 'HD No Watermark',
+        }),
       });
+      // Refresh list to update counts
+      fetchTrendingData();
     } catch (e) {
-      // safe ignore
+      console.warn('Failed to record trending download:', e);
     }
 
     // Trigger URL extraction in main hero search bar
@@ -91,22 +90,22 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-amber-500/20 to-rose-500/20 border border-amber-500/30 text-amber-300 rounded-full text-xs font-black uppercase tracking-wider">
               <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
-              <span>{isRtl ? 'الأكثر تحميلاً وتداولاً اليوم' : 'Top Trending Downloads Today'}</span>
+              <span>{isRtl ? 'الأكثر تحميلاً وتداولاً اليوم (PostgreSQL)' : 'Top Trending Downloads Today'}</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
               {isRtl ? 'الفيديوهات الأكثر استخراجاً وحفظاً' : 'Most Popular Videos Extracted Right Now'}
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
               {isRtl
-                ? 'قائمة حية ومحدثة لحظياً بالفيديوهات والريلز الأكثر استخراجاً وتحميلاً من مستخدمي الموقع اليوم. انقر بنقرة واحدة لاستخراج الرابط وتنزيله مباشرةً.'
-                : 'Live real-time feed of viral reels and videos extracted and saved by users globally. Tap any item to extract and save in 1-click.'}
+                ? 'قائمة حية ومحدثة تلقائياً من قاعدة البيانات بناءً على عدد التنزيلات الحقيقية للمستخدمين.'
+                : 'Live feed of trending videos ordered by real download counts in PostgreSQL Supabase.'}
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{isRtl ? 'تحديث حي ومباشر من لقواعد البيانات' : 'Live Database Sync Active'}</span>
+            <span>{isRtl ? 'مزامنة حية مع Supabase PostgreSQL' : 'PostgreSQL Database Live'}</span>
           </div>
         </div>
 
@@ -129,7 +128,7 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
                 {/* Top Badge */}
                 <span className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-black shadow-md flex items-center gap-1">
                   <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  {item.extractionsCount ? `${item.extractionsCount} ${isRtl ? 'استخراج' : 'extractions'}` : item.badge}
+                  {item.downloadCount} {isRtl ? 'تحميل' : 'downloads'}
                 </span>
 
                 {/* Duration Badge */}
@@ -155,11 +154,11 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
                   <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Eye className="w-3 h-3 text-indigo-400" />
-                      {item.views || '1.5K'}
+                      {item.views || '12.4K'}
                     </span>
                     <span className="flex items-center gap-1">
                       <Heart className="w-3 h-3 text-pink-400" />
-                      {item.likes || '450'}
+                      {item.likes || '1.8K'}
                     </span>
                     <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-mono">
                       {item.quality || 'HD No Watermark'}
@@ -184,4 +183,3 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
     </section>
   );
 };
-

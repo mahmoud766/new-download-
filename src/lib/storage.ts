@@ -1,7 +1,6 @@
 import { MediaResult, SiteSettings, AdPlacementConfig, FAQItem, BlogPost, DownloadLogItem } from '../types';
 import { DEFAULT_SITE_SETTINGS, DEFAULT_ADS_CONFIG, DEFAULT_FAQS, INITIAL_BLOG_POSTS } from '../config/siteConfig';
 import { auth, saveFirestoreDownload, saveFirestoreGlobalSettings } from './firebase';
-import { saveHostingerSettings, recordHostingerExtraction } from './hostingerDb';
 
 const HISTORY_KEY = 'omnifetch_download_history_v1';
 const SETTINGS_KEY = 'omnifetch_site_settings_v1';
@@ -26,8 +25,18 @@ export function saveToHistory(item: MediaResult): void {
     const updated = [item, ...filtered].slice(0, 30); // keep last 30
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
 
-    // Sync to Hostinger MySQL
-    recordHostingerExtraction(item).catch(() => {});
+    // Post to PostgreSQL download logging API asynchronously
+    fetch('/api/trending', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: item.originalUrl,
+        title: item.title,
+        platform: item.platformName,
+        thumbnail: item.thumbnail,
+        quality: item.formats?.[0]?.quality || 'HD No Watermark',
+      }),
+    }).catch(() => {});
 
     // Optional Firebase sync with safe catch
     if (auth && auth.currentUser) {
@@ -40,7 +49,7 @@ export function saveToHistory(item: MediaResult): void {
       }).catch((e) => console.warn('Firebase sync warning:', e));
     }
 
-    // Also log for admin analytics
+    // Also log for local admin analytics
     logDownloadEvent(item);
   } catch (e) {
     console.error('Error saving history:', e);
@@ -72,8 +81,6 @@ export function saveSiteSettings(settings: Partial<SiteSettings>): SiteSettings 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: updated }));
     }
-    // Sync to Hostinger MySQL
-    saveHostingerSettings({ siteSettings: updated }).catch(() => {});
     // Optional Firebase sync
     saveFirestoreGlobalSettings({ siteSettings: updated }).catch((e) => console.warn('Firebase sync skipped:', e));
     return updated;
@@ -94,7 +101,6 @@ export function getAdsConfig(): AdPlacementConfig[] {
 export function saveAdsConfig(ads: AdPlacementConfig[]): void {
   try {
     localStorage.setItem(ADS_KEY, JSON.stringify(ads));
-    saveHostingerSettings({ adsConfig: ads }).catch(() => {});
     saveFirestoreGlobalSettings({ adsConfig: ads }).catch((e) => console.warn('Firebase sync skipped:', e));
   } catch (e) {
     console.error('Error saving ads config:', e);
@@ -113,7 +119,6 @@ export function getFaqsConfig(): FAQItem[] {
 export function saveFaqsConfig(faqs: FAQItem[]): void {
   try {
     localStorage.setItem(FAQS_KEY, JSON.stringify(faqs));
-    saveHostingerSettings({ faqsConfig: faqs }).catch(() => {});
     saveFirestoreGlobalSettings({ faqsConfig: faqs }).catch((e) => console.warn('Firebase sync skipped:', e));
   } catch (e) {
     console.error('Error saving FAQs:', e);
@@ -132,7 +137,6 @@ export function getBlogsConfig(): BlogPost[] {
 export function saveBlogsConfig(blogs: BlogPost[]): void {
   try {
     localStorage.setItem(BLOGS_KEY, JSON.stringify(blogs));
-    saveHostingerSettings({ blogsConfig: blogs }).catch(() => {});
     saveFirestoreGlobalSettings({ blogsConfig: blogs }).catch((e) => console.warn('Firebase sync skipped:', e));
   } catch (e) {
     console.error('Error saving blogs:', e);

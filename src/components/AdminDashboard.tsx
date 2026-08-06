@@ -70,6 +70,7 @@ import { ProxyStatusIndicator } from './admin/ProxyStatusIndicator';
 import { ImageOptimizerTab } from './admin/ImageOptimizerTab';
 import { EmailNotificationsTab } from './admin/EmailNotificationsTab';
 import { QuickSearchModal } from './admin/QuickSearchModal';
+import { DownloadLogsTab } from './admin/DownloadLogsTab';
 import { AdminErrorBoundary } from './admin/AdminErrorBoundary';
 
 interface AdminProps {
@@ -85,6 +86,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
 
   const [activeTab, setActiveTab] = useState<
     | 'analytics'
+    | 'download_logs'
     | 'site_settings'
     | 'pages'
     | 'platforms'
@@ -307,6 +309,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
       title: 'الرئيسية والتحليلات',
       items: [
         { id: 'analytics', label: 'لوحة التحليلات المباشرة', icon: BarChart3 },
+        { id: 'download_logs', label: 'سجل التنزيلات والتحميلات المباشرة (PostgreSQL)', icon: Download },
       ],
     },
     {
@@ -545,6 +548,10 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
             <AdminErrorBoundary key={activeTab} tabTitle={activeTab}>
               {activeTab === 'analytics' && (
                 <AdminAnalyticsTab currentLang={currentLang} onShowToast={onShowToast} />
+              )}
+
+              {activeTab === 'download_logs' && (
+                <DownloadLogsTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
               {activeTab === 'site_settings' && (
