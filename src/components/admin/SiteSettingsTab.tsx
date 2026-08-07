@@ -869,6 +869,26 @@ export const SiteSettingsTab: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {/* Sticky Bottom Save Action Bar */}
+      <div className="sticky bottom-0 z-30 flex items-center justify-between bg-slate-900/95 backdrop-blur-xl p-4 rounded-2xl border border-slate-800 shadow-2xl mt-6">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs text-slate-300 font-semibold">
+            {isSaving ? 'جاري الحفظ في Prisma PostgreSQL...' : 'جاهز لحفظ التعديلات في قاعدة البيانات والمزامنة الفورية.'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-8 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-purple-600/40 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 cursor-pointer"
+        >
+          {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+          <span>{isSaving ? 'جاري الحفظ...' : 'حفظ جميع التغييرات الآن'}</span>
+        </button>
+      </div>
     </div>
   );
 };
