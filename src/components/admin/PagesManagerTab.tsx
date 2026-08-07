@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Eye, FileText, CheckCircle2, XCircle, ArrowUpDown, Save } from 'lucide-react';
 import { ManagedPage, SupportedLanguage } from '../../types';
-import { getManagedPages, saveManagedPages } from '../../lib/adminStorage';
+import { getManagedPages, saveManagedPages, fetchManagedPagesFromDb } from '../../lib/adminStorage';
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -12,6 +12,12 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
   const [pages, setPages] = useState<ManagedPage[]>(getManagedPages());
   const [editingPage, setEditingPage] = useState<ManagedPage | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    fetchManagedPagesFromDb().then((p) => {
+      if (p && p.length > 0) setPages(p);
+    });
+  }, []);
 
   const handleOpenNew = () => {
     setEditingPage({

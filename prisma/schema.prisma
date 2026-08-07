@@ -2,7 +2,6 @@
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -42,6 +41,12 @@ model GlobalSettings {
   seoConfigJson          String?  @default("{}")
   faqsConfigJson         String?  @default("[]")
   blogsConfigJson        String?  @default("[]")
+  pagesConfigJson        String?  @default("[]")
+  smtpConfigJson         String?  @default("{}")
+  emailAlertsConfigJson  String?  @default("{}")
+  redirectsConfigJson    String?  @default("[]")
+  usersConfigJson        String?  @default("[]")
+  securityConfigJson     String?  @default("{}")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }

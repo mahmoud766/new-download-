@@ -263,10 +263,20 @@ export default function App() {
       document.head.appendChild(styleTag);
     }
 
+    const primaryColor = siteSettings.primaryColor || '#9333ea';
+    const secondaryColor = siteSettings.secondaryColor || '#3b82f6';
+    const colorCSS = `
+      :root {
+        --color-primary: ${primaryColor};
+        --color-secondary: ${secondaryColor};
+        --primary-color: ${primaryColor};
+        --secondary-color: ${secondaryColor};
+      }
+    `;
     const fontFamilyCSS = siteSettings.fontFamily ? `body, button, input, select, textarea { font-family: '${siteSettings.fontFamily}', sans-serif !important; }` : '';
     const customCssCode = siteSettings.customCss || '';
 
-    styleTag.textContent = `${fontFamilyCSS}\n${customCssCode}`;
+    styleTag.textContent = `${colorCSS}\n${fontFamilyCSS}\n${customCssCode}`;
   }, [activeView, siteSettings]);
 
   useEffect(() => {

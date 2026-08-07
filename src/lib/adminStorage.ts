@@ -259,27 +259,145 @@ export function saveStoredPlatformsConfig(platforms: Record<string, PlatformConf
   saveStoredPlatformsConfigToDb(platforms).catch((e) => console.error('Background save platforms error:', e));
 }
 
+// Internal Caches
+let cachedPages: ManagedPage[] = DEFAULT_PAGES;
+let cachedSmtp: SmtpConfig = DEFAULT_SMTP_CONFIG;
+let cachedEmailAlerts: EmailAlertSettings = DEFAULT_EMAIL_ALERTS;
+let cachedRedirects: RedirectRule[] = DEFAULT_REDIRECTS;
+let cachedUsers: AdminUser[] = DEFAULT_USERS;
+let cachedSecurity: SecurityConfig = DEFAULT_SECURITY;
+
 // --- Redirects, Pages, Users, APIs, Security, Robots, SMTP ---
-export function getRedirectRules(): RedirectRule[] { return DEFAULT_REDIRECTS; }
-export function saveRedirectRules(rules: RedirectRule[]): void {}
+export function getRedirectRules(): RedirectRule[] { return cachedRedirects; }
+export async function fetchRedirectRulesFromDb(): Promise<RedirectRule[]> {
+  try {
+    const res = await fetch('/api/redirects');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.redirects) cachedRedirects = data.redirects;
+    }
+  } catch (e) {}
+  return cachedRedirects;
+}
+export function saveRedirectRules(rules: RedirectRule[]): void {
+  cachedRedirects = rules;
+  fetch('/api/redirects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ redirects: rules }),
+  }).catch(() => {});
+}
 
-export function getManagedPages(): ManagedPage[] { return DEFAULT_PAGES; }
-export function saveManagedPages(pages: ManagedPage[]): void {}
+export function getManagedPages(): ManagedPage[] { return cachedPages; }
+export async function fetchManagedPagesFromDb(): Promise<ManagedPage[]> {
+  try {
+    const res = await fetch('/api/cms/pages');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.pages) {
+        cachedPages = data.pages;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_pages_updated', { detail: cachedPages }));
+        }
+      }
+    }
+  } catch (e) {}
+  return cachedPages;
+}
+export function saveManagedPages(pages: ManagedPage[]): void {
+  cachedPages = pages;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_pages_updated', { detail: pages }));
+  }
+  fetch('/api/cms/pages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pages }),
+  }).catch(() => {});
+}
 
-export function getAdminUsers(): AdminUser[] { return DEFAULT_USERS; }
-export function saveAdminUsers(users: AdminUser[]): void {}
+export function getAdminUsers(): AdminUser[] { return cachedUsers; }
+export async function fetchAdminUsersFromDb(): Promise<AdminUser[]> {
+  try {
+    const res = await fetch('/api/users');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.users) cachedUsers = data.users;
+    }
+  } catch (e) {}
+  return cachedUsers;
+}
+export function saveAdminUsers(users: AdminUser[]): void {
+  cachedUsers = users;
+  fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ users }),
+  }).catch(() => {});
+}
 
 export function getApiHealthList(): ApiHealthStatus[] { return DEFAULT_APIS; }
 export function saveApiHealthList(apis: ApiHealthStatus[]): void {}
 
-export function getSecurityConfig(): SecurityConfig { return DEFAULT_SECURITY; }
-export function saveSecurityConfig(sec: SecurityConfig): void {}
+export function getSecurityConfig(): SecurityConfig { return cachedSecurity; }
+export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig> {
+  try {
+    const res = await fetch('/api/security');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.security) cachedSecurity = data.security;
+    }
+  } catch (e) {}
+  return cachedSecurity;
+}
+export function saveSecurityConfig(sec: SecurityConfig): void {
+  cachedSecurity = sec;
+  fetch('/api/security', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ security: sec }),
+  }).catch(() => {});
+}
 
 export function getRobotsTxt(): string { return DEFAULT_ROBOTS_TXT; }
 export function saveRobotsTxt(txt: string): void {}
 
-export function getSmtpConfig(): SmtpConfig { return DEFAULT_SMTP_CONFIG; }
-export function saveSmtpConfig(config: SmtpConfig): void {}
+export function getSmtpConfig(): SmtpConfig { return cachedSmtp; }
+export async function fetchSmtpConfigFromDb(): Promise<SmtpConfig> {
+  try {
+    const res = await fetch('/api/smtp');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.smtp) cachedSmtp = data.smtp;
+    }
+  } catch (e) {}
+  return cachedSmtp;
+}
+export function saveSmtpConfig(config: SmtpConfig): void {
+  cachedSmtp = config;
+  fetch('/api/smtp', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ smtp: config }),
+  }).catch(() => {});
+}
 
-export function getEmailAlertSettings(): EmailAlertSettings { return DEFAULT_EMAIL_ALERTS; }
-export function saveEmailAlertSettings(settings: EmailAlertSettings): void {}
+export function getEmailAlertSettings(): EmailAlertSettings { return cachedEmailAlerts; }
+export async function fetchEmailAlertsFromDb(): Promise<EmailAlertSettings> {
+  try {
+    const res = await fetch('/api/email-alerts');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.alerts) cachedEmailAlerts = data.alerts;
+    }
+  } catch (e) {}
+  return cachedEmailAlerts;
+}
+export function saveEmailAlertSettings(settings: EmailAlertSettings): void {
+  cachedEmailAlerts = settings;
+  fetch('/api/email-alerts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alerts: settings }),
+  }).catch(() => {});
+}

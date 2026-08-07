@@ -1,7 +1,9 @@
-import { SupportedLanguage, PlatformSlug } from '../types';
+import { useState, useEffect } from 'react';
+import { SupportedLanguage, PlatformSlug, PlatformConfig } from '../types';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { t } from '../i18n/translations';
 import { getSiteSettings } from '../lib/storage';
+import { getStoredPlatformsConfig, fetchPlatformsConfigFromDb } from '../lib/adminStorage';
 import { ArrowRight, Sparkles, Video, Globe, Youtube, Instagram, Facebook, Clapperboard, Tv, Ghost, Twitter, Pin, MessageSquare, AtSign, Linkedin } from 'lucide-react';
 
 interface PlatformCardsProps {
@@ -10,10 +12,34 @@ interface PlatformCardsProps {
 }
 
 export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsProps) {
-  const platforms = Object.values(PLATFORMS_CONFIG).filter((p) => p.slug !== 'all');
+  const [platformMap, setPlatformMap] = useState<Record<string, PlatformConfig>>(() => getStoredPlatformsConfig());
+
+  useEffect(() => {
+    fetchPlatformsConfigFromDb().then((map) => {
+      if (map) setPlatformMap(map);
+    });
+
+    const handleUpdated = (e: CustomEvent) => {
+      if (e.detail) setPlatformMap(e.detail);
+    };
+
+    window.addEventListener('omnifetch_platforms_updated', handleUpdated as EventListener);
+    return () => {
+      window.removeEventListener('omnifetch_platforms_updated', handleUpdated as EventListener);
+    };
+  }, []);
+
+  const rawPlatforms = Object.values(PLATFORMS_CONFIG).filter((p) => p.slug !== 'all');
+  const platforms = rawPlatforms.filter((p) => {
+    const override = platformMap[p.slug];
+    if (override && (override.active === false || override.enabled === false)) {
+      return false;
+    }
+    return true;
+  });
+
   const siteSettings = getSiteSettings();
   const customIcons = siteSettings.platformIconsCustom || {};
-  const customColors = siteSettings.platformColorsCustom || {};
 
   const getPlatformIcon = (slug: string) => {
     if (customIcons[slug]) {

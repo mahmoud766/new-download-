@@ -73,6 +73,8 @@ export interface PlatformConfig {
   supportedFormats: string[];
   placeholderUrl: string;
   popular: boolean;
+  active?: boolean;
+  enabled?: boolean;
 }
 
 export interface FAQItem {

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { SupportedLanguage, PlatformSlug, SiteSettings } from '../types';
+import { SupportedLanguage, PlatformSlug, SiteSettings, PlatformConfig } from '../types';
 import { LANGUAGES, t } from '../i18n/translations';
 import { PLATFORMS_CONFIG, DEFAULT_SITE_SETTINGS } from '../config/siteConfig';
 import { fetchSiteSettingsFromDb } from '../lib/storage';
+import { getStoredPlatformsConfig, fetchPlatformsConfigFromDb } from '../lib/adminStorage';
 import { HeaderSearch } from './HeaderSearch';
 import { triggerPwaInstall } from './PwaPrompt';
 import {
@@ -60,13 +61,17 @@ export function Navbar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const activeLangObj = LANGUAGES.find((l) => l.code === currentLang) || LANGUAGES[1];
-  const platformsList = Object.values(PLATFORMS_CONFIG);
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [platformMap, setPlatformMap] = useState<Record<string, PlatformConfig>>(() => getStoredPlatformsConfig());
 
   useEffect(() => {
     // Fetch site name and settings dynamically from Prisma database
     fetchSiteSettingsFromDb().then((dbSettings) => {
       setSiteSettings(dbSettings);
+    });
+
+    fetchPlatformsConfigFromDb().then((map) => {
+      if (map) setPlatformMap(map);
     });
 
     const handleSettingsUpdated = (e: any) => {
@@ -79,11 +84,27 @@ export function Navbar({
       }
     };
 
+    const handlePlatformsUpdated = (e: any) => {
+      if (e?.detail) setPlatformMap(e.detail);
+    };
+
     window.addEventListener('omnifetch_settings_updated', handleSettingsUpdated);
+    window.addEventListener('omnifetch_platforms_updated', handlePlatformsUpdated);
     return () => {
       window.removeEventListener('omnifetch_settings_updated', handleSettingsUpdated);
+      window.removeEventListener('omnifetch_platforms_updated', handlePlatformsUpdated);
     };
   }, []);
+
+  const rawPlatformsList = Object.values(PLATFORMS_CONFIG);
+  const platformsList = rawPlatformsList.filter((p) => {
+    if (p.slug === 'all') return true;
+    const override = platformMap[p.slug];
+    if (override && (override.active === false || override.enabled === false)) {
+      return false;
+    }
+    return true;
+  });
 
   const getHeaderStyleClasses = () => {
     let positionClass = 'sticky top-0 z-50 w-full';

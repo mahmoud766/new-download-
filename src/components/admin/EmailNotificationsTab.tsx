@@ -27,8 +27,10 @@ import { SmtpConfig, EmailAlertSettings, SmtpTestResult, SupportedLanguage } fro
 import {
   getSmtpConfig,
   saveSmtpConfig,
+  fetchSmtpConfigFromDb,
   getEmailAlertSettings,
   saveEmailAlertSettings,
+  fetchEmailAlertsFromDb,
 } from '../../lib/adminStorage';
 
 interface Props {
@@ -49,6 +51,11 @@ interface AlertLogEntry {
 export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
   const [smtp, setSmtp] = useState<SmtpConfig>(getSmtpConfig());
   const [alerts, setAlerts] = useState<EmailAlertSettings>(getEmailAlertSettings());
+
+  useEffect(() => {
+    fetchSmtpConfigFromDb().then((s) => setSmtp(s));
+    fetchEmailAlertsFromDb().then((a) => setAlerts(a));
+  }, []);
 
   const [testRecipient, setTestRecipient] = useState<string>('admin@omnifetch.com');
   const [testType, setTestType] = useState<'Connection Test' | 'High Error Rate Alert' | 'DB Connection Failure Alert'>('Connection Test');

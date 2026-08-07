@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { SupportedLanguage, PlatformSlug } from '../types';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { t } from '../i18n/translations';
-import { getGlobalSeoConfig } from '../lib/adminStorage';
+import { getGlobalSeoConfig, fetchGlobalSeoFromDb } from '../lib/adminStorage';
 
 interface SeoProps {
   platform?: PlatformSlug;
@@ -12,7 +12,23 @@ interface SeoProps {
 }
 
 export function SeoHead({ platform = 'all', language, pageTitle, pageDescription }: SeoProps) {
-  const globalSeo = getGlobalSeoConfig();
+  const [globalSeo, setGlobalSeo] = useState(getGlobalSeoConfig());
+
+  useEffect(() => {
+    fetchGlobalSeoFromDb().then((seo) => {
+      if (seo) setGlobalSeo(seo);
+    });
+
+    const handleSeoUpdated = (e: CustomEvent) => {
+      if (e.detail) setGlobalSeo(e.detail);
+    };
+
+    window.addEventListener('omnifetch_seo_updated', handleSeoUpdated as EventListener);
+    return () => {
+      window.removeEventListener('omnifetch_seo_updated', handleSeoUpdated as EventListener);
+    };
+  }, []);
+
   const platformInfo = PLATFORMS_CONFIG[platform] || PLATFORMS_CONFIG.all;
 
   const title = pageTitle || (platform === 'all' && globalSeo.metaTitle ? globalSeo.metaTitle : (platformInfo.titleTemplate[language] || t('siteTitle', language)));

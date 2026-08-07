@@ -27,8 +27,10 @@ import { GlobalSeoConfig, RedirectRule, SupportedLanguage, PlatformSlug, Platfor
 import {
   getGlobalSeoConfig,
   saveGlobalSeoConfig,
+  fetchGlobalSeoFromDb,
   getRedirectRules,
   saveRedirectRules,
+  fetchRedirectRulesFromDb,
   getRobotsTxt,
   saveRobotsTxt,
   getStoredPlatformsConfig,
@@ -138,6 +140,13 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
 
   // Synchronize builder inputs when tab mounts or updates
   useEffect(() => {
+    fetchGlobalSeoFromDb().then((s) => {
+      if (s) setSeo(s);
+    });
+    fetchRedirectRulesFromDb().then((r) => {
+      if (r && r.length > 0) setRedirects(r);
+    });
+
     try {
       if (seo.organizationSchema) {
         const parsed = JSON.parse(seo.organizationSchema);
