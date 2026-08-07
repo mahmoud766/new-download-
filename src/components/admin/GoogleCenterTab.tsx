@@ -64,30 +64,54 @@ export const GoogleCenterTab: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Embedded Live Google Performance Status */}
+      {/* Embedded Live Google Integration Status */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs text-slate-400 font-bold block mb-1">Search Console Impressions</span>
-          <div className="text-2xl font-black text-white">1,482,000</div>
-          <span className="text-[11px] text-emerald-400 font-bold">+24.2% هذا الشهر</span>
+          <span className="text-xs text-slate-400 font-bold block mb-1">Google Analytics (GA4)</span>
+          <div className="text-sm font-black text-white mt-1">
+            {ga4 ? (
+              <span className="text-emerald-400 flex items-center gap-1 font-mono">
+                <CheckCircle2 className="w-4 h-4" /> {ga4}
+              </span>
+            ) : (
+              <span className="text-slate-500 font-normal">غير متصل - أدخل المعرّف أدناه</span>
+            )}
+          </div>
+          <span className="text-[11px] text-slate-400 block mt-1">تتبع الزوار والأحداث في الوقت الفعلي</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs text-slate-400 font-bold block mb-1">Search Console Clicks</span>
-          <div className="text-2xl font-black text-purple-400">284,100</div>
-          <span className="text-[11px] text-purple-300 font-bold">متوسط CTR: 19.1%</span>
+          <span className="text-xs text-slate-400 font-bold block mb-1">Google Tag Manager (GTM)</span>
+          <div className="text-sm font-black text-purple-400 mt-1">
+            {gtm ? (
+              <span className="text-emerald-400 flex items-center gap-1 font-mono">
+                <CheckCircle2 className="w-4 h-4" /> {gtm}
+              </span>
+            ) : (
+              <span className="text-slate-500 font-normal">غير متصل - اختياري</span>
+            )}
+          </div>
+          <span className="text-[11px] text-slate-400 block mt-1">إدارة البكسل ووسوم التتبع</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs text-slate-400 font-bold block mb-1">Google PageSpeed Score</span>
-          <div className="text-2xl font-black text-emerald-400">98 / 100</div>
-          <span className="text-[11px] text-emerald-400 font-bold">Core Web Vitals PASSED</span>
+          <span className="text-xs text-slate-400 font-bold block mb-1">Google AdSense</span>
+          <div className="text-sm font-black text-amber-400 mt-1">
+            {adsense ? (
+              <span className="text-emerald-400 flex items-center gap-1 font-mono">
+                <CheckCircle2 className="w-4 h-4" /> {adsense}
+              </span>
+            ) : (
+              <span className="text-slate-500 font-normal">غير مفعل - أدخل معرف الناشر</span>
+            )}
+          </div>
+          <span className="text-[11px] text-slate-400 block mt-1">إظهار الإعلانات التلقائية والأرباح</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
           <span className="text-xs text-slate-400 font-bold block mb-1">Google Indexing API</span>
-          <div className="text-sm font-extrabold text-emerald-400 flex items-center gap-1 mt-2">
-            <CheckCircle2 className="w-4 h-4" /> متصل وجاهز للأرشفة
+          <div className="text-xs font-extrabold text-emerald-400 flex items-center gap-1 mt-1">
+            <CheckCircle2 className="w-3.5 h-3.5" /> جاهز للأرشفة
           </div>
           <button
             onClick={handleTriggerIndexingApi}

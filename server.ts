@@ -205,64 +205,15 @@ async function startServer() {
 
   // --- PostgreSQL Supabase Unified Database Endpoints ---
 
-  // 1. Trending Videos (Most Downloaded) API
+  // 1. Trending Videos (Most Downloaded) API - Pure Prisma Query from PostgreSQL
   app.get('/api/trending', async (req: Request, res: Response) => {
     try {
-      let items = await prisma.downloadLog.findMany({
+      const items = await prisma.downloadLog.findMany({
         orderBy: { downloadCount: 'desc' },
         take: 12,
       });
 
-      // Automatic initial seed if database is currently empty
-      if (!items || items.length === 0) {
-        const initialSeed = [
-          {
-            url: 'https://www.tiktok.com/@tiktok/video/7123456789012345678',
-            title: '🔥 Viral TikTok Reels No Watermark Ultra HD',
-            platform: 'tiktok',
-            thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&q=80',
-            quality: 'HD No Watermark',
-            downloadCount: 1420,
-          },
-          {
-            url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-            title: '⚡ Top YouTube Shorts 1080p MP4 Direct',
-            platform: 'youtube',
-            thumbnail: 'https://images.unsplash.com/photo-1611162616091-635b29073966?w=600&q=80',
-            quality: '1080p Full HD',
-            downloadCount: 980,
-          },
-          {
-            url: 'https://www.instagram.com/reel/C123456789/',
-            title: '✨ Instagram Reels Viral Video Download 4K',
-            platform: 'instagram',
-            thumbnail: 'https://images.unsplash.com/photo-1611262588024-d12430b98920?w=600&q=80',
-            quality: '4K Ultra HD',
-            downloadCount: 850,
-          },
-          {
-            url: 'https://www.facebook.com/watch/?v=123456789',
-            title: '🎬 Facebook Video HD High Speed Extraction',
-            platform: 'facebook',
-            thumbnail: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&q=80',
-            quality: '720p HD',
-            downloadCount: 620,
-          },
-        ];
-
-        for (const seed of initialSeed) {
-          try {
-            await prisma.downloadLog.create({ data: seed });
-          } catch (seedErr) {}
-        }
-
-        items = await prisma.downloadLog.findMany({
-          orderBy: { downloadCount: 'desc' },
-          take: 12,
-        });
-      }
-
-      return res.json({ success: true, items });
+      return res.json({ success: true, items: items || [] });
     } catch (e) {
       console.error('Error fetching trending logs from PostgreSQL:', e);
       return res.status(500).json({ success: false, items: [] });

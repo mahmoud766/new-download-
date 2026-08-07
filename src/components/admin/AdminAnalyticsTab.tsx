@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Download,
@@ -28,6 +28,40 @@ interface Props {
 
 export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
   const [timeRange, setTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
+  const [stats, setStats] = useState<{
+    totalDownloads: number;
+    activeLiveUsers: number;
+    visitorsToday: number;
+    adsenseRevenueToday: number;
+  }>({
+    totalDownloads: 0,
+    activeLiveUsers: 1,
+    visitorsToday: 1,
+    adsenseRevenueToday: 0,
+  });
+
+  const fetchAnalytics = async () => {
+    try {
+      const res = await fetch('/api/analytics');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.analytics) {
+          setStats({
+            totalDownloads: data.analytics.totalDownloads || 0,
+            activeLiveUsers: data.analytics.activeLiveUsers || 1,
+            visitorsToday: data.analytics.visitorsToday || 1,
+            adsenseRevenueToday: data.analytics.adsenseRevenueToday || 0,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Analytics fetch notice:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [timeRange]);
 
   return (
     <div className="space-y-6 text-slate-100">
@@ -62,7 +96,10 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
             ))}
           </div>
           <button
-            onClick={() => onShowToast('تم تحديث البيانات المباشرة!')}
+            onClick={() => {
+              fetchAnalytics();
+              onShowToast('تم تحديث البيانات المباشرة!');
+            }}
             className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition"
             title="تحديث البيانات"
           >
@@ -83,9 +120,9 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <Activity className="w-4 h-4 animate-pulse" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">342</div>
+          <div className="text-2xl font-black text-white">{stats.activeLiveUsers}</div>
           <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3.0 h-3.0" /> +18.4% مقارنة بالدقيقة السابقة
+            <ArrowUpRight className="w-3.0 h-3.0" /> نشط حالياً على الموقع
           </p>
         </div>
 
@@ -97,23 +134,23 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">14,280</div>
+          <div className="text-2xl font-black text-white">{stats.visitorsToday.toLocaleString()}</div>
           <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3 h-3" /> +12.3% هذا الأسبوع
+            <ArrowUpRight className="w-3 h-3" /> جاري التتبع المباشر
           </p>
         </div>
 
         {/* Downloads Count */}
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-slate-400 font-bold">عمليات التحميل</span>
+            <span className="text-xs text-slate-400 font-bold">إجمالي التنزيلات المسجلة</span>
             <div className="p-2 rounded-xl bg-blue-500/10 text-blue-400">
               <Download className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">48,920</div>
+          <div className="text-2xl font-black text-white">{stats.totalDownloads.toLocaleString()}</div>
           <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3 h-3" /> نسبة النجاح 99.4%
+            <ArrowUpRight className="w-3 h-3" /> مسجلة في قاعدة بيانات PostgreSQL
           </p>
         </div>
 
@@ -125,9 +162,9 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">$240.50</div>
+          <div className="text-2xl font-black text-white">${stats.adsenseRevenueToday.toFixed(2)}</div>
           <p className="text-[11px] text-amber-300/80 mt-1">
-            أرباح الشهر المتوقعة: <span className="font-bold text-white">$6,920.00</span>
+            حالة الإعلانات: <span className="font-bold text-white">نشطة المزامنة</span>
           </p>
         </div>
       </div>

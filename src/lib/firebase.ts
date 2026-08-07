@@ -351,91 +351,23 @@ export function subscribeRealTrendingDownloads(
   const colRef = collection(db, 'trending_downloads');
   const q = query(colRef, orderBy('extractionsCount', 'desc'), limit(12));
 
-  const defaultItems: RealTrendingItem[] = [
-    {
-      id: 'tr_1',
-      title: 'أجمل المظاهر الطبيعية والرياضية 4K بدون علامة مائية',
-      platform: 'tiktok',
-      platformName: 'TikTok',
-      thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
-      url: 'https://www.tiktok.com/@discover/video/712345678901234',
-      duration: '0:45',
-      extractionsCount: 1840,
-      views: '2.8M',
-      likes: '450K',
-      quality: 'HD No Watermark',
-      badge: '🔥 الأكثر طلباً اليوم',
-    },
-    {
-      id: 'tr_2',
-      title: 'كليب أستوديو موسيقا وهندسة صوتية HD 1080p',
-      platform: 'youtube',
-      platformName: 'YouTube Shorts',
-      thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-      url: 'https://www.youtube.com/watch?v=XaTh1xAZ0Sg',
-      duration: '1:12',
-      extractionsCount: 1420,
-      views: '1.4M',
-      likes: '190K',
-      quality: '4K MP4 & MP3',
-      badge: '⚡ استخراج سريع',
-    },
-    {
-      id: 'tr_3',
-      title: 'وصفات طهي إيطالية مبتكرة وسريعة - ريلز إنستغرام',
-      platform: 'instagram',
-      platformName: 'Instagram Reel',
-      thumbnail: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
-      url: 'https://www.instagram.com/reel/C3x4y5z6a7b/',
-      duration: '0:30',
-      extractionsCount: 980,
-      views: '980K',
-      likes: '120K',
-      quality: '1080p Full HD',
-      badge: '🌟 شعبية واسعة',
-    },
-    {
-      id: 'tr_4',
-      title: 'لقطات مضحكة ومواقف كوميدية للحيوانات الأليفة',
-      platform: 'facebook',
-      platformName: 'Facebook Video',
-      thumbnail: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=600&auto=format&fit=crop&q=80',
-      url: 'https://www.facebook.com/watch/?v=9876543210123',
-      duration: '2:15',
-      extractionsCount: 3100,
-      views: '3.1M',
-      likes: '510K',
-      quality: 'HD MP4',
-      badge: '🏆 الأعلى تحميلاً',
-    },
-  ];
-
   const unsubscribe = onSnapshot(
     q,
     async (snap) => {
       if (snap.empty) {
-        for (const item of defaultItems) {
-          const docRef = doc(db, 'trending_downloads', item.id);
-          await setDoc(docRef, item, { merge: true });
-        }
-        onUpdate(defaultItems);
+        onUpdate([]);
       } else {
         const items = snap.docs.map((docSnap) => ({
           id: docSnap.id,
           ...(docSnap.data() as Omit<RealTrendingItem, 'id'>),
         }));
-        // Sort real visitor extractions to the top first
-        items.sort((a, b) => {
-          if (a.isRealUserExtraction && !b.isRealUserExtraction) return -1;
-          if (!a.isRealUserExtraction && b.isRealUserExtraction) return 1;
-          return (b.extractionsCount || 0) - (a.extractionsCount || 0);
-        });
+        items.sort((a, b) => (b.extractionsCount || 0) - (a.extractionsCount || 0));
         onUpdate(items);
       }
     },
     (error) => {
-      console.error('Error listening to trending_downloads:', error);
-      onUpdate(defaultItems);
+      console.warn('Notice: listening to trending_downloads:', error);
+      onUpdate([]);
     }
   );
 

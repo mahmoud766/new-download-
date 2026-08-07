@@ -373,9 +373,6 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
             <div>
               <h1 className="text-lg font-black text-white flex items-center gap-2">
                 <span>لوحة التحكم الاحترافية (OmniFetch Control Center)</span>
-                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold border border-emerald-500/30">
-                  v3.0 ENTERPRISE LIVE
-                </span>
               </h1>
               <p className="text-xs text-slate-400">
                 إدارة المحتوى، الإعلانات، الـ SEO، الأمان، التحليلات وأدوات AI بدون لمس الكود.
@@ -546,15 +543,16 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           {/* Main Display Container */}
           <div className="flex-1 bg-slate-950 p-4 sm:p-6 overflow-y-auto">
             <AdminErrorBoundary key={activeTab} tabTitle={activeTab}>
-              {activeTab === 'analytics' && (
+              {/* Comprehensive Tab Mapping - Supports All Aliases */}
+              {(['analytics', 'overview'].includes(activeTab)) && (
                 <AdminAnalyticsTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'download_logs' && (
+              {(['download_logs', 'logs', 'downloads'].includes(activeTab)) && (
                 <DownloadLogsTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'site_settings' && (
+              {(['site_settings', 'general', 'settings'].includes(activeTab)) && (
                 <SiteSettingsTab
                   settings={settings}
                   onUpdateSettings={(s) => setSettings(s)}
@@ -563,19 +561,19 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                 />
               )}
 
-              {activeTab === 'pages' && (
+              {(['pages', 'cms', 'pages_cms'].includes(activeTab)) && (
                 <PagesManagerTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'platforms' && (
+              {(['platforms', 'seo_pages', 'platform_pages'].includes(activeTab)) && (
                 <PlatformManagerTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'seo' && (
+              {(['seo', 'seo_center', 'seo_manager'].includes(activeTab)) && (
                 <SeoManager currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'google' && (
+              {(['google', 'google_suite', 'google_center'].includes(activeTab)) && (
                 <GoogleCenterTab
                   settings={settings}
                   onUpdateSettings={(s) => setSettings(s)}
@@ -584,7 +582,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                 />
               )}
 
-              {activeTab === 'ads' && (
+              {(['ads', 'monetization', 'ad_manager'].includes(activeTab)) && (
                 <AdManagerTab
                   ads={ads}
                   onUpdateAds={(a) => setAds(a)}
@@ -593,7 +591,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                 />
               )}
 
-              {activeTab === 'blog' && (
+              {(['blog', 'blogs', 'blog_manager'].includes(activeTab)) && (
                 <BlogManagerTab
                   blogs={blogs}
                   onUpdateBlogs={(b) => setBlogs(b)}
@@ -602,7 +600,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                 />
               )}
 
-              {activeTab === 'faqs' && (
+              {(['faqs', 'faq', 'faq_manager'].includes(activeTab)) && (
                 <FaqManagerTab
                   faqs={faqs}
                   onUpdateFaqs={(f) => setFaqs(f)}
@@ -611,27 +609,27 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                 />
               )}
 
-              {activeTab === 'users_security' && (
+              {(['users_security', 'users', 'security'].includes(activeTab)) && (
                 <UsersSecurityTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'email_alerts' && (
+              {(['email_alerts', 'email', 'smtp'].includes(activeTab)) && (
                 <EmailNotificationsTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'api_perf' && (
+              {(['api_perf', 'performance', 'api'].includes(activeTab)) && (
                 <ApiPerformanceTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'files' && (
+              {(['files', 'backups', 'file_manager'].includes(activeTab)) && (
                 <FileManagerBackupTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'image_opt' && (
+              {(['image_opt', 'image_optimizer'].includes(activeTab)) && (
                 <ImageOptimizerTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'theme' && (
+              {(['theme', 'theme_builder'].includes(activeTab)) && (
                 <ThemeBuilderTab
                   settings={settings}
                   onUpdateSettings={(s) => setSettings(s)}
@@ -640,30 +638,22 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                 />
               )}
 
-              {activeTab === 'ai_suite' && (
+              {(['ai_suite', 'ai'].includes(activeTab)) && (
                 <AiSuiteTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {activeTab === 'toolkit_logs' && (
+              {(['toolkit_logs', 'audit_logs'].includes(activeTab)) && (
                 <SeoToolkitLogsTab currentLang={currentLang} onShowToast={onShowToast} />
               )}
 
-              {!['analytics', 'site_settings', 'pages', 'platforms', 'seo', 'google', 'ads', 'blog', 'faqs', 'users_security', 'email_alerts', 'api_perf', 'files', 'image_opt', 'theme', 'ai_suite', 'toolkit_logs'].includes(activeTab) && (
-                <div className="flex flex-col items-center justify-center p-12 bg-slate-900 border border-slate-800 rounded-3xl text-center space-y-4">
-                  <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl text-purple-400">
-                    <BarChart3 className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-lg font-black text-white">القسم المحدد غير موجود</h3>
-                  <p className="text-xs text-slate-400 max-w-md">
-                    القسم المطلوبة ({activeTab}) غير موجود حالياً. يمكنك العودة إلى لوحة تحليلات وإحصائيات الموقع المباشرة.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab('analytics')}
-                    className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs transition"
-                  >
-                    العودة للوحة التحليلات الرئيسية
-                  </button>
-                </div>
+              {/* Fallback rendering for any unknown tab string: render SiteSettingsTab or AdminAnalyticsTab gracefully */}
+              {!['analytics', 'overview', 'download_logs', 'logs', 'downloads', 'site_settings', 'general', 'settings', 'pages', 'cms', 'pages_cms', 'platforms', 'seo_pages', 'platform_pages', 'seo', 'seo_center', 'seo_manager', 'google', 'google_suite', 'google_center', 'ads', 'monetization', 'ad_manager', 'blog', 'blogs', 'blog_manager', 'faqs', 'faq', 'faq_manager', 'users_security', 'users', 'security', 'email_alerts', 'email', 'smtp', 'api_perf', 'performance', 'api', 'files', 'backups', 'file_manager', 'image_opt', 'image_optimizer', 'theme', 'theme_builder', 'ai_suite', 'ai', 'toolkit_logs', 'audit_logs'].includes(activeTab) && (
+                <SiteSettingsTab
+                  settings={settings}
+                  onUpdateSettings={(s) => setSettings(s)}
+                  onShowToast={onShowToast}
+                  currentLang={currentLang}
+                />
               )}
             </AdminErrorBoundary>
           </div>

@@ -110,74 +110,94 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
         </div>
 
         {/* Trending Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {trendingList.map((item) => (
-            <div
-              key={item.id}
-              className="group relative bg-slate-900/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl hover:shadow-purple-950/50 transition-all duration-300 flex flex-col justify-between"
-            >
-              {/* Thumbnail Container */}
-              <div className="relative aspect-video overflow-hidden bg-slate-950">
-                <img
-                  src={item.thumbnail}
-                  alt={item.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent"></div>
+        {trendingList.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {trendingList.map((item) => (
+              <div
+                key={item.id}
+                className="group relative bg-slate-900/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl hover:shadow-purple-950/50 transition-all duration-300 flex flex-col justify-between"
+              >
+                {/* Thumbnail Container */}
+                <div className="relative aspect-video overflow-hidden bg-slate-950">
+                  <img
+                    src={item.thumbnail}
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/30 to-transparent"></div>
 
-                {/* Top Badge */}
-                <span className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-black shadow-md flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
-                  {item.downloadCount} {isRtl ? 'تحميل' : 'downloads'}
-                </span>
-
-                {/* Duration Badge */}
-                {item.duration && (
-                  <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 bg-black/80 text-white rounded text-[10px] font-mono font-bold">
-                    {item.duration}
+                  {/* Top Badge */}
+                  <span className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md text-amber-300 border border-amber-500/30 rounded-lg text-[10px] font-black shadow-md flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                    {item.downloadCount} {isRtl ? 'تحميل' : 'downloads'}
                   </span>
-                )}
 
-                {/* Platform Badge */}
-                <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-purple-600/90 text-white rounded-md text-[10px] font-bold shadow capitalize">
-                  {item.platformName || item.platform}
-                </span>
-              </div>
+                  {/* Duration Badge */}
+                  {item.duration && (
+                    <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 bg-black/80 text-white rounded text-[10px] font-mono font-bold">
+                      {item.duration}
+                    </span>
+                  )}
 
-              {/* Content Details */}
-              <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-purple-300 transition-colors">
-                    {item.title}
-                  </h3>
-
-                  <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <Eye className="w-3 h-3 text-indigo-400" />
-                      {item.views || '12.4K'}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Heart className="w-3 h-3 text-pink-400" />
-                      {item.likes || '1.8K'}
-                    </span>
-                    <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-mono">
-                      {item.quality || 'HD No Watermark'}
-                    </span>
-                  </div>
+                  {/* Platform Badge */}
+                  <span className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-purple-600/90 text-white rounded-md text-[10px] font-bold shadow capitalize">
+                    {item.platformName || item.platform}
+                  </span>
                 </div>
 
-                {/* Quick Extract Action Button */}
-                <button
-                  onClick={() => handleExtractCard(item)}
-                  className="w-full py-2.5 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30 transition-all active:scale-95 border border-purple-400/30 mt-2"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>{isRtl ? 'تحميل واستخراج الآن' : 'Extract & Download Now'}</span>
-                </button>
+                {/* Content Details */}
+                <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-purple-300 transition-colors">
+                      {item.title}
+                    </h3>
+
+                    <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
+                      {item.views && (
+                        <span className="flex items-center gap-1">
+                          <Eye className="w-3 h-3 text-indigo-400" />
+                          {item.views}
+                        </span>
+                      )}
+                      {item.likes && (
+                        <span className="flex items-center gap-1">
+                          <Heart className="w-3 h-3 text-pink-400" />
+                          {item.likes}
+                        </span>
+                      )}
+                      <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-mono">
+                        {item.quality || 'HD No Watermark'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Extract Action Button */}
+                  <button
+                    onClick={() => handleExtractCard(item)}
+                    className="w-full py-2.5 px-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-900/30 transition-all active:scale-95 border border-purple-400/30 mt-2"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>{isRtl ? 'تحميل واستخراج الآن' : 'Extract & Download Now'}</span>
+                  </button>
+                </div>
               </div>
+            ))}
+          </div>
+        ) : !loading ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 bg-slate-900/40 border border-slate-800/80 rounded-3xl text-center space-y-3">
+            <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-2xl text-purple-400">
+              <Flame className="w-6 h-6" />
             </div>
-          ))}
-        </div>
+            <h3 className="text-sm font-black text-white">
+              {isRtl ? 'لا توجد تنزيلات مسجلة حتى الآن' : 'No Download Logs Recorded Yet'}
+            </h3>
+            <p className="text-xs text-slate-400 max-w-md">
+              {isRtl
+                ? 'استخدم صندوق البحث أعلاه لاستخراج وتحميل أي فيديو، وستظهر مقاطعك الأكثر شيوعاً وتداولا هنا تلقائياً!'
+                : 'Use the hero search box above to download any video, and trending items will automatically appear here!'}
+            </p>
+          </div>
+        ) : null}
 
       </div>
     </section>
