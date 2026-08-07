@@ -56,7 +56,7 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
 
   // Bulk SEO Editor State
   const [bulkDescTemplate, setBulkDescTemplate] = useState<string>(
-    'Download {platform} videos, reels, and audio in full HD without watermark for free using OmniDownloader Remix Pro.'
+    'Download {platform} videos, reels, and audio in full HD without watermark for free using OmniFetch Pro.'
   );
   const [bulkKeywordsTemplate, setBulkKeywordsTemplate] = useState<string>(
     'video downloader, {platform} downloader, download {platform} reels, HD video download, MP4 converter, no watermark'

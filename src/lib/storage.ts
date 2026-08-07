@@ -87,25 +87,22 @@ export async function fetchSiteSettingsFromDb(): Promise<SiteSettings> {
 }
 
 export async function saveSiteSettingsToDb(settings: Partial<SiteSettings>): Promise<SiteSettings> {
-  try {
-    const res = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.settings) {
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: data.settings }));
-        }
-        return data.settings;
-      }
-    }
-  } catch (e) {
-    console.error('Error saving site settings to DB:', e);
+  const res = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) {
+    throw new Error(`Server returned status ${res.status}`);
   }
-  return DEFAULT_SITE_SETTINGS;
+  const data = await res.json();
+  if (!data.success || !data.settings) {
+    throw new Error(data.error || 'Failed to save settings to database');
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: data.settings }));
+  }
+  return data.settings;
 }
 
 export function saveSiteSettings(settings: Partial<SiteSettings>): SiteSettings {

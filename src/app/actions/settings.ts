@@ -105,8 +105,30 @@ export async function getGlobalSettingsAction(): Promise<SiteSettings> {
       socialLinks: parsedSocials,
     };
   } catch (error) {
-    console.error('Error in getGlobalSettingsAction:', error);
-    throw new Error('Failed to fetch settings from Prisma database');
+    console.warn('Prisma database unavailable in getGlobalSettingsAction, using defaults');
+    return {
+      siteName: 'OmniFetch Pro',
+      shortName: 'PRO',
+      tagline: 'أفضل وأسرع أداة مجانية لتحميل الفيديوهات بدون علامة مائية',
+      siteDescription: 'أفضل وأسرع أداة مجانية لتحميل فيديوهات تيك توك، يوتيوب شورتس، فيسبوك ريلز وإنستغرام بدقة HD وبدون علامات مائية',
+      logoUrl: '',
+      faviconUrl: '',
+      contactEmail: 'support@omnifetchpro.com',
+      contactPhone: '',
+      adsenseClientId: 'ca-pub-1234567890000000',
+      ga4Id: 'G-OMNIFETCH2026',
+      gtmId: 'GTM-OMNIFETCH',
+      clarityId: '',
+      fbPixelId: '',
+      maintenanceMode: false,
+      rateLimitPerMinute: 60,
+      allowMp3Conversion: true,
+      watermarkFreeByDefault: true,
+      headerStyle: 'sticky',
+      customCss: '',
+      customJs: '',
+      socialLinks: {},
+    };
   }
 }
 

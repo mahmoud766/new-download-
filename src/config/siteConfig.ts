@@ -1,12 +1,12 @@
 import { PlatformConfig, PlatformSlug, FAQItem, BlogPost, AdPlacementConfig, SiteSettings } from '../types';
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
-  siteName: 'OmniDownloader Remix Pro',
-  shortName: 'OmniDownloader',
-  tagline: 'أفضل وأسرع أداة مجانية لتحميل الفيديوهات والريلز بدون علامة مائية وبدقة HD عالية - النسخة المحسنة Remix',
+  siteName: 'OmniFetch Pro',
+  shortName: 'OmniFetch',
+  tagline: 'أفضل وأسرع أداة مجانية لتحميل الفيديوهات والريلز بدون علامة مائية وبدقة HD عالية',
   logoUrl: '',
   faviconUrl: '',
-  contactEmail: 'support@omnidownloader.com',
+  contactEmail: 'support@omnifetchpro.com',
   primaryColor: '#9333ea',
   secondaryColor: '#3b82f6',
   fontFamily: 'Plus Jakarta Sans',
