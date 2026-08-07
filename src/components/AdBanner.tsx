@@ -22,11 +22,19 @@ export function AdBanner({ slot, className = '' }: AdProps) {
   const desktopContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ads = getAdsConfig();
-    const found = ads.find((a) => a.slot === slot || a.id === slot);
-    if (found) {
-      setAdConfig(found);
-    }
+    const updateAd = () => {
+      const ads = getAdsConfig();
+      const found = ads.find((a) => a.slot === slot || a.id === slot);
+      if (found) {
+        setAdConfig(found);
+      }
+    };
+
+    updateAd();
+    window.addEventListener('omnifetch_ads_updated', updateAd);
+    return () => {
+      window.removeEventListener('omnifetch_ads_updated', updateAd);
+    };
   }, [slot]);
 
   // Execute inline scripts deferred to prevent blocking main thread (TBT)

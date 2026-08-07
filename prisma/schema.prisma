@@ -1,4 +1,4 @@
-// Prisma Schema for OmniFetch Pro Global Settings, SEO Engine & Live Analytics / Download Logs
+// Prisma Schema for OmniFetch Pro Global Settings, Ad Placements, Platforms, Audit Logs & Analytics
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -20,6 +20,8 @@ model GlobalSettings {
   faviconUrl             String?  @default("")
   contactEmail           String?  @default("support@omnifetchpro.com")
   contactPhone           String?  @default("")
+  primaryColor           String?  @default("#9333ea")
+  secondaryColor         String?  @default("#3b82f6")
   adsenseClientId        String?  @default("ca-pub-1234567890000000")
   googleAnalyticsId      String?  @default("G-XXXXXXXXXX")
   ga4Id                  String?  @default("G-OMNIFETCH2026")
@@ -28,14 +30,58 @@ model GlobalSettings {
   clarityId              String?  @default("")
   trustpilotUrl          String?  @default("https://www.trustpilot.com/review/omnifetchpro.com")
   maintenanceMode        Boolean  @default(false)
+  rateLimitPerMinute     Int      @default(60)
   allowMp3Conversion     Boolean  @default(true)
   watermarkFreeByDefault Boolean  @default(true)
   headerStyle            String?  @default("sticky")
   customCss              String?  @default("")
   customJs               String?  @default("")
   socialLinksJson        String?  @default("{}")
+  adsConfigJson          String?  @default("[]")
+  platformsConfigJson    String?  @default("{}")
+  seoConfigJson          String?  @default("{}")
+  faqsConfigJson         String?  @default("[]")
+  blogsConfigJson        String?  @default("[]")
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+}
+
+model AdPlacement {
+  id           String   @id @default(cuid())
+  slotId       String   @unique
+  name         String
+  type         String   @default("adsense") // "adsense", "html", "script", "banner", "native", "popup", "sticky"
+  position     String   @default("header") // "header", "footer", "sidebar", "before_download", "after_download", "between_content"
+  enabled      Boolean  @default(true)
+  adClient     String?  @default("")
+  adSlot       String?  @default("")
+  customHtml   String?  @default("")
+  deviceTarget String?  @default("all") // "all", "mobile", "desktop"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PlatformSetting {
+  id           String   @id @default(cuid())
+  slug         String   @unique // "tiktok", "youtube", "facebook", "instagram", etc.
+  name         String
+  enabled      Boolean  @default(true)
+  priority     Int      @default(1)
+  apiEndpoint  String?  @default("")
+  apiToken     String?  @default("")
+  rateLimit    Int      @default(100)
+  status       String   @default("HEALTHY") // "HEALTHY", "DEGRADED", "OFFLINE"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userEmail  String   @default("admin@omnifetchpro.com")
+  action     String   // e.g. "UPDATE_SETTINGS", "TOGGLE_AD", "UPDATE_PLATFORM"
+  details    String
+  ipAddress  String?  @default("127.0.0.1")
+  createdAt  DateTime @default(now())
 }
 
 model SeoTranslations {

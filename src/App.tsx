@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { WifiOff, ShieldAlert } from 'lucide-react';
 import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './types';
 import { isRTL, detectUserLanguage } from './i18n/translations';
-import { getDownloadHistory, fetchSiteSettingsFromDb } from './lib/storage';
+import { getDownloadHistory, fetchSiteSettingsFromDb, initRealtimeSyncLoop } from './lib/storage';
 import { DEFAULT_SITE_SETTINGS } from './config/siteConfig';
 
 // Critical On-Screen Components
@@ -189,6 +189,7 @@ export default function App() {
   }, [currentResult]);
 
   useEffect(() => {
+    initRealtimeSyncLoop();
     fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
 
     const handleSettingsUpdated = (e: any) => {

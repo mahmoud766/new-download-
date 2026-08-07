@@ -203,7 +203,10 @@ async function startServer() {
     });
   });
 
-  // Memory settings cache store
+  // Global Realtime Sync Engine State
+  let globalSyncVersion = 1;
+
+  // Memory Stores for Instant Response & Prisma Database Fallback
   let memorySettings: any = {
     siteName: 'OmniFetch Pro',
     shortName: 'PRO',
@@ -228,9 +231,20 @@ async function startServer() {
     socialLinks: {},
   };
 
+  let memoryAdsConfig: any = null;
+  let memoryPlatformsConfig: any = null;
+  let memorySeoConfig: any = null;
+  let memoryFaqsConfig: any = null;
+  let memoryBlogsConfig: any = null;
+
+  // Realtime Sync Version Check Endpoint
+  app.get('/api/sync/version', (req: Request, res: Response) => {
+    return res.json({ success: true, version: globalSyncVersion });
+  });
+
   // --- PostgreSQL Supabase Unified Database Endpoints ---
 
-  // Global Settings API Routes (Prisma PostgreSQL)
+  // 1. Global Settings API Routes (Prisma PostgreSQL)
   app.get('/api/settings', async (req: Request, res: Response) => {
     try {
       const record = await prisma.globalSettings.findUnique({
@@ -270,12 +284,13 @@ async function startServer() {
     } catch (e) {
       console.warn('[DB Notice] Prisma database query skipped or fallback used for settings');
     }
-    return res.json({ success: true, settings: memorySettings });
+    return res.json({ success: true, settings: memorySettings, syncVersion: globalSyncVersion });
   });
 
   app.post('/api/settings', async (req: Request, res: Response) => {
     const data = req.body || {};
     memorySettings = { ...memorySettings, ...data };
+    globalSyncVersion += 1;
 
     try {
       const socialLinksJson = data.socialLinks ? JSON.stringify(data.socialLinks) : '{}';
@@ -358,7 +373,7 @@ async function startServer() {
         socialLinks: parsedSocials,
       };
     } catch (e) {
-      console.warn('[DB Notice] Settings updated in memory store (Database optional)');
+      console.warn('[DB Notice] Settings updated in memory store');
     }
 
     lastRevalidationTimestamp = Date.now();
@@ -368,7 +383,131 @@ async function startServer() {
       success: true,
       revalidated: true,
       settings: memorySettings,
+      syncVersion: globalSyncVersion,
     });
+  });
+
+  // 2. Ad Placement Configurations API (Prisma PostgreSQL)
+  app.get('/api/ads', async (req: Request, res: Response) => {
+    try {
+      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (record && record.adsConfigJson) {
+        memoryAdsConfig = JSON.parse(record.adsConfigJson);
+      }
+    } catch (e) {
+      console.warn('[DB Notice] Ad placement query fallback used');
+    }
+    return res.json({ success: true, ads: memoryAdsConfig, syncVersion: globalSyncVersion });
+  });
+
+  app.post('/api/ads', async (req: Request, res: Response) => {
+    const { ads } = req.body || {};
+    if (ads && Array.isArray(ads)) {
+      memoryAdsConfig = ads;
+      globalSyncVersion += 1;
+      try {
+        await prisma.globalSettings.upsert({
+          where: { id: 'default' },
+          update: { adsConfigJson: JSON.stringify(ads) },
+          create: { id: 'default', adsConfigJson: JSON.stringify(ads) },
+        });
+      } catch (e) {
+        console.warn('[DB Notice] Ad placement update saved to memory store');
+      }
+    }
+    return res.json({ success: true, ads: memoryAdsConfig, syncVersion: globalSyncVersion });
+  });
+
+  // 3. Download Platform Configurations API (Prisma PostgreSQL)
+  app.get('/api/platforms', async (req: Request, res: Response) => {
+    try {
+      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (record && record.platformsConfigJson) {
+        memoryPlatformsConfig = JSON.parse(record.platformsConfigJson);
+      }
+    } catch (e) {
+      console.warn('[DB Notice] Platforms query fallback used');
+    }
+    return res.json({ success: true, platforms: memoryPlatformsConfig, syncVersion: globalSyncVersion });
+  });
+
+  app.post('/api/platforms', async (req: Request, res: Response) => {
+    const { platforms } = req.body || {};
+    if (platforms) {
+      memoryPlatformsConfig = platforms;
+      globalSyncVersion += 1;
+      try {
+        await prisma.globalSettings.upsert({
+          where: { id: 'default' },
+          update: { platformsConfigJson: JSON.stringify(platforms) },
+          create: { id: 'default', platformsConfigJson: JSON.stringify(platforms) },
+        });
+      } catch (e) {
+        console.warn('[DB Notice] Platforms update saved to memory store');
+      }
+    }
+    return res.json({ success: true, platforms: memoryPlatformsConfig, syncVersion: globalSyncVersion });
+  });
+
+  // 4. Global SEO Configuration API (Prisma PostgreSQL)
+  app.get('/api/seo', async (req: Request, res: Response) => {
+    try {
+      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (record && record.seoConfigJson) {
+        memorySeoConfig = JSON.parse(record.seoConfigJson);
+      }
+    } catch (e) {
+      console.warn('[DB Notice] SEO config query fallback used');
+    }
+    return res.json({ success: true, seo: memorySeoConfig, syncVersion: globalSyncVersion });
+  });
+
+  app.post('/api/seo', async (req: Request, res: Response) => {
+    const { seo } = req.body || {};
+    if (seo) {
+      memorySeoConfig = seo;
+      globalSyncVersion += 1;
+      try {
+        await prisma.globalSettings.upsert({
+          where: { id: 'default' },
+          update: { seoConfigJson: JSON.stringify(seo) },
+          create: { id: 'default', seoConfigJson: JSON.stringify(seo) },
+        });
+      } catch (e) {
+        console.warn('[DB Notice] SEO config update saved to memory store');
+      }
+    }
+    return res.json({ success: true, seo: memorySeoConfig, syncVersion: globalSyncVersion });
+  });
+
+  // 5. Admin Audit Logging API (Prisma PostgreSQL)
+  app.get('/api/audit-logs', async (req: Request, res: Response) => {
+    try {
+      const logs = await prisma.auditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+      return res.json({ success: true, logs });
+    } catch (e) {
+      return res.json({ success: true, logs: [] });
+    }
+  });
+
+  app.post('/api/audit-logs', async (req: Request, res: Response) => {
+    try {
+      const { userEmail, action, details } = req.body || {};
+      const created = await prisma.auditLog.create({
+        data: {
+          userEmail: userEmail || 'admin@omnifetchpro.com',
+          action: action || 'ADMIN_ACTION',
+          details: typeof details === 'object' ? JSON.stringify(details) : String(details || ''),
+          ipAddress: req.ip || '127.0.0.1',
+        },
+      });
+      return res.json({ success: true, log: created });
+    } catch (e) {
+      return res.json({ success: true });
+    }
   });
 
   // 1. Trending Videos (Most Downloaded) API - Pure Prisma Query from PostgreSQL

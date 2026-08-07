@@ -1,17 +1,18 @@
 import { MediaResult, SiteSettings, AdPlacementConfig, FAQItem, BlogPost, DownloadLogItem } from '../types';
 import { DEFAULT_SITE_SETTINGS, DEFAULT_ADS_CONFIG, DEFAULT_FAQS, INITIAL_BLOG_POSTS } from '../config/siteConfig';
-import { auth, saveFirestoreDownload, saveFirestoreGlobalSettings } from './firebase';
 
 const HISTORY_KEY = 'omnifetch_download_history_v1';
-const SETTINGS_KEY = 'omnifetch_site_settings_v1';
-const ADS_KEY = 'omnifetch_ads_config_v1';
-const FAQS_KEY = 'omnifetch_faqs_config_v1';
-const BLOGS_KEY = 'omnifetch_blogs_config_v1';
-const LOGS_KEY = 'omnifetch_download_logs_v1';
+
+// Internal memory caches
+let cachedSettings: SiteSettings = DEFAULT_SITE_SETTINGS;
+let cachedAdsConfig: AdPlacementConfig[] = DEFAULT_ADS_CONFIG;
+let cachedFaqs: FAQItem[] = DEFAULT_FAQS;
+let cachedBlogs: BlogPost[] = INITIAL_BLOG_POSTS;
+let currentSyncVersion = 0;
 
 export function getDownloadHistory(): MediaResult[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(HISTORY_KEY) : null;
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -22,8 +23,10 @@ export function saveToHistory(item: MediaResult): void {
   try {
     const existing = getDownloadHistory();
     const filtered = existing.filter((x) => x.id !== item.id && x.originalUrl !== item.originalUrl);
-    const updated = [item, ...filtered].slice(0, 30); // keep last 30
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+    const updated = [item, ...filtered].slice(0, 30);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+    }
 
     // Post to PostgreSQL download logging API asynchronously
     fetch('/api/trending', {
@@ -38,18 +41,6 @@ export function saveToHistory(item: MediaResult): void {
       }),
     }).catch(() => {});
 
-    // Optional Firebase sync with safe catch
-    if (auth && auth.currentUser) {
-      saveFirestoreDownload(auth.currentUser.uid, {
-        title: item.title,
-        url: item.originalUrl,
-        platform: item.platformName,
-        thumbnail: item.thumbnail,
-        quality: item.formats?.[0]?.quality || 'HD'
-      }).catch((e) => console.warn('Firebase sync warning:', e));
-    }
-
-    // Also log for local admin analytics
     logDownloadEvent(item);
   } catch (e) {
     console.error('Error saving history:', e);
@@ -58,14 +49,17 @@ export function saveToHistory(item: MediaResult): void {
 
 export function clearDownloadHistory(): void {
   try {
-    localStorage.removeItem(HISTORY_KEY);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(HISTORY_KEY);
+    }
   } catch (e) {
     console.error('Error clearing history:', e);
   }
 }
 
+// --- Site Settings ---
 export function getSiteSettings(): SiteSettings {
-  return DEFAULT_SITE_SETTINGS;
+  return cachedSettings;
 }
 
 export async function fetchSiteSettingsFromDb(): Promise<SiteSettings> {
@@ -74,16 +68,17 @@ export async function fetchSiteSettingsFromDb(): Promise<SiteSettings> {
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.settings) {
+        cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...data.settings };
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: data.settings }));
+          window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: cachedSettings }));
         }
-        return data.settings;
+        return cachedSettings;
       }
     }
   } catch (e) {
     console.error('Error fetching site settings from DB:', e);
   }
-  return DEFAULT_SITE_SETTINGS;
+  return cachedSettings;
 }
 
 export async function saveSiteSettingsToDb(settings: Partial<SiteSettings>): Promise<SiteSettings> {
@@ -99,108 +94,126 @@ export async function saveSiteSettingsToDb(settings: Partial<SiteSettings>): Pro
   if (!data.success || !data.settings) {
     throw new Error(data.error || 'Failed to save settings to database');
   }
+  cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...data.settings };
+  if (data.syncVersion) currentSyncVersion = data.syncVersion;
+
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: data.settings }));
+    window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: cachedSettings }));
   }
-  return data.settings;
+  return cachedSettings;
 }
 
 export function saveSiteSettings(settings: Partial<SiteSettings>): SiteSettings {
-  // Direct sync trigger to database
-  saveSiteSettingsToDb(settings);
-  return { ...DEFAULT_SITE_SETTINGS, ...settings };
+  cachedSettings = { ...cachedSettings, ...settings };
+  saveSiteSettingsToDb(settings).catch((e) => console.error('Background save error:', e));
+  return cachedSettings;
 }
 
+// --- Ads Management ---
 export function getAdsConfig(): AdPlacementConfig[] {
+  return cachedAdsConfig;
+}
+
+export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
   try {
-    const raw = localStorage.getItem(ADS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_ADS_CONFIG;
-  } catch {
-    return DEFAULT_ADS_CONFIG;
+    const res = await fetch('/api/ads');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.ads && Array.isArray(data.ads)) {
+        cachedAdsConfig = data.ads;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
+        }
+        return cachedAdsConfig;
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching ads from DB:', e);
   }
+  return cachedAdsConfig;
+}
+
+export async function saveAdsConfigToDb(ads: AdPlacementConfig[]): Promise<AdPlacementConfig[]> {
+  const res = await fetch('/api/ads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ads }),
+  });
+  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error('Failed to save ads config');
+
+  cachedAdsConfig = ads;
+  if (data.syncVersion) currentSyncVersion = data.syncVersion;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
+  }
+  return cachedAdsConfig;
 }
 
 export function saveAdsConfig(ads: AdPlacementConfig[]): void {
-  try {
-    localStorage.setItem(ADS_KEY, JSON.stringify(ads));
-    saveFirestoreGlobalSettings({ adsConfig: ads }).catch((e) => console.warn('Firebase sync skipped:', e));
-  } catch (e) {
-    console.error('Error saving ads config:', e);
-  }
+  cachedAdsConfig = ads;
+  saveAdsConfigToDb(ads).catch((e) => console.error('Background save ads error:', e));
 }
 
+// --- FAQs & Blogs ---
 export function getFaqsConfig(): FAQItem[] {
-  try {
-    const raw = localStorage.getItem(FAQS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_FAQS;
-  } catch {
-    return DEFAULT_FAQS;
-  }
+  return cachedFaqs;
 }
 
 export function saveFaqsConfig(faqs: FAQItem[]): void {
-  try {
-    localStorage.setItem(FAQS_KEY, JSON.stringify(faqs));
-    saveFirestoreGlobalSettings({ faqsConfig: faqs }).catch((e) => console.warn('Firebase sync skipped:', e));
-  } catch (e) {
-    console.error('Error saving FAQs:', e);
+  cachedFaqs = faqs;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_faqs_updated', { detail: faqs }));
   }
 }
 
 export function getBlogsConfig(): BlogPost[] {
-  try {
-    const raw = localStorage.getItem(BLOGS_KEY);
-    return raw ? JSON.parse(raw) : INITIAL_BLOG_POSTS;
-  } catch {
-    return INITIAL_BLOG_POSTS;
-  }
+  return cachedBlogs;
 }
 
 export function saveBlogsConfig(blogs: BlogPost[]): void {
-  try {
-    localStorage.setItem(BLOGS_KEY, JSON.stringify(blogs));
-    saveFirestoreGlobalSettings({ blogsConfig: blogs }).catch((e) => console.warn('Firebase sync skipped:', e));
-  } catch (e) {
-    console.error('Error saving blogs:', e);
+  cachedBlogs = blogs;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_blogs_updated', { detail: blogs }));
   }
 }
 
 function logDownloadEvent(result: MediaResult): void {
-  try {
-    const raw = localStorage.getItem(LOGS_KEY);
-    const logs: DownloadLogItem[] = raw ? JSON.parse(raw) : [];
-
-    const newLog: DownloadLogItem = {
-      id: 'log_' + Math.random().toString(36).substring(2, 8),
-      timestamp: new Date().toISOString(),
-      platform: result.platformName,
-      title: result.title,
-      quality: result.formats[0]?.quality || 'HD',
-      ip: '192.168.1.102',
-      country: 'United States',
-      status: 'SUCCESS',
-    };
-
-    const updated = [newLog, ...logs].slice(0, 100);
-    localStorage.setItem(LOGS_KEY, JSON.stringify(updated));
-  } catch (e) {
-    console.error('Error logging download:', e);
-  }
+  // Download logs are persisted to PostgreSQL /api/trending
 }
 
 export function getAdminDownloadLogs(): DownloadLogItem[] {
-  try {
-    const raw = localStorage.getItem(LOGS_KEY);
-    if (!raw) {
-      return [
-        { id: 'log_1', timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(), platform: 'TikTok', title: 'Viral Dance Video #trend', quality: 'HD No Watermark', ip: '197.230.12.4', country: 'Saudi Arabia', status: 'SUCCESS' },
-        { id: 'log_2', timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(), platform: 'YouTube', title: '4K Cinematic Nature Relaxation', quality: '4K Ultra HD', ip: '102.122.40.11', country: 'United States', status: 'SUCCESS' },
-        { id: 'log_3', timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), platform: 'Instagram', title: 'Reel - Delicious Pasta Recipe', quality: '1080p Full HD', ip: '82.165.19.88', country: 'France', status: 'SUCCESS' },
-        { id: 'log_4', timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(), platform: 'Facebook', title: 'Funny Pet Moments Compilation', quality: '720p HD', ip: '188.138.2.14', country: 'Germany', status: 'SUCCESS' },
-      ];
-    }
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
+  return [];
+}
+
+// --- Realtime Synchronization Poller ---
+let realtimeSyncInitialized = false;
+
+export function initRealtimeSyncLoop(): void {
+  if (realtimeSyncInitialized || typeof window === 'undefined') return;
+  realtimeSyncInitialized = true;
+
+  // Initial load
+  fetchSiteSettingsFromDb();
+  fetchAdsConfigFromDb();
+
+  // Poll sync version every 3 seconds for zero-refresh real-time updates
+  setInterval(async () => {
+    try {
+      const res = await fetch('/api/sync/version');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && typeof data.version === 'number') {
+          if (currentSyncVersion === 0) {
+            currentSyncVersion = data.version;
+          } else if (data.version > currentSyncVersion) {
+            currentSyncVersion = data.version;
+            fetchSiteSettingsFromDb();
+            fetchAdsConfigFromDb();
+          }
+        }
+      }
+    } catch {}
+  }, 3000);
 }
