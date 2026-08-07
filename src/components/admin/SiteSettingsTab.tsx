@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Save,
   Globe,
@@ -26,11 +26,11 @@ import {
   FileCode,
   Smartphone,
   Tv,
+  Loader2,
 } from 'lucide-react';
 import { SiteSettings, SupportedLanguage } from '../../types';
-import { saveSiteSettings } from '../../lib/storage';
+import { saveSiteSettingsToDb, fetchSiteSettingsFromDb } from '../../lib/storage';
 import { DEFAULT_SITE_SETTINGS } from '../../config/siteConfig';
-import { saveFirestoreGlobalSettings } from '../../lib/firebase';
 
 interface Props {
   settings: SiteSettings;
@@ -46,9 +46,23 @@ export const SiteSettingsTab: React.FC<Props> = ({
   currentLang,
 }) => {
   const [formData, setFormData] = useState<SiteSettings>(settings);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeSubTab, setActiveSubTab] = useState<
     'branding' | 'header_meta' | 'integrations' | 'contact_social' | 'custom_code' | 'maintenance'
   >('branding');
+
+  // Load latest settings from Prisma PostgreSQL on mount
+  useEffect(() => {
+    setIsLoading(true);
+    fetchSiteSettingsFromDb()
+      .then((dbSettings) => {
+        setFormData(dbSettings);
+        onUpdateSettings(dbSettings);
+      })
+      .catch((err) => console.error('Failed to load settings from database:', err))
+      .finally(() => setIsLoading(false));
+  }, []);
 
   const handleChange = (field: keyof SiteSettings, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -65,21 +79,33 @@ export const SiteSettingsTab: React.FC<Props> = ({
   };
 
   const handleSave = async () => {
-    const updated = saveSiteSettings(formData);
-    onUpdateSettings(updated);
-    
-    // Save directly to live Firestore DB & trigger On-Demand Revalidation
-    await saveFirestoreGlobalSettings(formData);
-
-    onShowToast('تم حفظ إعدادات الموقع والربط وتنفيذ إعادة التنشيط الفوري (On-Demand Revalidation ⚡) بنجاح!');
+    setIsSaving(true);
+    try {
+      const updated = await saveSiteSettingsToDb(formData);
+      setFormData(updated);
+      onUpdateSettings(updated);
+      onShowToast('تم حفظ جميع الإعدادات بإنضباط في قاعدة البيانات Prisma PostgreSQL وتنفيذ On-Demand Revalidation ⚡ بنجاح!');
+    } catch (e) {
+      console.error('Error saving settings to database:', e);
+      onShowToast('حدث خطأ أثناء الاتصال بقاعدة البيانات لحفظ الإعدادات!');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleResetDefaults = () => {
-    if (window.confirm('هل أنت تأكد من إرجاع كافة إعدادات الموقع للقيم الافتراضية الأصلية؟')) {
-      setFormData(DEFAULT_SITE_SETTINGS);
-      const updated = saveSiteSettings(DEFAULT_SITE_SETTINGS);
-      onUpdateSettings(updated);
-      onShowToast('تم استعادة الإعدادات الافتراضية للموقع بنجاح.');
+  const handleResetDefaults = async () => {
+    if (window.confirm('هل أنت تأكد من إرجاع كافة إعدادات الموقع للقيم الافتراضية الأصلية في قاعدة البيانات؟')) {
+      setIsSaving(true);
+      try {
+        const updated = await saveSiteSettingsToDb(DEFAULT_SITE_SETTINGS);
+        setFormData(updated);
+        onUpdateSettings(updated);
+        onShowToast('تم استعادة الإعدادات الافتراضية وحفظها في قاعدة بيانات Prisma بنجاح.');
+      } catch (e) {
+        onShowToast('حدث خطأ أثناء استعادة الإعدادات الافتراضية.');
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -104,9 +130,10 @@ export const SiteSettingsTab: React.FC<Props> = ({
           if (imported && typeof imported === 'object') {
             const merged = { ...DEFAULT_SITE_SETTINGS, ...imported };
             setFormData(merged);
-            const updated = saveSiteSettings(merged);
-            onUpdateSettings(updated);
-            onShowToast('تم استيراد الإعدادات وتطبيقها على اللوحة بنجاح!');
+            saveSiteSettingsToDb(merged).then((updated) => {
+              onUpdateSettings(updated);
+              onShowToast('تم استيراد الإعدادات وتطبيقها وحفظها في قاعدة البيانات بنجاح!');
+            });
           }
         } catch (err) {
           onShowToast('خطأ في تنسيق ملف JSON المستورد! يرجى التأكد من صحة الملف.');

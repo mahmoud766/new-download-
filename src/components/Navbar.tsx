@@ -1,8 +1,8 @@
-import { useState } from 'react';
-import { SupportedLanguage, PlatformSlug } from '../types';
+import { useState, useEffect } from 'react';
+import { SupportedLanguage, PlatformSlug, SiteSettings } from '../types';
 import { LANGUAGES, t } from '../i18n/translations';
-import { PLATFORMS_CONFIG } from '../config/siteConfig';
-import { getSiteSettings } from '../lib/storage';
+import { PLATFORMS_CONFIG, DEFAULT_SITE_SETTINGS } from '../config/siteConfig';
+import { fetchSiteSettingsFromDb } from '../lib/storage';
 import { HeaderSearch } from './HeaderSearch';
 import { triggerPwaInstall } from './PwaPrompt';
 import {
@@ -61,7 +61,29 @@ export function Navbar({
 
   const activeLangObj = LANGUAGES.find((l) => l.code === currentLang) || LANGUAGES[1];
   const platformsList = Object.values(PLATFORMS_CONFIG);
-  const siteSettings = getSiteSettings();
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+
+  useEffect(() => {
+    // Fetch site name and settings dynamically from Prisma database
+    fetchSiteSettingsFromDb().then((dbSettings) => {
+      setSiteSettings(dbSettings);
+    });
+
+    const handleSettingsUpdated = (e: any) => {
+      if (e?.detail) {
+        setSiteSettings(e.detail);
+      } else {
+        fetchSiteSettingsFromDb().then((dbSettings) => {
+          setSiteSettings(dbSettings);
+        });
+      }
+    };
+
+    window.addEventListener('omnifetch_settings_updated', handleSettingsUpdated);
+    return () => {
+      window.removeEventListener('omnifetch_settings_updated', handleSettingsUpdated);
+    };
+  }, []);
 
   const getHeaderStyleClasses = () => {
     let positionClass = 'sticky top-0 z-50 w-full';

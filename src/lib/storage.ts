@@ -65,28 +65,53 @@ export function clearDownloadHistory(): void {
 }
 
 export function getSiteSettings(): SiteSettings {
+  return DEFAULT_SITE_SETTINGS;
+}
+
+export async function fetchSiteSettingsFromDb(): Promise<SiteSettings> {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SITE_SETTINGS;
-  } catch {
-    return DEFAULT_SITE_SETTINGS;
+    const res = await fetch('/api/settings');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.settings) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: data.settings }));
+        }
+        return data.settings;
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching site settings from DB:', e);
   }
+  return DEFAULT_SITE_SETTINGS;
+}
+
+export async function saveSiteSettingsToDb(settings: Partial<SiteSettings>): Promise<SiteSettings> {
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.settings) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: data.settings }));
+        }
+        return data.settings;
+      }
+    }
+  } catch (e) {
+    console.error('Error saving site settings to DB:', e);
+  }
+  return DEFAULT_SITE_SETTINGS;
 }
 
 export function saveSiteSettings(settings: Partial<SiteSettings>): SiteSettings {
-  try {
-    const current = getSiteSettings();
-    const updated = { ...current, ...settings };
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(updated));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: updated }));
-    }
-    // Optional Firebase sync
-    saveFirestoreGlobalSettings({ siteSettings: updated }).catch((e) => console.warn('Firebase sync skipped:', e));
-    return updated;
-  } catch {
-    return DEFAULT_SITE_SETTINGS;
-  }
+  // Direct sync trigger to database
+  saveSiteSettingsToDb(settings);
+  return { ...DEFAULT_SITE_SETTINGS, ...settings };
 }
 
 export function getAdsConfig(): AdPlacementConfig[] {

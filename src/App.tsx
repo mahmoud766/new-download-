@@ -2,7 +2,8 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { WifiOff, ShieldAlert } from 'lucide-react';
 import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './types';
 import { isRTL, detectUserLanguage } from './i18n/translations';
-import { getDownloadHistory, getSiteSettings } from './lib/storage';
+import { getDownloadHistory, fetchSiteSettingsFromDb } from './lib/storage';
+import { DEFAULT_SITE_SETTINGS } from './config/siteConfig';
 
 // Critical On-Screen Components
 import { Navbar } from './components/Navbar';
@@ -124,7 +125,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [historyCount, setHistoryCount] = useState(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => getSiteSettings());
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
 
   // Global Keyboard Shortcuts (Ctrl+Shift+A, Ctrl+Shift+D, Cmd+Shift+D, Ctrl+K)
   useEffect(() => {
@@ -188,19 +189,19 @@ export default function App() {
   }, [currentResult]);
 
   useEffect(() => {
+    fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
+
     const handleSettingsUpdated = (e: any) => {
       if (e?.detail) {
         setSiteSettings(e.detail);
       } else {
-        setSiteSettings(getSiteSettings());
+        fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
       }
     };
 
     window.addEventListener('omnifetch_settings_updated', handleSettingsUpdated);
-    window.addEventListener('storage', handleSettingsUpdated);
     return () => {
       window.removeEventListener('omnifetch_settings_updated', handleSettingsUpdated);
-      window.removeEventListener('storage', handleSettingsUpdated);
     };
   }, []);
 
@@ -242,8 +243,6 @@ export default function App() {
 
   // Inject Theme Builder settings (Favicon, Custom CSS, Font Family)
   useEffect(() => {
-    const siteSettings = getSiteSettings();
-
     // 1. Update Favicon if custom URL provided
     if (siteSettings.faviconUrl) {
       let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
@@ -267,7 +266,7 @@ export default function App() {
     const customCssCode = siteSettings.customCss || '';
 
     styleTag.textContent = `${fontFamilyCSS}\n${customCssCode}`;
-  }, [activeView]);
+  }, [activeView, siteSettings]);
 
   useEffect(() => {
     const history = getDownloadHistory();

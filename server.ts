@@ -205,6 +205,175 @@ async function startServer() {
 
   // --- PostgreSQL Supabase Unified Database Endpoints ---
 
+  // Global Settings API Routes (Prisma PostgreSQL)
+  app.get('/api/settings', async (req: Request, res: Response) => {
+    try {
+      const record = await prisma.globalSettings.findUnique({
+        where: { id: 'default' },
+      });
+
+      if (!record) {
+        return res.json({
+          success: true,
+          settings: {
+            siteName: 'OmniFetch Pro',
+            shortName: 'PRO',
+            tagline: 'أفضل وأسرع أداة مجانية لتحميل الفيديوهات بدون علامة مائية',
+            siteDescription: 'أفضل وأسرع أداة مجانية لتحميل فيديوهات تيك توك، يوتيوب شورتس، فيسبوك ريلز وإنستغرام بدقة HD وبدون علامات مائية',
+            logoUrl: '',
+            faviconUrl: '',
+            contactEmail: 'support@omnifetchpro.com',
+            contactPhone: '',
+            adsenseClientId: 'ca-pub-1234567890000000',
+            ga4Id: 'G-OMNIFETCH2026',
+            gtmId: 'GTM-OMNIFETCH',
+            clarityId: '',
+            fbPixelId: '',
+            maintenanceMode: false,
+            rateLimitPerMinute: 60,
+            allowMp3Conversion: true,
+            watermarkFreeByDefault: true,
+            headerStyle: 'sticky',
+            customCss: '',
+            customJs: '',
+            socialLinks: {},
+          },
+        });
+      }
+
+      let parsedSocials = {};
+      try {
+        if (record.socialLinksJson) parsedSocials = JSON.parse(record.socialLinksJson);
+      } catch {}
+
+      return res.json({
+        success: true,
+        settings: {
+          siteName: record.siteName || 'OmniFetch Pro',
+          shortName: record.shortName || 'PRO',
+          tagline: record.tagline || '',
+          siteDescription: record.siteDescription || '',
+          logoUrl: record.logoUrl || '',
+          faviconUrl: record.faviconUrl || '',
+          contactEmail: record.contactEmail || 'support@omnifetchpro.com',
+          contactPhone: record.contactPhone || '',
+          adsenseClientId: record.adsenseClientId || 'ca-pub-1234567890000000',
+          ga4Id: record.ga4Id || 'G-OMNIFETCH2026',
+          gtmId: record.gtmId || 'GTM-OMNIFETCH',
+          clarityId: record.clarityId || '',
+          fbPixelId: record.fbPixelId || '',
+          maintenanceMode: Boolean(record.maintenanceMode),
+          rateLimitPerMinute: 60,
+          allowMp3Conversion: Boolean(record.allowMp3Conversion),
+          watermarkFreeByDefault: Boolean(record.watermarkFreeByDefault),
+          headerStyle: record.headerStyle || 'sticky',
+          customCss: record.customCss || '',
+          customJs: record.customJs || '',
+          socialLinks: parsedSocials,
+        },
+      });
+    } catch (e) {
+      console.error('Error fetching global settings from Prisma:', e);
+      return res.status(500).json({ success: false, error: 'Failed to fetch global settings' });
+    }
+  });
+
+  app.post('/api/settings', async (req: Request, res: Response) => {
+    try {
+      const data = req.body || {};
+      const socialLinksJson = data.socialLinks ? JSON.stringify(data.socialLinks) : '{}';
+
+      const updated = await prisma.globalSettings.upsert({
+        where: { id: 'default' },
+        update: {
+          siteName: data.siteName ?? 'OmniFetch Pro',
+          shortName: data.shortName ?? 'PRO',
+          tagline: data.tagline ?? '',
+          siteDescription: data.siteDescription ?? '',
+          logoUrl: data.logoUrl ?? '',
+          faviconUrl: data.faviconUrl ?? '',
+          contactEmail: data.contactEmail ?? 'support@omnifetchpro.com',
+          contactPhone: data.contactPhone ?? '',
+          adsenseClientId: data.adsenseClientId ?? 'ca-pub-1234567890000000',
+          ga4Id: data.ga4Id ?? 'G-OMNIFETCH2026',
+          gtmId: data.gtmId ?? 'GTM-OMNIFETCH',
+          clarityId: data.clarityId ?? '',
+          fbPixelId: data.fbPixelId ?? '',
+          maintenanceMode: Boolean(data.maintenanceMode),
+          allowMp3Conversion: Boolean(data.allowMp3Conversion ?? true),
+          watermarkFreeByDefault: Boolean(data.watermarkFreeByDefault ?? true),
+          headerStyle: data.headerStyle ?? 'sticky',
+          customCss: data.customCss ?? '',
+          customJs: data.customJs ?? '',
+          socialLinksJson,
+        },
+        create: {
+          id: 'default',
+          siteName: data.siteName ?? 'OmniFetch Pro',
+          shortName: data.shortName ?? 'PRO',
+          tagline: data.tagline ?? '',
+          siteDescription: data.siteDescription ?? '',
+          logoUrl: data.logoUrl ?? '',
+          faviconUrl: data.faviconUrl ?? '',
+          contactEmail: data.contactEmail ?? 'support@omnifetchpro.com',
+          contactPhone: data.contactPhone ?? '',
+          adsenseClientId: data.adsenseClientId ?? 'ca-pub-1234567890000000',
+          ga4Id: data.ga4Id ?? 'G-OMNIFETCH2026',
+          gtmId: data.gtmId ?? 'GTM-OMNIFETCH',
+          clarityId: data.clarityId ?? '',
+          fbPixelId: data.fbPixelId ?? '',
+          maintenanceMode: Boolean(data.maintenanceMode),
+          allowMp3Conversion: Boolean(data.allowMp3Conversion ?? true),
+          watermarkFreeByDefault: Boolean(data.watermarkFreeByDefault ?? true),
+          headerStyle: data.headerStyle ?? 'sticky',
+          customCss: data.customCss ?? '',
+          customJs: data.customJs ?? '',
+          socialLinksJson,
+        },
+      });
+
+      lastRevalidationTimestamp = Date.now();
+      totalRevalidationCount += 1;
+      console.log(`[Cache Revalidation] Global settings saved to Prisma PostgreSQL. Cache cleared for '/' globally at ${new Date().toISOString()}`);
+
+      let parsedSocials = {};
+      try {
+        if (updated.socialLinksJson) parsedSocials = JSON.parse(updated.socialLinksJson);
+      } catch {}
+
+      return res.json({
+        success: true,
+        revalidated: true,
+        settings: {
+          siteName: updated.siteName || 'OmniFetch Pro',
+          shortName: updated.shortName || 'PRO',
+          tagline: updated.tagline || '',
+          siteDescription: updated.siteDescription || '',
+          logoUrl: updated.logoUrl || '',
+          faviconUrl: updated.faviconUrl || '',
+          contactEmail: updated.contactEmail || 'support@omnifetchpro.com',
+          contactPhone: updated.contactPhone || '',
+          adsenseClientId: updated.adsenseClientId || 'ca-pub-1234567890000000',
+          ga4Id: updated.ga4Id || 'G-OMNIFETCH2026',
+          gtmId: updated.gtmId || 'GTM-OMNIFETCH',
+          clarityId: updated.clarityId || '',
+          fbPixelId: updated.fbPixelId || '',
+          maintenanceMode: Boolean(updated.maintenanceMode),
+          rateLimitPerMinute: 60,
+          allowMp3Conversion: Boolean(updated.allowMp3Conversion),
+          watermarkFreeByDefault: Boolean(updated.watermarkFreeByDefault),
+          headerStyle: updated.headerStyle || 'sticky',
+          customCss: updated.customCss || '',
+          customJs: updated.customJs || '',
+          socialLinks: parsedSocials,
+        },
+      });
+    } catch (e) {
+      console.error('Error updating settings in Prisma database:', e);
+      return res.status(500).json({ success: false, error: 'Database update failed' });
+    }
+  });
+
   // 1. Trending Videos (Most Downloaded) API - Pure Prisma Query from PostgreSQL
   app.get('/api/trending', async (req: Request, res: Response) => {
     try {
