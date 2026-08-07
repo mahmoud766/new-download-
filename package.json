@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "omnifetch-pro",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -23,7 +23,6 @@
     "fuse.js": "^7.5.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "next": "^16.3.0",
     "prisma": "5.22.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
