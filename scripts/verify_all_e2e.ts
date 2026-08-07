@@ -1,7 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 
-import { PrismaClient } from '@prisma/client';
-
 const TARGET_URL = process.env.TEST_TARGET_URL || 'http://localhost:3000';
 const API_BASE = `${TARGET_URL}/api`;
 

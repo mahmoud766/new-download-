@@ -31,6 +31,8 @@ import {
   getEmailAlertSettings,
   saveEmailAlertSettings,
   fetchEmailAlertsFromDb,
+  DEFAULT_SMTP_CONFIG,
+  DEFAULT_EMAIL_ALERTS,
 } from '../../lib/adminStorage';
 
 interface Props {
@@ -49,15 +51,24 @@ interface AlertLogEntry {
 }
 
 export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
-  const [smtp, setSmtp] = useState<SmtpConfig>(getSmtpConfig());
-  const [alerts, setAlerts] = useState<EmailAlertSettings>(getEmailAlertSettings());
+  const [smtp, setSmtp] = useState<SmtpConfig>(() => ({ ...DEFAULT_SMTP_CONFIG, ...(getSmtpConfig() || {}) }));
+  const [alerts, setAlerts] = useState<EmailAlertSettings>(() => ({ ...DEFAULT_EMAIL_ALERTS, ...(getEmailAlertSettings() || {}) }));
 
   useEffect(() => {
-    fetchSmtpConfigFromDb().then((s) => setSmtp(s));
-    fetchEmailAlertsFromDb().then((a) => setAlerts(a));
+    fetchSmtpConfigFromDb().then((s) => {
+      if (s && typeof s === 'object') {
+        setSmtp((prev) => ({ ...DEFAULT_SMTP_CONFIG, ...prev, ...s }));
+      }
+    });
+    fetchEmailAlertsFromDb().then((a) => {
+      if (a && typeof a === 'object') {
+        const safeEmails = Array.isArray(a.recipientEmails) ? a.recipientEmails : DEFAULT_EMAIL_ALERTS.recipientEmails;
+        setAlerts((prev) => ({ ...DEFAULT_EMAIL_ALERTS, ...prev, ...a, recipientEmails: safeEmails }));
+      }
+    });
   }, []);
 
-  const [testRecipient, setTestRecipient] = useState<string>('admin@omnifetch.com');
+  const [testRecipient, setTestRecipient] = useState<string>('admin@omnifetchpro.com');
   const [testType, setTestType] = useState<'Connection Test' | 'High Error Rate Alert' | 'DB Connection Failure Alert'>('Connection Test');
   const [sendingTest, setSendingTest] = useState<boolean>(false);
   const [lastTestResult, setLastTestResult] = useState<SmtpTestResult | null>(null);
@@ -68,7 +79,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
     {
       id: 'log_1',
       eventType: 'Test Dispatch',
-      recipient: 'admin@omnifetch.com',
+      recipient: 'admin@omnifetchpro.com',
       status: 'SENT',
       message: 'SMTP handshake and TLS handshake successful',
       timestamp: new Date(Date.now() - 1000 * 60 * 15).toLocaleTimeString(),
@@ -77,7 +88,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
     {
       id: 'log_2',
       eventType: 'High Error Rate',
-      recipient: 'devops@omnifetch.com',
+      recipient: 'devops@omnifetchpro.com',
       status: 'SENT',
       message: 'TikTok Scraper API error rate reached 5.2% (Threshold: 5.0%)',
       timestamp: new Date(Date.now() - 1000 * 60 * 120).toLocaleTimeString(),
@@ -86,13 +97,15 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
     {
       id: 'log_3',
       eventType: 'DB Disconnect',
-      recipient: 'admin@omnifetch.com',
+      recipient: 'admin@omnifetchpro.com',
       status: 'SENT',
       message: 'Firestore db connection health check verified',
       timestamp: new Date(Date.now() - 1000 * 3600 * 6).toLocaleTimeString(),
       latencyMs: 98,
     },
   ]);
+
+  const recipientEmails = Array.isArray(alerts?.recipientEmails) ? alerts.recipientEmails : [];
 
   // SMTP Presets
   const handleApplyPreset = (preset: 'mailgun' | 'sendgrid' | 'ses' | 'gmail' | 'postmark') => {
@@ -102,7 +115,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
         host: 'smtp.mailgun.org',
         port: 587,
         secure: true,
-        user: 'postmaster@mg.omnifetch.com',
+        user: 'postmaster@mg.omnifetchpro.com',
       }));
     } else if (preset === 'sendgrid') {
       setSmtp((prev) => ({
@@ -138,8 +151,17 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
   };
 
   const handleSaveAll = () => {
-    saveSmtpConfig(smtp);
-    saveEmailAlertSettings(alerts);
+    const safeAlerts = {
+      ...DEFAULT_EMAIL_ALERTS,
+      ...alerts,
+      recipientEmails: Array.isArray(alerts?.recipientEmails) ? alerts.recipientEmails : DEFAULT_EMAIL_ALERTS.recipientEmails,
+    };
+    const safeSmtp = {
+      ...DEFAULT_SMTP_CONFIG,
+      ...smtp,
+    };
+    saveSmtpConfig(safeSmtp);
+    saveEmailAlertSettings(safeAlerts);
     onShowToast('تم حفظ إعدادات SMTP وقواعد التنبيهات الإلكترونية بنجاح!');
   };
 
@@ -148,18 +170,18 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
       onShowToast('يرجى كتابة عنوان بريد إلكتروني صحيح.');
       return;
     }
-    if (alerts.recipientEmails.includes(newRecipientInput.trim())) {
+    if (recipientEmails.includes(newRecipientInput.trim())) {
       onShowToast('البريد موجود بالفعل في قائمة المستلمين.');
       return;
     }
-    const updated = [...alerts.recipientEmails, newRecipientInput.trim()];
+    const updated = [...recipientEmails, newRecipientInput.trim()];
     setAlerts({ ...alerts, recipientEmails: updated });
     setNewRecipientInput('');
     onShowToast('تمت إضافة البريد المستلم بنجاح.');
   };
 
   const handleRemoveRecipient = (emailToRemove: string) => {
-    const updated = alerts.recipientEmails.filter((e) => e !== emailToRemove);
+    const updated = recipientEmails.filter((e) => e !== emailToRemove);
     setAlerts({ ...alerts, recipientEmails: updated });
     onShowToast('تم حذف البريد المستلم من القائمة.');
   };
@@ -178,8 +200,8 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: smtp.host,
-          port: smtp.port,
+          host: smtp?.host || DEFAULT_SMTP_CONFIG.host,
+          port: smtp?.port || DEFAULT_SMTP_CONFIG.port,
           recipient: testRecipient,
           testType,
         }),
@@ -231,7 +253,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
     const newLog: AlertLogEntry = {
       id: 'log_' + Date.now(),
       eventType,
-      recipient: alerts.recipientEmails[0] || 'admin@omnifetch.com',
+      recipient: recipientEmails[0] || 'admin@omnifetchpro.com',
       status: 'SENT',
       message: `[SIMULATED ALERT] Real-time threshold rule triggered for ${eventType}`,
       timestamp: new Date().toLocaleTimeString(),
@@ -433,7 +455,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
             </div>
 
             <div className="flex flex-wrap gap-1.5 pt-1">
-              {alerts.recipientEmails.map((email) => (
+              {recipientEmails.map((email) => (
                 <span
                   key={email}
                   className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-xs text-amber-300 font-mono flex items-center gap-2"
@@ -674,7 +696,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
             <Clock className="w-4 h-4 text-purple-400" />
             <span>سجل التنبيهات والإرسال الأخير (Notification Dispatch Log)</span>
           </span>
-          <span className="text-xs text-slate-400 font-normal">إجمالي {logs.length} سجلات</span>
+          <span className="text-xs text-slate-400 font-normal">إجمالي {(Array.isArray(logs) ? logs : []).length} سجلات</span>
         </h3>
 
         <div className="overflow-x-auto">
@@ -690,7 +712,7 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-mono">
-              {logs.map((log) => (
+              {(Array.isArray(logs) ? logs : []).map((log) => (
                 <tr key={log.id} className="hover:bg-slate-800/40 transition">
                   <td className="p-3 font-bold text-white">
                     <span className="px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 text-[11px]">

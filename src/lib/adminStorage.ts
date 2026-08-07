@@ -345,7 +345,15 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig> {
     const res = await fetch('/api/security');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.security) cachedSecurity = data.security;
+      if (data.success && data.security && typeof data.security === 'object') {
+        cachedSecurity = {
+          ...DEFAULT_SECURITY,
+          ...data.security,
+          ipWhitelist: Array.isArray(data.security.ipWhitelist) ? data.security.ipWhitelist : DEFAULT_SECURITY.ipWhitelist,
+          ipBlacklist: Array.isArray(data.security.ipBlacklist) ? data.security.ipBlacklist : DEFAULT_SECURITY.ipBlacklist,
+          blockedCountries: Array.isArray(data.security.blockedCountries) ? data.security.blockedCountries : DEFAULT_SECURITY.blockedCountries,
+        };
+      }
     }
   } catch (e) {}
   return cachedSecurity;
@@ -368,7 +376,12 @@ export async function fetchSmtpConfigFromDb(): Promise<SmtpConfig> {
     const res = await fetch('/api/smtp');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.smtp) cachedSmtp = data.smtp;
+      if (data.success && data.smtp && typeof data.smtp === 'object') {
+        cachedSmtp = {
+          ...DEFAULT_SMTP_CONFIG,
+          ...data.smtp,
+        };
+      }
     }
   } catch (e) {}
   return cachedSmtp;
@@ -388,7 +401,15 @@ export async function fetchEmailAlertsFromDb(): Promise<EmailAlertSettings> {
     const res = await fetch('/api/email-alerts');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.alerts) cachedEmailAlerts = data.alerts;
+      if (data.success && data.alerts && typeof data.alerts === 'object') {
+        cachedEmailAlerts = {
+          ...DEFAULT_EMAIL_ALERTS,
+          ...data.alerts,
+          recipientEmails: Array.isArray(data.alerts.recipientEmails)
+            ? data.alerts.recipientEmails
+            : DEFAULT_EMAIL_ALERTS.recipientEmails,
+        };
+      }
     }
   } catch (e) {}
   return cachedEmailAlerts;
