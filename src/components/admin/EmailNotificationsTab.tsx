@@ -150,19 +150,40 @@ export const EmailNotificationsTab: React.FC<Props> = ({ currentLang, onShowToas
     onShowToast(`تم تطبيق إعدادات خادم ${preset.toUpperCase()} الفورية!`);
   };
 
-  const handleSaveAll = () => {
-    const safeAlerts = {
-      ...DEFAULT_EMAIL_ALERTS,
-      ...alerts,
-      recipientEmails: Array.isArray(alerts?.recipientEmails) ? alerts.recipientEmails : DEFAULT_EMAIL_ALERTS.recipientEmails,
-    };
-    const safeSmtp = {
-      ...DEFAULT_SMTP_CONFIG,
-      ...smtp,
-    };
-    saveSmtpConfig(safeSmtp);
-    saveEmailAlertSettings(safeAlerts);
-    onShowToast('تم حفظ إعدادات SMTP وقواعد التنبيهات الإلكترونية بنجاح!');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  const handleSaveAll = async () => {
+    setIsSaving(true);
+    try {
+      const safeAlerts = {
+        ...DEFAULT_EMAIL_ALERTS,
+        ...alerts,
+        recipientEmails: Array.isArray(alerts?.recipientEmails) ? alerts.recipientEmails : DEFAULT_EMAIL_ALERTS.recipientEmails,
+      };
+      const safeSmtp = {
+        ...DEFAULT_SMTP_CONFIG,
+        ...smtp,
+      };
+      const smtpRes = await saveSmtpConfig(safeSmtp);
+      const alertsRes = await saveEmailAlertSettings(safeAlerts);
+
+      if (smtpRes.success && alertsRes.success) {
+        if (smtpRes.smtp) {
+          setSmtp((prev) => ({ ...DEFAULT_SMTP_CONFIG, ...prev, ...smtpRes.smtp }));
+        }
+        if (alertsRes.alerts) {
+          setAlerts((prev) => ({ ...DEFAULT_EMAIL_ALERTS, ...prev, ...alertsRes.alerts }));
+        }
+        onShowToast('تم حفظ إعدادات SMTP وقواعد التنبيهات الإلكترونية بنجاح!');
+      } else {
+        const err = smtpRes.error || alertsRes.error || 'فشل في حفظ البيانات';
+        onShowToast(`فشل في الحفظ: ${err}`);
+      }
+    } catch (e: any) {
+      onShowToast(`فشل في تنفيذ العملية: ${e?.message || 'خطأ غير معروف'}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddRecipient = () => {

@@ -568,16 +568,36 @@ async function startServer() {
       if (!record || !record.smtpConfigJson) {
         return res.json({ success: true, smtp: null, syncVersion: globalSyncVersion });
       }
-      const smtp = JSON.parse(record.smtpConfigJson);
-      // NEVER return actual password or secret keys on GET/POST response - mask completely
+      let rawSmtp: any = {};
+      try {
+        rawSmtp = JSON.parse(record.smtpConfigJson);
+      } catch (e) {}
+
+      if (!rawSmtp || typeof rawSmtp !== 'object' || Object.keys(rawSmtp).length === 0) {
+        return res.json({ success: true, smtp: null, syncVersion: globalSyncVersion });
+      }
+
       const maskSecret = (val: string | undefined) => (val ? '••••••••' : '');
-      const safeSmtp = smtp
-        ? {
-            ...smtp,
-            ...(smtp.password !== undefined && { password: maskSecret(smtp.password) }),
-            ...(smtp.smtpPass !== undefined && { smtpPass: maskSecret(smtp.smtpPass) }),
-          }
-        : null;
+      const passVal = rawSmtp.pass || rawSmtp.password || rawSmtp.smtpPass || '';
+
+      const safeSmtp = {
+        ...rawSmtp,
+        host: rawSmtp.host || rawSmtp.smtpHost || '',
+        smtpHost: rawSmtp.smtpHost || rawSmtp.host || '',
+        port: Number(rawSmtp.port || rawSmtp.smtpPort) || 587,
+        smtpPort: Number(rawSmtp.smtpPort || rawSmtp.port) || 587,
+        user: rawSmtp.user || rawSmtp.smtpUser || rawSmtp.username || '',
+        smtpUser: rawSmtp.smtpUser || rawSmtp.user || rawSmtp.username || '',
+        pass: maskSecret(passVal),
+        password: maskSecret(passVal),
+        smtpPass: maskSecret(passVal),
+        senderEmail: rawSmtp.senderEmail || rawSmtp.fromEmail || '',
+        fromEmail: rawSmtp.fromEmail || rawSmtp.senderEmail || '',
+        senderName: rawSmtp.senderName || rawSmtp.fromName || '',
+        fromName: rawSmtp.fromName || rawSmtp.senderName || '',
+        secure: rawSmtp.secure !== undefined ? Boolean(rawSmtp.secure) : true,
+      };
+
       return res.json({ success: true, smtp: safeSmtp, syncVersion: globalSyncVersion });
     } catch (e: any) {
       console.error('[DB Error] PostgreSQL SMTP query failed:', e?.message || e);
@@ -590,25 +610,88 @@ async function startServer() {
   });
 
   app.post('/api/smtp', async (req: Request, res: Response) => {
-    const smtp = req.body?.smtp || req.body;
-    if (!smtp || (typeof smtp === 'object' && Object.keys(smtp).length === 0)) {
+    const rawInput = req.body?.smtp || req.body;
+    if (!rawInput || (typeof rawInput === 'object' && Object.keys(rawInput).length === 0)) {
       return res.status(400).json({ success: false, error: 'BAD_REQUEST', message: 'SMTP configuration is required' });
     }
 
     globalSyncVersion += 1;
     try {
+      // 1. Fetch existing record from DB to preserve password if user sent masked pass
+      const existingRecord = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      let existingSmtp: any = {};
+      if (existingRecord?.smtpConfigJson) {
+        try {
+          existingSmtp = JSON.parse(existingRecord.smtpConfigJson);
+        } catch (e) {}
+      }
+
+      const inputPass = rawInput.pass || rawInput.password || rawInput.smtpPass || '';
+      const isMasked = (val: string) => Boolean(val && (val.includes('•') || val.includes('*')));
+
+      let finalPass = inputPass;
+      if (isMasked(inputPass) || !inputPass) {
+        const existingPass = existingSmtp.pass || existingSmtp.password || existingSmtp.smtpPass || '';
+        if (existingPass) {
+          finalPass = existingPass;
+        }
+      }
+
+      const hostVal = rawInput.host || rawInput.smtpHost || existingSmtp.host || existingSmtp.smtpHost || '';
+      const portVal = Number(rawInput.port || rawInput.smtpPort || existingSmtp.port || existingSmtp.smtpPort) || 587;
+      const userVal = rawInput.user || rawInput.smtpUser || rawInput.username || existingSmtp.user || existingSmtp.smtpUser || '';
+      const senderEmailVal = rawInput.senderEmail || rawInput.fromEmail || existingSmtp.senderEmail || existingSmtp.fromEmail || '';
+      const senderNameVal = rawInput.senderName || rawInput.fromName || existingSmtp.senderName || existingSmtp.fromName || '';
+      const secureVal = rawInput.secure !== undefined ? Boolean(rawInput.secure) : existingSmtp.secure !== undefined ? Boolean(existingSmtp.secure) : true;
+      const enableSmtpVal = rawInput.enableSmtp !== undefined ? Boolean(rawInput.enableSmtp) : existingSmtp.enableSmtp !== undefined ? Boolean(existingSmtp.enableSmtp) : true;
+
+      const recordToStore = {
+        ...existingSmtp,
+        ...rawInput,
+        host: hostVal,
+        smtpHost: hostVal,
+        port: portVal,
+        smtpPort: portVal,
+        user: userVal,
+        smtpUser: userVal,
+        username: userVal,
+        pass: finalPass,
+        password: finalPass,
+        smtpPass: finalPass,
+        senderEmail: senderEmailVal,
+        fromEmail: senderEmailVal,
+        senderName: senderNameVal,
+        fromName: senderNameVal,
+        secure: secureVal,
+        enableSmtp: enableSmtpVal,
+      };
+
+      // 2. Database write
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
-        update: { smtpConfigJson: JSON.stringify(smtp) },
-        create: { id: 'default', smtpConfigJson: JSON.stringify(smtp) },
+        update: { smtpConfigJson: JSON.stringify(recordToStore) },
+        create: { id: 'default', smtpConfigJson: JSON.stringify(recordToStore) },
       });
-      // Return masked password in response
+
+      // 3. Database read-back verification
+      const verifyRecord = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (!verifyRecord || !verifyRecord.smtpConfigJson) {
+        throw new Error('Database read-back verification failed for smtpConfigJson');
+      }
+
+      const verifiedSmtp = JSON.parse(verifyRecord.smtpConfigJson);
+
+      // Mask password before returning
       const maskSecret = (val: string | undefined) => (val ? '••••••••' : '');
+      const maskVal = maskSecret(verifiedSmtp.pass || verifiedSmtp.password || verifiedSmtp.smtpPass);
+
       const safeSmtp = {
-        ...smtp,
-        ...(smtp.password !== undefined && { password: maskSecret(smtp.password) }),
-        ...(smtp.smtpPass !== undefined && { smtpPass: maskSecret(smtp.smtpPass) }),
+        ...verifiedSmtp,
+        pass: maskVal,
+        password: maskVal,
+        smtpPass: maskVal,
       };
+
       return res.json({ success: true, smtp: safeSmtp, syncVersion: globalSyncVersion });
     } catch (e: any) {
       console.error('[DB Error] PostgreSQL SMTP update failed:', e?.message || e);

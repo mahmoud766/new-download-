@@ -376,23 +376,41 @@ export async function fetchSmtpConfigFromDb(): Promise<SmtpConfig> {
     const res = await fetch('/api/smtp');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.smtp && typeof data.smtp === 'object') {
+      if (data.success && data.smtp && typeof data.smtp === 'object' && Object.keys(data.smtp).length > 0) {
         cachedSmtp = {
           ...DEFAULT_SMTP_CONFIG,
           ...data.smtp,
         };
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[adminStorage] fetchSmtpConfigFromDb failed:', e);
+  }
   return cachedSmtp;
 }
-export function saveSmtpConfig(config: SmtpConfig): void {
-  cachedSmtp = config;
-  fetch('/api/smtp', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ smtp: config }),
-  }).catch(() => {});
+export async function saveSmtpConfig(config: SmtpConfig): Promise<{ success: boolean; smtp?: SmtpConfig; error?: string }> {
+  try {
+    const res = await fetch('/api/smtp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ smtp: config }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.smtp) {
+        cachedSmtp = {
+          ...DEFAULT_SMTP_CONFIG,
+          ...data.smtp,
+        };
+        return { success: true, smtp: cachedSmtp };
+      }
+      return { success: false, error: data.message || 'Saving SMTP config failed' };
+    }
+    return { success: false, error: `HTTP ${res.status} error` };
+  } catch (e: any) {
+    console.error('[adminStorage] saveSmtpConfig failed:', e);
+    return { success: false, error: e?.message || 'Network error' };
+  }
 }
 
 export function getEmailAlertSettings(): EmailAlertSettings { return cachedEmailAlerts; }
@@ -401,7 +419,7 @@ export async function fetchEmailAlertsFromDb(): Promise<EmailAlertSettings> {
     const res = await fetch('/api/email-alerts');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.alerts && typeof data.alerts === 'object') {
+      if (data.success && data.alerts && typeof data.alerts === 'object' && Object.keys(data.alerts).length > 0) {
         cachedEmailAlerts = {
           ...DEFAULT_EMAIL_ALERTS,
           ...data.alerts,
@@ -411,14 +429,35 @@ export async function fetchEmailAlertsFromDb(): Promise<EmailAlertSettings> {
         };
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[adminStorage] fetchEmailAlertsFromDb failed:', e);
+  }
   return cachedEmailAlerts;
 }
-export function saveEmailAlertSettings(settings: EmailAlertSettings): void {
-  cachedEmailAlerts = settings;
-  fetch('/api/email-alerts', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ alerts: settings }),
-  }).catch(() => {});
+export async function saveEmailAlertSettings(settings: EmailAlertSettings): Promise<{ success: boolean; alerts?: EmailAlertSettings; error?: string }> {
+  try {
+    const res = await fetch('/api/email-alerts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alerts: settings }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.alerts) {
+        cachedEmailAlerts = {
+          ...DEFAULT_EMAIL_ALERTS,
+          ...data.alerts,
+          recipientEmails: Array.isArray(data.alerts.recipientEmails)
+            ? data.alerts.recipientEmails
+            : DEFAULT_EMAIL_ALERTS.recipientEmails,
+        };
+        return { success: true, alerts: cachedEmailAlerts };
+      }
+      return { success: false, error: data.message || 'Saving Email Alerts failed' };
+    }
+    return { success: false, error: `HTTP ${res.status} error` };
+  } catch (e: any) {
+    console.error('[adminStorage] saveEmailAlertSettings failed:', e);
+    return { success: false, error: e?.message || 'Network error' };
+  }
 }
