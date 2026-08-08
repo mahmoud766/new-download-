@@ -105,6 +105,11 @@ export function Footer({
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">Legal & Support</h3>
             <ul className="space-y-1.5 text-xs">
               <li>
+                <button onClick={() => onOpenLegal('about')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                  About Us
+                </button>
+              </li>
+              <li>
                 <button onClick={() => onOpenLegal('privacy')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('privacyPolicy', currentLang)}
                 </button>
@@ -122,6 +127,11 @@ export function Footer({
               <li>
                 <button onClick={() => onOpenLegal('cookies')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
                   {t('cookiePolicy', currentLang)}
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onOpenLegal('disclaimer')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                  Disclaimer
                 </button>
               </li>
               <li>

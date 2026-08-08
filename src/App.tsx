@@ -22,6 +22,7 @@ import { Toast } from './components/Toast';
 import { PwaPrompt } from './components/PwaPrompt';
 import { CookieConsentBanner } from './components/CookieConsentBanner';
 import { TrendingDownloadsSection } from './components/TrendingDownloadsSection';
+import { PlatformLandingContent } from './components/PlatformLandingContent';
 
 // Lazy Loaded Off-Screen & Heavy Modal Components (Bundle Optimization)
 const AdminDashboard = lazy(() => import('./components/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
@@ -446,6 +447,15 @@ export default function App() {
 
               {/* Features List */}
               <FeaturesSection currentLang={currentLang} />
+
+              {/* Service-Specific Deep Landing Guide Content */}
+              <PlatformLandingContent
+                currentPlatform={currentPlatform}
+                currentLang={currentLang}
+                onSelectPlatform={handleSelectPlatform}
+                onOpenLegal={handleOpenLegal}
+                onOpenBlog={() => setActiveView('blog')}
+              />
 
               {/* FAQs with Schema */}
               <FAQSection currentLang={currentLang} platform={currentPlatform} />

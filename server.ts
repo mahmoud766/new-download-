@@ -144,9 +144,23 @@ async function startServer() {
   });
 
   // Serve Official Google AdSense ads.txt Authorized Sellers File
-  app.get('/ads.txt', (req: Request, res: Response) => {
+  app.get('/ads.txt', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+    res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
+    try {
+      const record = await prisma.globalSettings.findUnique({
+        where: { id: 'default' },
+        select: { adsenseClientId: true },
+      });
+      if (record?.adsenseClientId) {
+        const rawPub = record.adsenseClientId.replace('ca-pub-', '').replace('pub-', '').trim();
+        if (rawPub && rawPub !== '1234567890000000') {
+          return res.send(`google.com, pub-${rawPub}, DIRECT, f08c47fec0942fa0\n`);
+        }
+      }
+    } catch (e) {
+      // Fallback to static ads.txt file or default
+    }
     const adsTxtPath = path.join(process.cwd(), 'public', 'ads.txt');
     if (fs.existsSync(adsTxtPath)) {
       res.sendFile(adsTxtPath);
@@ -2514,8 +2528,9 @@ async function startServer() {
 
   // Dynamic Sitemap.xml
   app.get('/sitemap.xml', (req: Request, res: Response) => {
-    // STRICTLY ENFORCED PRODUCTION DOMAIN. DO NOT USE process.env.APP_URL OR GCP HOST.
-    const baseUrl = 'https://omnifetchpro.com';
+    const host = req.headers.host || 'omnidownloader-1000549238299.us-west1.run.app';
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = `${protocol}://${host}`;
     const routes = [
       '',
       '/tiktok',
@@ -2561,8 +2576,9 @@ ${routes
 
   // Dynamic Robots.txt
   app.get('/robots.txt', (req: Request, res: Response) => {
-    // STRICTLY ENFORCED PRODUCTION DOMAIN. DO NOT USE process.env.APP_URL OR GCP HOST.
-    const baseUrl = 'https://omnifetchpro.com';
+    const host = req.headers.host || 'omnidownloader-1000549238299.us-west1.run.app';
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const baseUrl = `${protocol}://${host}`;
     const content = `User-agent: *
 Allow: /
 Disallow: /admin
