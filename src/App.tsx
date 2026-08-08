@@ -4,6 +4,7 @@ import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './ty
 import { isRTL, detectUserLanguage } from './i18n/translations';
 import { getDownloadHistory, fetchSiteSettingsFromDb, initRealtimeSyncLoop } from './lib/storage';
 import { DEFAULT_SITE_SETTINGS } from './config/siteConfig';
+import { trackPageView } from './lib/analytics';
 
 // Critical On-Screen Components
 import { Navbar } from './components/Navbar';
@@ -112,6 +113,21 @@ export default function App() {
     checkPath();
     return () => window.removeEventListener('popstate', checkPath);
   }, []);
+
+  // GA4 SPA Page View Tracking (Public website only, strictly excludes admin)
+  useEffect(() => {
+    if (activeView !== 'admin') {
+      const pagePath =
+        activeView === 'home'
+          ? currentPlatform !== 'all'
+            ? `/${currentPlatform}`
+            : '/'
+          : activeView === 'legal'
+          ? `/legal/${legalType}`
+          : `/${activeView}`;
+      trackPageView(pagePath);
+    }
+  }, [activeView, currentPlatform, legalType]);
 
   // Result & Modals State
   const [currentResult, setCurrentResult] = useState<MediaResult | null>(null);

@@ -5,6 +5,7 @@ import { t } from '../i18n/translations';
 import { processVideoFetch } from '../lib/providers';
 import { saveToHistory } from '../lib/storage';
 import { recordRealExtraction } from '../lib/firebase';
+import { trackDownloadAttempt, trackDownloadSuccess, trackDownloadFailure } from '../lib/analytics';
 import {
   Download,
   Clipboard,
@@ -152,6 +153,7 @@ export function HeroDownloader({
     setLoading(true);
     setErrorMsg(null);
     onReset?.();
+    trackDownloadAttempt(currentPlatform);
 
     try {
       const result = await processVideoFetch(urlInput);
@@ -194,7 +196,9 @@ export function HeroDownloader({
       saveToHistory(result);
       recordRealExtraction(result);
       onResultFetched(result);
+      trackDownloadSuccess(result.platformName || result.platform);
     } catch (err: any) {
+      trackDownloadFailure(currentPlatform);
       const msg = err.message || t('errorFetchFailed', currentLang);
       setErrorMsg(msg);
       onError(msg);
