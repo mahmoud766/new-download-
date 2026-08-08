@@ -6,9 +6,12 @@ import { spawn } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import ytdl from '@distube/ytdl-core';
 import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import geminiRoutes from './server/geminiRoutes';
-import { extractMedia, ensureYtDlpBinary } from './server/extractors';
+import { extractMedia, ensureYtDlpBinary, getProviderSettingsFromDb } from './server/extractors';
 import { prisma } from './lib/prisma';
+import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 
 // Helper function to resolve YouTube direct downloadable file URLs (MP4 / MP3) via conversion engines
 async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: string = '720'): Promise<string | null> {
@@ -929,14 +932,83 @@ async function startServer() {
     }
   });
 
+  // Helper function to fetch or bootstrap Admin Users from Supabase PostgreSQL
+  async function getOrBootstrapAdminUsers(): Promise<any[]> {
+    let record = null;
+    try {
+      record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+    } catch (e) {
+      console.error('[DB Error] Failed to query globalSettings in getOrBootstrapAdminUsers:', e);
+    }
+
+    let users: any[] = [];
+    if (record && record.usersConfigJson) {
+      try {
+        users = JSON.parse(record.usersConfigJson);
+      } catch (e) {
+        users = [];
+      }
+    }
+
+    let hasHashedAdmin = users.some(
+      (u) => u && u.passwordHash && typeof u.passwordHash === 'string' && u.passwordHash.length > 10
+    );
+
+    if (!users || users.length === 0 || !hasHashedAdmin) {
+      const initialPassword = (process.env.ADMIN_SECURE_PASSWORD || 'omnifetch2026admin').trim();
+      const passwordHash = bcrypt.hashSync(initialPassword, 10);
+      const defaultEmail = (process.env.ADMIN_EMAIL || 'admin@omnifetchpro.com').trim().toLowerCase();
+
+      let updatedUsers = Array.isArray(users) ? [...users] : [];
+      const existingIndex = updatedUsers.findIndex(
+        (u) => u && u.email && u.email.toString().trim().toLowerCase() === defaultEmail
+      );
+
+      if (existingIndex >= 0) {
+        updatedUsers[existingIndex] = {
+          ...updatedUsers[existingIndex],
+          passwordHash,
+          status: 'Active',
+          role: updatedUsers[existingIndex].role || 'Admin',
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        updatedUsers.unshift({
+          id: 'u_admin_master',
+          name: 'Mahmoud Kamel',
+          email: defaultEmail,
+          passwordHash,
+          role: 'Admin',
+          status: 'Active',
+          lastLogin: new Date().toISOString(),
+          twoFactorEnabled: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      try {
+        await prisma.globalSettings.upsert({
+          where: { id: 'default' },
+          update: { usersConfigJson: JSON.stringify(updatedUsers) },
+          create: { id: 'default', usersConfigJson: JSON.stringify(updatedUsers) },
+        });
+      } catch (e) {
+        console.error('[DB Error] Failed to upsert default admin in getOrBootstrapAdminUsers:', e);
+      }
+
+      users = updatedUsers;
+    }
+
+    return users;
+  }
+
   app.get('/api/users', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
-      if (!record || !record.usersConfigJson) {
-        return res.json({ success: true, users: [] });
-      }
-      const users = JSON.parse(record.usersConfigJson);
-      return res.json({ success: true, users });
+      const dbUsers = await getOrBootstrapAdminUsers();
+      // Strip passwordHash & plaintext passwords so credentials are NEVER exposed to client
+      const sanitizedUsers = dbUsers.map(({ passwordHash, password, ...rest }) => rest);
+      return res.json({ success: true, users: sanitizedUsers });
     } catch (e: any) {
       console.error('[DB Error] PostgreSQL users query failed:', e?.message || e);
       return res.status(500).json({
@@ -949,16 +1021,62 @@ async function startServer() {
 
   app.post('/api/users', async (req: Request, res: Response) => {
     const { users } = req.body || {};
-    if (!users) {
+    if (!users || !Array.isArray(users)) {
       return res.status(400).json({ success: false, error: 'BAD_REQUEST', message: 'Users array is required' });
     }
     try {
+      const existingUsers = await getOrBootstrapAdminUsers();
+      const existingMap = new Map<string, any>();
+      existingUsers.forEach((u) => {
+        if (u && u.id) existingMap.set(u.id, u);
+        if (u && u.email) existingMap.set(u.email.toString().trim().toLowerCase(), u);
+      });
+
+      const updatedUsers = users.map((incomingUser: any) => {
+        const existing =
+          existingMap.get(incomingUser.id) ||
+          existingMap.get((incomingUser.email || '').toString().trim().toLowerCase());
+
+        let passwordHash = existing ? existing.passwordHash : null;
+
+        // Hash plaintext password if provided in request
+        if (
+          incomingUser.password &&
+          typeof incomingUser.password === 'string' &&
+          incomingUser.password.trim().length > 0
+        ) {
+          passwordHash = bcrypt.hashSync(incomingUser.password.trim(), 10);
+        } else if (!passwordHash) {
+          // Default hash for newly added user
+          passwordHash = bcrypt.hashSync('omnifetch2026admin', 10);
+        }
+
+        const { password, ...cleanProps } = incomingUser;
+        return {
+          ...cleanProps,
+          email: (cleanProps.email || '').toString().trim().toLowerCase(),
+          passwordHash,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
-        update: { usersConfigJson: JSON.stringify(users) },
-        create: { id: 'default', usersConfigJson: JSON.stringify(users) },
+        update: { usersConfigJson: JSON.stringify(updatedUsers) },
+        create: { id: 'default', usersConfigJson: JSON.stringify(updatedUsers) },
       });
-      return res.json({ success: true, users });
+
+      await prisma.auditLog.create({
+        data: {
+          action: 'USERS_UPDATED',
+          userEmail: 'admin',
+          details: `Updated ${updatedUsers.length} admin user records in Supabase PostgreSQL`,
+          ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+        },
+      }).catch(() => {});
+
+      const sanitizedUsers = updatedUsers.map(({ passwordHash, password, ...rest }: any) => rest);
+      return res.json({ success: true, users: sanitizedUsers });
     } catch (e: any) {
       console.error('[DB Error] PostgreSQL users update failed:', e?.message || e);
       return res.status(500).json({
@@ -1106,6 +1224,226 @@ async function startServer() {
     }
   });
 
+  // 12. Real Telemetry & Observability API Endpoints (Supabase PostgreSQL ApiTelemetry)
+  app.get('/api/admin/telemetry', async (req: Request, res: Response) => {
+    try {
+      // Query recent telemetry from Supabase PostgreSQL
+      const dbLogs = await prisma.apiTelemetry.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 250,
+      });
+
+      const inMemoryLogs = getInMemoryEvents();
+
+      // Combine DB logs with recent in-memory logs for zero-latency response
+      const combinedLogs: any[] = [...dbLogs];
+      for (const memLog of inMemoryLogs) {
+        if (!combinedLogs.some((l) => l.id === memLog.id)) {
+          combinedLogs.push({
+            id: memLog.id,
+            provider: memLog.provider,
+            platform: memLog.platform,
+            latencyMs: memLog.latencyMs,
+            success: memLog.success,
+            statusCode: memLog.statusCode || (memLog.success ? 200 : 500),
+            errorMessage: memLog.errorMessage || null,
+            targetUrl: memLog.targetUrl || null,
+            createdAt: new Date(memLog.createdAt),
+          });
+        }
+      }
+
+      // Sort by newest first
+      combinedLogs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      // Defined production extractors / providers list
+      const knownProviders = [
+        { id: 'yt-dlp Native', name: 'yt-dlp Native Extractor', category: 'Extractor Engine', platform: 'YouTube', isPrimary: true },
+        { id: 'ytdl-core', name: 'ytdl-core InnerTube', category: 'Node Native', platform: 'YouTube', isPrimary: false },
+        { id: 'Loader.to CDN', name: 'Loader.to CDN Engine', category: 'CDN Conversion', platform: 'YouTube', isPrimary: false },
+        { id: 'Cobalt API', name: 'Cobalt Multi-Node API', category: 'External Engine', platform: 'Multi-Platform', isPrimary: true },
+        { id: 'TikWM API', name: 'TikWM HD TikTok API', category: 'TikTok Extractor', platform: 'TikTok', isPrimary: true },
+        { id: 'yt-dlp TikTok', name: 'yt-dlp TikTok Engine', category: 'TikTok Extractor', platform: 'TikTok', isPrimary: false },
+        { id: 'Instagram Mirrors', name: 'Instagram HTML & Mirrors', category: 'HTML Mirror Scraper', platform: 'Instagram', isPrimary: true },
+        { id: 'FB Plugin Scraper', name: 'FB Plugin Embed Scraper', category: 'Facebook Scraper', platform: 'Facebook', isPrimary: true },
+        { id: 'yt-dlp Facebook', name: 'yt-dlp Facebook Engine', category: 'Facebook Extractor', platform: 'Facebook', isPrimary: false },
+        { id: 'Cobalt / VKR API', name: 'Cobalt / VKR Facebook API', category: 'External Engine', platform: 'Facebook', isPrimary: false },
+        { id: 'OpenGraph Scraper', name: 'OpenGraph Fallback Scraper', category: 'Metadata Scraper', platform: 'General', isPrimary: false },
+      ];
+
+      // Aggregate live stats per provider
+      const providerStats = knownProviders.map((p) => {
+        const logsForProvider = combinedLogs.filter((l) => l.provider === p.id || l.provider.toLowerCase().includes(p.id.toLowerCase()));
+        const totalReqs = logsForProvider.length;
+        const successReqs = logsForProvider.filter((l) => l.success).length;
+        const successRate = totalReqs > 0 ? Math.round((successReqs / totalReqs) * 100) : 100;
+        const avgLatency = totalReqs > 0 ? Math.round(logsForProvider.reduce((sum, l) => sum + (l.latencyMs || 0), 0) / totalReqs) : 120;
+        const lastLog = logsForProvider[0];
+        const status = totalReqs === 0 ? 'Optimal' : successRate >= 90 ? 'Optimal' : successRate >= 60 ? 'Degraded' : 'Down';
+
+        return {
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          platform: p.platform,
+          isPrimary: p.isPrimary,
+          status,
+          successRatePercent: successRate,
+          avgLatencyMs: avgLatency,
+          totalRequests: totalReqs,
+          successRequests: successReqs,
+          failedRequests: totalReqs - successReqs,
+          lastStatusCode: lastLog ? lastLog.statusCode : 200,
+          lastErrorMessage: lastLog ? lastLog.errorMessage : null,
+          lastChecked: lastLog ? lastLog.createdAt : new Date().toISOString(),
+        };
+      });
+
+      return res.json({
+        success: true,
+        stats: providerStats,
+        recentLogs: combinedLogs.slice(0, 100),
+        totalTelemetryCount: combinedLogs.length,
+      });
+    } catch (e: any) {
+      console.error('[DB Error] Telemetry query failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'Telemetry DB error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
+  // Health-check trigger for safe, verified probes (NO SSRF allowed)
+  app.post('/api/admin/telemetry/health-check', async (req: Request, res: Response) => {
+    const { providerId } = req.body || {};
+    const startTime = Date.now();
+
+    // Map provider to safe static health probe targets (Official oEmbed / Status probes ONLY)
+    const probeTargets: Record<string, { url: string; platform: string; providerName: string }> = {
+      'TikWM API': { url: 'https://www.tikwm.com/api/', platform: 'TikTok', providerName: 'TikWM API' },
+      'ytdl-core': { url: 'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=jNQXAC9IVRw&format=json', platform: 'YouTube', providerName: 'ytdl-core' },
+      'yt-dlp Native': { url: 'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=jNQXAC9IVRw&format=json', platform: 'YouTube', providerName: 'yt-dlp Native' },
+      'Cobalt API': { url: 'https://api.cobalt.tools/api/json', platform: 'Multi-Platform', providerName: 'Cobalt API' },
+      'Instagram Mirrors': { url: 'https://www.instagram.com/oembed/?url=https://www.instagram.com/p/C0x00000000/', platform: 'Instagram', providerName: 'Instagram Mirrors' },
+      'FB Plugin Scraper': { url: 'https://www.facebook.com/plugins/video.php?href=https://www.facebook.com/facebook/videos/10153231379946729/&show_text=false', platform: 'Facebook', providerName: 'FB Plugin Scraper' },
+    };
+
+    const target = probeTargets[providerId] || probeTargets['ytdl-core'];
+
+    try {
+      const probeRes = await fetch(target.url, {
+        method: target.providerName === 'Cobalt API' ? 'POST' : 'GET',
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      });
+
+      const latencyMs = Date.now() - startTime;
+      const isOk = probeRes.status < 500;
+
+      recordTelemetry({
+        provider: target.providerName,
+        platform: target.platform,
+        latencyMs,
+        success: isOk,
+        statusCode: probeRes.status,
+        targetUrl: 'HEALTH_CHECK_PROBE',
+      });
+
+      return res.json({
+        success: true,
+        providerId: target.providerName,
+        statusCode: probeRes.status,
+        latencyMs,
+        status: isOk ? 'Optimal' : 'Degraded',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      recordTelemetry({
+        provider: target.providerName,
+        platform: target.platform,
+        latencyMs,
+        success: false,
+        statusCode: 502,
+        errorMessage: err?.message || 'Health probe failed',
+        targetUrl: 'HEALTH_CHECK_PROBE',
+      });
+
+      return res.json({
+        success: false,
+        providerId: target.providerName,
+        statusCode: 502,
+        latencyMs,
+        status: 'Down',
+        errorMessage: err?.message || 'Probe error',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  // 13. Dynamic Provider Settings Management API (Supabase PostgreSQL ProviderSetting)
+  app.get('/api/admin/providers', async (req: Request, res: Response) => {
+    try {
+      const providers = await getProviderSettingsFromDb();
+      return res.json({ success: true, providers });
+    } catch (e: any) {
+      console.error('[DB Error] ProviderSettings query failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'ProviderSettings DB error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
+  app.post('/api/admin/providers', async (req: Request, res: Response) => {
+    try {
+      const { providerKey, enabled, priority, name, type, platform } = req.body || {};
+      if (!providerKey) {
+        return res.status(400).json({ success: false, error: 'providerKey is required' });
+      }
+
+      const updated = await prisma.providerSetting.upsert({
+        where: { providerKey: String(providerKey) },
+        update: {
+          ...(enabled !== undefined && { enabled: Boolean(enabled) }),
+          ...(priority !== undefined && { priority: Number(priority) }),
+          ...(name && { name: String(name) }),
+          ...(type && { type: String(type) }),
+          ...(platform && { platform: String(platform) }),
+          updatedAt: new Date(),
+        },
+        create: {
+          providerKey: String(providerKey),
+          name: name ? String(name) : String(providerKey),
+          type: type ? String(type) : 'Extractor Engine',
+          platform: platform ? String(platform) : 'Multi-Platform',
+          enabled: enabled !== undefined ? Boolean(enabled) : true,
+          priority: priority !== undefined ? Number(priority) : 1,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          action: 'UPDATE_PROVIDER_SETTING',
+          userEmail: 'admin@omnifetchpro.com',
+          details: `Updated provider ${providerKey}: enabled=${updated.enabled}, priority=${updated.priority}`,
+          ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+        },
+      }).catch(() => {});
+
+      return res.json({ success: true, provider: updated });
+    } catch (e: any) {
+      console.error('[DB Error] ProviderSetting update failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'ProviderSetting DB write error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
   // 11. User Analytics Endpoint for Admin Dashboard (NO FABRICATED NUMBERS)
   app.get('/api/analytics', async (req: Request, res: Response) => {
     try {
@@ -1136,23 +1474,198 @@ async function startServer() {
     }
   });
 
-  // Admin Login Endpoint
-  app.post('/api/admin/login', (req: Request, res: Response) => {
-    const { password } = req.body || {};
-    const adminPassword = process.env.ADMIN_SECURE_PASSWORD || 'omnifetch2026admin';
-    const validPasswords = ['omnifetch2026admin', 'omnifetch2026', '998877', 'admin99', adminPassword.trim()];
+  // Admin Login Endpoint - Authenticates against Supabase PostgreSQL using bcrypt password hash
+  app.post('/api/admin/login', async (req: Request, res: Response) => {
+    try {
+      const { email, username, password } = req.body || {};
+      const inputPassword = (password || '').toString().trim();
 
-    if (password && typeof password === 'string' && validPasswords.includes(password.trim())) {
-      res.cookie('admin_session', 'authenticated', {
+      if (!inputPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'BAD_REQUEST',
+          message: 'كلمة المرور مطلوبة (Password is required)',
+        });
+      }
+
+      const dbUsers = await getOrBootstrapAdminUsers();
+      const inputIdentity = (email || username || '').toString().trim().toLowerCase();
+
+      let targetUser: any = null;
+
+      if (inputIdentity) {
+        targetUser = dbUsers.find(
+          (u) => u && u.email && u.email.toString().trim().toLowerCase() === inputIdentity
+        );
+      } else {
+        // Find user by testing password hash against active users in DB
+        targetUser = dbUsers.find(
+          (u) =>
+            u &&
+            u.status === 'Active' &&
+            u.passwordHash &&
+            bcrypt.compareSync(inputPassword, u.passwordHash)
+        );
+      }
+
+      if (!targetUser || !targetUser.passwordHash) {
+        await prisma.auditLog.create({
+          data: {
+            action: 'LOGIN_FAILED',
+            userEmail: inputIdentity || 'unknown',
+            details: 'Failed admin login attempt: user not found or no password hash',
+            ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+          },
+        }).catch(() => {});
+
+        return res.status(401).json({
+          success: false,
+          error: 'INVALID_CREDENTIALS',
+          message: 'اسم المستخدم أو كلمة المرور غير صحيحة (Invalid credentials)',
+        });
+      }
+
+      if (targetUser.status && targetUser.status !== 'Active') {
+        await prisma.auditLog.create({
+          data: {
+            action: 'LOGIN_FAILED',
+            userEmail: targetUser.email,
+            details: `Failed admin login attempt: account is disabled (${targetUser.status})`,
+            ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+          },
+        }).catch(() => {});
+
+        return res.status(403).json({
+          success: false,
+          error: 'ACCOUNT_DISABLED',
+          message: 'حساب المسؤول معطّل حالياً (Admin account disabled)',
+        });
+      }
+
+      const passwordMatches = bcrypt.compareSync(inputPassword, targetUser.passwordHash);
+
+      if (!passwordMatches) {
+        await prisma.auditLog.create({
+          data: {
+            action: 'LOGIN_FAILED',
+            userEmail: targetUser.email,
+            details: 'Failed admin login attempt: invalid password',
+            ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+          },
+        }).catch(() => {});
+
+        return res.status(401).json({
+          success: false,
+          error: 'INVALID_CREDENTIALS',
+          message: 'كلمة المرور غير صحيحة (Invalid password)',
+        });
+      }
+
+      // Success: update lastLogin in Supabase PostgreSQL
+      targetUser.lastLogin = new Date().toISOString();
+      await prisma.globalSettings.upsert({
+        where: { id: 'default' },
+        update: { usersConfigJson: JSON.stringify(dbUsers) },
+        create: { id: 'default', usersConfigJson: JSON.stringify(dbUsers) },
+      }).catch(() => {});
+
+      await prisma.auditLog.create({
+        data: {
+          action: 'LOGIN_SUCCESS',
+          userEmail: targetUser.email,
+          details: `Successful admin login for ${targetUser.email}`,
+          ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+        },
+      }).catch(() => {});
+
+      res.cookie('admin_session', JSON.stringify({
+        userId: targetUser.id,
+        email: targetUser.email,
+        role: targetUser.role,
+        authenticatedAt: new Date().toISOString(),
+      }), {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 86400 * 7 * 1000,
         path: '/',
       });
-      return res.json({ success: true });
+
+      const { passwordHash, password: _rawPass, ...safeUser } = targetUser;
+      return res.json({
+        success: true,
+        message: 'تم تسجيل الدخول بنجاح',
+        user: safeUser,
+      });
+    } catch (e: any) {
+      console.error('[AUTH ERROR] Admin login error:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'SERVER_ERROR',
+        message: 'An internal error occurred during authentication',
+      });
     }
-    return res.status(401).json({ success: false, error: 'كلمة المرور غير صحيحة (Invalid password)' });
+  });
+
+  // Admin Password Change Endpoint
+  app.post('/api/admin/change-password', async (req: Request, res: Response) => {
+    try {
+      const { userId, email, currentPassword, newPassword } = req.body || {};
+      const cleanNewPassword = (newPassword || '').toString().trim();
+
+      if (!cleanNewPassword || cleanNewPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'WEAK_PASSWORD',
+          message: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل',
+        });
+      }
+
+      const dbUsers = await getOrBootstrapAdminUsers();
+      const targetUser = dbUsers.find(
+        (u) =>
+          (userId && u.id === userId) ||
+          (email && u.email && u.email.toString().trim().toLowerCase() === email.toString().trim().toLowerCase())
+      );
+
+      if (!targetUser) {
+        return res.status(404).json({ success: false, error: 'USER_NOT_FOUND', message: 'المستخدم غير موجود' });
+      }
+
+      if (currentPassword) {
+        const validCurrent = bcrypt.compareSync(currentPassword.toString().trim(), targetUser.passwordHash);
+        if (!validCurrent) {
+          return res.status(400).json({
+            success: false,
+            error: 'INVALID_CURRENT_PASSWORD',
+            message: 'كلمة المرور الحالية غير صحيحة',
+          });
+        }
+      }
+
+      targetUser.passwordHash = bcrypt.hashSync(cleanNewPassword, 10);
+      targetUser.updatedAt = new Date().toISOString();
+
+      await prisma.globalSettings.upsert({
+        where: { id: 'default' },
+        update: { usersConfigJson: JSON.stringify(dbUsers) },
+        create: { id: 'default', usersConfigJson: JSON.stringify(dbUsers) },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          action: 'PASSWORD_CHANGED',
+          userEmail: targetUser.email,
+          details: `Password changed for user ${targetUser.email} in Supabase PostgreSQL`,
+          ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+        },
+      }).catch(() => {});
+
+      return res.json({ success: true, message: 'تم تغيير كلمة المرور وحفظها في قاعدة البيانات بنجاح' });
+    } catch (e: any) {
+      console.error('[AUTH ERROR] Change password failed:', e?.message || e);
+      return res.status(500).json({ success: false, error: 'SERVER_ERROR', message: e?.message || 'Server error' });
+    }
   });
 
   // Admin Logout Endpoint
@@ -1173,9 +1686,29 @@ async function startServer() {
 
       const cleanUrl = url.trim();
       const lowerUrl = cleanUrl.toLowerCase();
+      const requestId = randomUUID();
 
-      // Execute local extraction engine (youtube-dl-exec primary)
-      const extraction = await extractMedia(cleanUrl);
+      // Execute multi-tier extraction pipeline with requestId and dynamic DB provider settings
+      const extraction = await extractMedia(cleanUrl, requestId);
+
+      if (extraction.status === 'FAILED' && (extraction.httpStatus === 503 || extraction.reason === 'PROVIDER_CONFIG_UNAVAILABLE' || extraction.reason === 'NO_ENABLED_PROVIDERS')) {
+        const isDbUnavailable = extraction.reason === 'PROVIDER_CONFIG_UNAVAILABLE';
+        return res.status(503).json({
+          success: false,
+          requestId,
+          error: isDbUnavailable ? 'PROVIDER_CONFIG_UNAVAILABLE' : (extraction.reason || 'NO_ENABLED_PROVIDERS'),
+          message: isDbUnavailable
+            ? 'Provider configuration is temporarily unavailable.'
+            : 'All extraction providers for this platform have been disabled in Admin Provider Settings.',
+          debug: {
+            extractionStatus: 'FAILED',
+            extractionReason: extraction.reason,
+            targetUrl: cleanUrl,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
       if (extraction.status === 'SUCCESS' && (extraction.video_url || extraction.formats?.length)) {
         const title = extraction.title || 'OmniFetch Media';
         const thumbnail = extraction.thumbnail || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&q=80';
@@ -1192,8 +1725,25 @@ async function startServer() {
 
         const forceProxyFlag = Boolean(extraction.forceProxy || platformName === 'YouTube');
 
+        // Record correlated DownloadLog entry in Supabase PostgreSQL
+        prisma.downloadLog.create({
+          data: {
+            requestId,
+            url: cleanUrl,
+            title,
+            platform: platformName,
+            thumbnail,
+            quality: 'HD No Watermark',
+            ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
+            downloadCount: 1,
+          },
+        }).catch((dbErr) => {
+          console.error('[DownloadLog DB Error]', dbErr?.message || dbErr);
+        });
+
         return res.json({
           success: true,
+          requestId,
           data: {
             id: `media_${Date.now()}`,
             originalUrl: cleanUrl,
@@ -1236,6 +1786,7 @@ async function startServer() {
             ],
           },
           debug: {
+            requestId,
             extractionStatus: extraction.status,
             extractionMethod: 'local_extractors_multi_tier',
             targetUrl: cleanUrl,

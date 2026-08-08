@@ -32,32 +32,24 @@ export const SecretAdminAccessGateModal: React.FC<Props> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: cleanPin }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          sessionStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
-          localStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
-          onShowToast(isRtl ? 'تم تسجيل الدخول بنجاح وإلغاء قفل لوحة التحكم!' : 'Secret admin route unlocked successfully!');
-          onUnlocked();
-          return;
-        }
+      const data = await res.json();
+      if (res.ok && data.success) {
+        sessionStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
+        localStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
+        onShowToast(isRtl ? 'تم تسجيل الدخول بنجاح وإلغاء قفل لوحة التحكم!' : 'Secret admin route unlocked successfully!');
+        onUnlocked();
+        return;
+      } else {
+        setErrorMsg(
+          data.message ||
+            (isRtl
+              ? 'كلمة المرور غير صحيحة! يرجى إدخال كلمة المرور المناسبة للمسؤول.'
+              : 'Invalid Admin Security Password/PIN!')
+        );
       }
-    } catch (e) {
-      console.warn('API login fallback to local check:', e);
-    }
-
-    if (
-      cleanPin === '998877' ||
-      cleanPin === 'admin99' ||
-      cleanPin === 'omnifetch2026' ||
-      cleanPin === 'omnifetch2026admin'
-    ) {
-      sessionStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
-      localStorage.setItem('omnifetch_admin_secret_unlocked', 'true');
-      onShowToast(isRtl ? 'تم فك تشفير المسار السري وفتح لوحة الإدارة بنجاح!' : 'Secret admin route unlocked successfully!');
-      onUnlocked();
-    } else {
-      setErrorMsg(isRtl ? 'كلمة المرور غير صحيحة! يرجى إدخال كلمة المرور المناسبة للمسؤول.' : 'Invalid Admin Security Password/PIN!');
+    } catch (e: any) {
+      console.error('API login error:', e);
+      setErrorMsg(isRtl ? 'خطأ في الاتصال بقاعدة البيانات لتوثيق المستخدم' : 'Database authentication connection error');
     }
   };
 

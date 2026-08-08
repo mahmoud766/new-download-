@@ -104,6 +104,7 @@ model SeoTranslations {
 
 model DownloadLog {
   id            String   @id @default(cuid())
+  requestId     String?
   url           String
   title         String
   platform      String
@@ -114,6 +115,7 @@ model DownloadLog {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@index([requestId])
   @@index([platform])
   @@index([url])
 }
@@ -125,4 +127,39 @@ model UserAnalytics {
   ipAddress String?
   country   String?
   createdAt DateTime @default(now())
+}
+
+model ApiTelemetry {
+  id            String   @id @default(cuid())
+  requestId     String?
+  provider      String
+  platform      String
+  latencyMs     Int
+  success       Boolean
+  statusCode    Int?     @default(200)
+  errorMessage  String?
+  targetUrl     String?
+  createdAt     DateTime @default(now())
+
+  @@index([requestId])
+  @@index([provider, createdAt])
+  @@index([platform, createdAt])
+  @@index([createdAt])
+}
+
+model ProviderSetting {
+  id           String   @id @default(cuid())
+  providerKey  String   @unique
+  name         String
+  type         String   @default("Extractor Engine")
+  platform     String   @default("Multi-Platform")
+  endpoint     String?  @default("")
+  enabled      Boolean  @default(true)
+  priority     Int      @default(1)
+  autoFailover Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([platform])
+  @@index([enabled])
 }

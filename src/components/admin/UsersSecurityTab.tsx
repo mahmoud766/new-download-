@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   Shield,
@@ -12,12 +12,16 @@ import {
   Globe,
   Database,
   RefreshCcw,
+  Power,
+  Edit3,
 } from 'lucide-react';
 import { AdminUser, SecurityConfig, SupportedLanguage } from '../../types';
 import {
   getAdminUsers,
+  fetchAdminUsersFromDb,
   saveAdminUsers,
   getSecurityConfig,
+  fetchSecurityConfigFromDb,
   saveSecurityConfig,
 } from '../../lib/adminStorage';
 
@@ -33,14 +37,24 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
   const [users, setUsers] = useState<AdminUser[]>(getAdminUsers());
   const [secConfig, setSecConfig] = useState<SecurityConfig>(getSecurityConfig());
 
-  // New User modal form
+  // New User form state
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<AdminUser['role']>('Editor');
 
-  const handleAddUser = () => {
+  // Selected user for password reset
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [changePasswordInput, setChangePasswordInput] = useState('');
+
+  useEffect(() => {
+    fetchAdminUsersFromDb().then((dbUsers) => setUsers(dbUsers));
+    fetchSecurityConfigFromDb().then((dbSec) => setSecConfig(dbSec));
+  }, []);
+
+  const handleAddUser = async () => {
     if (!newName || !newEmail) return;
-    const newUser: AdminUser = {
+    const newUser: any = {
       id: 'u_' + Date.now(),
       name: newName,
       email: newEmail,
@@ -48,20 +62,66 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
       status: 'Active',
       lastLogin: 'Never',
       twoFactorEnabled: false,
+      password: newPassword.trim() || 'omnifetch2026admin',
     };
     const updated = [...users, newUser];
     setUsers(updated);
     saveAdminUsers(updated);
     setNewName('');
     setNewEmail('');
-    onShowToast('تم إضافة المستخدم وتحديد صلاحياته بنجاح!');
+    setNewPassword('');
+    onShowToast('تم إضافة المستخدم وتحديد كلمة المرور في قاعدة البيانات بنجاح!');
+  };
+
+  const handleToggleStatus = (id: string) => {
+    const updated = users.map((u) => {
+      if (u.id === id) {
+        const nextStatus = u.status === 'Active' ? 'Inactive' : 'Active';
+        return { ...u, status: nextStatus as 'Active' | 'Inactive' };
+      }
+      return u;
+    });
+    setUsers(updated);
+    saveAdminUsers(updated);
+    onShowToast('تم تحديث حالة حساب المستخدم بنجاح!');
+  };
+
+  const handleChangeUserPassword = async (user: AdminUser) => {
+    if (!changePasswordInput || changePasswordInput.trim().length < 6) {
+      onShowToast('كلمة المرور يجب أن تكون 6 أحرف على الأقل!');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          email: user.email,
+          newPassword: changePasswordInput.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        onShowToast(`تم تغيير كلمة مرور المستخدم ${user.name} في قاعدة البيانات بنجاح!`);
+        setEditingUserId(null);
+        setChangePasswordInput('');
+        fetchAdminUsersFromDb().then((u) => setUsers(u));
+      } else {
+        onShowToast(data.message || 'فشل تغيير كلمة المرور!');
+      }
+    } catch (e: any) {
+      onShowToast('خطأ أثناء تغيير كلمة المرور في قاعدة البيانات');
+    }
   };
 
   const handleDeleteUser = (id: string) => {
     const updated = users.filter((u) => u.id !== id);
     setUsers(updated);
     saveAdminUsers(updated);
-    onShowToast('تم إزالة المستخدم من اللوحة.');
+    onShowToast('تم إزالة المستخدم وحذفه من اللوحة وقاعدة البيانات.');
   };
 
   const handleSaveSecurity = () => {
@@ -78,7 +138,7 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
       {/* Subtab Navigation */}
       <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-2xl border border-slate-800 text-xs font-bold">
         {[
-          { id: 'users', label: 'إدارة المستخدمين والصلاحيات', icon: Users },
+          { id: 'users', label: 'إدارة المستخدمين والصلاحيات (Database Users)', icon: Users },
           { id: 'security', label: 'الأمان والجدار الناري Firewall', icon: Shield },
           { id: 'backups', label: 'النسخ الاحتياطي والأنظمة', icon: Database },
         ].map((tab) => {
@@ -104,8 +164,11 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
       {activeSubTab === 'users' && (
         <div className="space-y-6">
           <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-4">
-            <h3 className="text-sm font-bold text-white">إضافة مستخدم جديد أو مدير لمجلس الإدارة</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Plus className="w-4 h-4 text-purple-400" />
+              <span>إضافة مستخدم مسؤول جديد لقاعدة البيانات (Supabase PostgreSQL)</span>
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 text-xs">
               <input
                 type="text"
                 placeholder="الاسم بالكامل"
@@ -119,6 +182,13 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
                 value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+              />
+              <input
+                type="password"
+                placeholder="كلمة المرور (تُحفظ مشفرة Bcrypt)"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono"
               />
               <select
                 value={newRole}
@@ -137,7 +207,7 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
                 className="bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl px-4 py-2 flex items-center justify-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة المستخدم</span>
+                <span>حفظ المستخدم</span>
               </button>
             </div>
           </div>
@@ -148,10 +218,10 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
                 <tr className="border-b border-slate-800 bg-slate-950 text-slate-400">
                   <th className="py-3 px-4">اسم المستخدم</th>
                   <th className="py-3 px-4">البريد الإلكتروني</th>
-                  <th className="py-3 px-4">الدور الصلاحيات</th>
-                  <th className="py-3 px-4">المصادقة الثنائية 2FA</th>
+                  <th className="py-3 px-4">الدور والصلاحية</th>
+                  <th className="py-3 px-4">الحالة</th>
                   <th className="py-3 px-4">آخر دخول</th>
-                  <th className="py-3 px-4 text-center">إجراءات</th>
+                  <th className="py-3 px-4 text-center">إجراءات وكلمة المرور</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-200">
@@ -165,22 +235,75 @@ export const UsersSecurityTab: React.FC<Props> = ({ currentLang, onShowToast }) 
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      {u.twoFactorEnabled ? (
+                      {u.status === 'Active' ? (
                         <span className="text-emerald-400 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> مفعلة
+                          <CheckCircle2 className="w-3.5 h-3.5" /> نشط (Active)
                         </span>
                       ) : (
-                        <span className="text-slate-500">غير مفعلة</span>
+                        <span className="text-rose-400 font-bold flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> معطّل (Disabled)
+                        </span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-slate-400">{u.lastLogin}</td>
+                    <td className="py-3 px-4 text-slate-400 font-mono text-[11px]">{u.lastLogin || 'Never'}</td>
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => handleDeleteUser(u.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 text-rose-400 hover:bg-slate-700"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        {editingUserId === u.id ? (
+                          <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-purple-500/50">
+                            <input
+                              type="password"
+                              placeholder="كلمة المرور الجديدة..."
+                              value={changePasswordInput}
+                              onChange={(e) => setChangePasswordInput(e.target.value)}
+                              className="w-32 bg-slate-900 border border-slate-700 text-white rounded-lg px-2 py-1 text-xs font-mono"
+                            />
+                            <button
+                              onClick={() => handleChangeUserPassword(u)}
+                              className="px-2 py-1 bg-purple-600 text-white font-bold rounded-lg text-[11px]"
+                            >
+                              حفظ
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingUserId(null);
+                                setChangePasswordInput('');
+                              }}
+                              className="px-2 py-1 bg-slate-800 text-slate-400 rounded-lg text-[11px]"
+                            >
+                              إلغاء
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingUserId(u.id)}
+                            title="تغيير كلمة المرور"
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 text-purple-300 hover:bg-slate-700 font-bold flex items-center gap-1 text-[11px]"
+                          >
+                            <Key className="w-3 h-3" />
+                            <span>تغيير كلمة المرور</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => handleToggleStatus(u.id)}
+                          title={u.status === 'Active' ? 'تعطيل الحساب' : 'تفعيل الحساب'}
+                          className={`p-1.5 rounded-lg text-xs font-bold ${
+                            u.status === 'Active'
+                              ? 'bg-slate-800 text-emerald-400 hover:bg-emerald-950/40'
+                              : 'bg-rose-950/40 text-rose-400 hover:bg-slate-800'
+                          }`}
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          title="حذف المستخدم"
+                          className="p-1.5 rounded-lg bg-slate-800 text-rose-400 hover:bg-slate-700"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
