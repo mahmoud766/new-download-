@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { spawn } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import ytdl from '@distube/ytdl-core';
+import nodemailer from 'nodemailer';
 import geminiRoutes from './server/geminiRoutes';
 import { extractMedia, ensureYtDlpBinary } from './server/extractors';
 import { prisma } from './lib/prisma';
@@ -746,13 +747,145 @@ async function startServer() {
   });
 
   app.post('/api/admin/email/test', async (req: Request, res: Response) => {
-    const { host, port, recipient, testType } = req.body || {};
-    return res.json({
-      success: true,
-      message: `Test dispatch [${testType || 'Connection Test'}] dispatched successfully to ${recipient || 'admin'} via ${host || 'SMTP'}:${port || 587}`,
-      timestamp: new Date().toISOString(),
-      latencyMs: Math.floor(80 + Math.random() * 40),
-    });
+    const startTime = Date.now();
+    const { recipient, testType } = req.body || {};
+
+    if (!recipient || typeof recipient !== 'string' || !recipient.trim().includes('@')) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMTP_INVALID_RECIPIENT',
+        message: 'A valid recipient email address is required for testing.',
+      });
+    }
+
+    try {
+      // 1. Fetch current saved SMTP configuration from Supabase PostgreSQL GlobalSettings
+      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (!record || !record.smtpConfigJson) {
+        return res.status(400).json({
+          success: false,
+          error: 'SMTP_NOT_CONFIGURED',
+          message: 'No SMTP configuration found in database. Please save SMTP settings first.',
+        });
+      }
+
+      let dbSmtp: any = {};
+      try {
+        dbSmtp = JSON.parse(record.smtpConfigJson);
+      } catch (e) {}
+
+      if (!dbSmtp || typeof dbSmtp !== 'object' || Object.keys(dbSmtp).length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'SMTP_NOT_CONFIGURED',
+          message: 'Database SMTP configuration is empty. Please save SMTP settings first.',
+        });
+      }
+
+      const transportHost = dbSmtp.host || dbSmtp.smtpHost;
+      const transportPort = Number(dbSmtp.port || dbSmtp.smtpPort) || 587;
+      const transportUser = dbSmtp.user || dbSmtp.smtpUser || dbSmtp.username;
+      const transportPass = dbSmtp.pass || dbSmtp.password || dbSmtp.smtpPass;
+      const isSecure = dbSmtp.secure !== undefined ? Boolean(dbSmtp.secure) : (transportPort === 465);
+      const senderName = dbSmtp.senderName || dbSmtp.fromName || 'OmniFetch Pro';
+      const senderEmail = dbSmtp.senderEmail || dbSmtp.fromEmail || transportUser || 'noreply@omnifetchpro.com';
+
+      if (!transportHost || !transportUser || !transportPass) {
+        return res.status(400).json({
+          success: false,
+          error: 'SMTP_INCOMPLETE_CONFIG',
+          message: 'SMTP host, username, and password are required in database settings.',
+        });
+      }
+
+      console.log(`[SMTP TEST] Attempting connection to ${transportHost}:${transportPort} (secure: ${isSecure}, user: ${transportUser}, sender: ${senderEmail}, recipient: ${recipient})`);
+
+      // 2. Create Nodemailer transport with saved credentials
+      const transporter = nodemailer.createTransport({
+        host: transportHost,
+        port: transportPort,
+        secure: isSecure,
+        auth: {
+          user: transportUser,
+          pass: transportPass,
+        },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 20000,
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
+
+      // 3. Verify SMTP Connection & Authentication
+      try {
+        await transporter.verify();
+        console.log(`[SMTP TEST] Connection and Auth Verification successful for ${transportHost}`);
+      } catch (verifyErr: any) {
+        console.error('[SMTP TEST VERIFY FAILED]', verifyErr?.message || verifyErr);
+        return res.status(400).json({
+          success: false,
+          error: 'SMTP_AUTH_FAILED',
+          message: `SMTP Connection / Authentication Failed: ${verifyErr?.message || 'Failed to authenticate with SMTP server'}`,
+        });
+      }
+
+      // 4. Send Test Email
+      const targetRecipient = recipient.trim();
+      const mailOptions = {
+        from: `"${senderName}" <${senderEmail}>`,
+        to: targetRecipient,
+        subject: `OmniFetch Pro — SMTP Test Email (${testType || 'Connection Test'})`,
+        text: `This is an automated SMTP test email from OmniFetch Pro.\n\nTest Type: ${testType || 'Connection Test'}\nServer Timestamp: ${new Date().toISOString()}\nSMTP Host: ${transportHost}:${transportPort}\nSender: ${senderEmail}\nRecipient: ${targetRecipient}\n\nIf you received this message, your SMTP server accepted the delivery request.`,
+        html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 24px; background-color: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #9333ea; margin-top: 0; font-size: 20px;">OmniFetch Pro — SMTP Delivery Test</h2>
+          <p style="color: #334155; font-size: 15px; line-height: 1.5;">This is a real test email dispatched from your <strong>OmniFetch Pro</strong> administration system.</p>
+          <div style="background: #ffffff; padding: 16px; border-radius: 8px; border: 1px solid #cbd5e1; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #1e293b;">
+              <tr><td style="padding: 6px 0; font-weight: bold; width: 140px;">Test Type:</td><td style="padding: 6px 0;">${testType || 'Connection Test'}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Timestamp:</td><td style="padding: 6px 0;">${new Date().toISOString()}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">SMTP Host:</td><td style="padding: 6px 0;">${transportHost}:${transportPort}</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Sender:</td><td style="padding: 6px 0;">"${senderName}" &lt;${senderEmail}&gt;</td></tr>
+              <tr><td style="padding: 6px 0; font-weight: bold;">Recipient:</td><td style="padding: 6px 0;">${targetRecipient}</td></tr>
+            </table>
+          </div>
+          <p style="color: #16a34a; font-size: 14px; font-weight: 600; margin-bottom: 0;">✓ Test email accepted by SMTP server successfully.</p>
+        </div>`,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      const latencyMs = Date.now() - startTime;
+
+      console.log(`[SMTP TEST SUCCESS] Message ID: ${info.messageId}, Accepted: ${JSON.stringify(info.accepted)}, Rejected: ${JSON.stringify(info.rejected)}`);
+
+      if (info.rejected && info.rejected.length > 0 && (!info.accepted || info.accepted.length === 0)) {
+        return res.status(400).json({
+          success: false,
+          error: 'SMTP_REJECTED',
+          message: `SMTP server rejected the message for recipient ${targetRecipient}`,
+          rejected: info.rejected,
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: `Test email accepted by SMTP server for ${targetRecipient}. Message ID: ${info.messageId || 'SENT'}`,
+        messageId: info.messageId || '',
+        recipient: targetRecipient,
+        accepted: info.accepted || [targetRecipient],
+        rejected: info.rejected || [],
+        timestamp: new Date().toISOString(),
+        latencyMs,
+      });
+
+    } catch (sendErr: any) {
+      console.error('[SMTP TEST SEND ERROR]', sendErr?.message || sendErr);
+      return res.status(400).json({
+        success: false,
+        error: 'SMTP_SEND_FAILED',
+        message: `SMTP Delivery Failed: ${sendErr?.message || 'Failed to dispatch test email'}`,
+      });
+    }
   });
 
   // 8. Redirects, Users, & Security Configuration API (Prisma PostgreSQL Only)
@@ -1028,29 +1161,7 @@ async function startServer() {
     return res.json({ success: true });
   });
 
-  // SMTP Test Dispatch Route
-  app.post('/api/admin/email/test', (req: Request, res: Response) => {
-    const { host, port, recipient, testType } = req.body || {};
-    const startTime = Date.now();
 
-    if (!recipient) {
-      return res.status(400).json({
-        success: false,
-        message: 'Recipient email address is required',
-      });
-    }
-
-    const latencyMs = Math.floor(Math.random() * 40) + 120; // 120-160ms realistic handshake
-    setTimeout(() => {
-      res.json({
-        success: true,
-        message: `[SMTP SUCCESS] Test alert email dispatched successfully to ${recipient} via ${host || 'smtp.mailgun.org'}:${port || 587}`,
-        timestamp: new Date().toISOString(),
-        testType: testType || 'Connection Test',
-        latencyMs,
-      });
-    }, 300);
-  });
 
   // Real Multi-Platform Video Extraction Engine
   app.post('/api/fetch', async (req: Request, res: Response) => {
