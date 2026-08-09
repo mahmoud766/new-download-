@@ -9,9 +9,10 @@ interface SeoProps {
   language: SupportedLanguage;
   pageTitle?: string;
   pageDescription?: string;
+  customCanonicalUrl?: string;
 }
 
-export function SeoHead({ platform = 'all', language, pageTitle, pageDescription }: SeoProps) {
+export function SeoHead({ platform = 'all', language, pageTitle, pageDescription, customCanonicalUrl }: SeoProps) {
   const [globalSeo, setGlobalSeo] = useState(getGlobalSeoConfig());
 
   useEffect(() => {
@@ -33,7 +34,11 @@ export function SeoHead({ platform = 'all', language, pageTitle, pageDescription
 
   const title = pageTitle || (platform === 'all' && globalSeo.metaTitle ? globalSeo.metaTitle : (platformInfo.titleTemplate[language] || t('siteTitle', language)));
   const description = pageDescription || (platform === 'all' && globalSeo.metaDescription ? globalSeo.metaDescription : (platformInfo.subtitle[language] || t('siteSubtitle', language)));
-  const canonicalUrl = platform === 'all' && globalSeo.canonicalUrl ? globalSeo.canonicalUrl : `${window.location.origin}${platform === 'all' ? '' : '/' + platform}`;
+  
+  // Enforce canonical domain https://omnifetchpro.com
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  const canonicalBase = 'https://omnifetchpro.com';
+  const canonicalUrl = customCanonicalUrl || (platform === 'all' ? `${canonicalBase}${currentPath === '/' ? '' : currentPath}` : `${canonicalBase}/${platform}`);
 
   useEffect(() => {
     // Update Document Title

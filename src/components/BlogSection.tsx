@@ -3,6 +3,7 @@ import { SupportedLanguage, BlogPost } from '../types';
 import { getBlogsConfig } from '../lib/storage';
 import { getSafeText } from '../lib/safeLang';
 import { SEO_ARTICLES_CATALOG } from '../config/seoArticlesData';
+import { SeoHead } from './SeoHead';
 import {
   BookOpen,
   Search,
@@ -40,7 +41,33 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
     // Combine custom stored blogs with 100 SEO articles catalog
     const merged = [...customBlogs, ...SEO_ARTICLES_CATALOG];
     setBlogs(merged);
+
+    // Parse URL slug if visiting /blog/:slug directly
+    const path = window.location.pathname.toLowerCase();
+    if (path.startsWith('/blog/') && path.length > 6) {
+      const slug = path.replace('/blog/', '').replace(/\/$/, '');
+      const match = merged.find((p) => p.slug === slug || p.id === slug);
+      if (match) {
+        setSelectedPost(match);
+      }
+    }
   }, []);
+
+  const handleSelectPost = (post: BlogPost) => {
+    setSelectedPost(post);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', `/blog/${post.slug}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleBackToList = () => {
+    setSelectedPost(null);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/blog');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   const categories = [
     { id: 'all', name: isRtl ? 'جميع المقالات (100+)' : 'All Articles (100+)' },
@@ -67,11 +94,43 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
   if (selectedPost) {
     const title = getSafeText(selectedPost?.title, currentLang);
     const content = getSafeText(selectedPost?.content, currentLang);
+    const excerpt = getSafeText(selectedPost?.excerpt, currentLang);
+    const canonicalUrl = `https://omnifetchpro.com/blog/${selectedPost.slug}`;
+
+    const blogPostingSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: title,
+      description: excerpt,
+      image: selectedPost.coverImage,
+      datePublished: selectedPost.publishedAt,
+      author: {
+        '@type': 'Organization',
+        name: selectedPost.author || 'OmniFetch Pro',
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: 'OmniFetch Pro',
+        url: 'https://omnifetchpro.com',
+      },
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        '@id': canonicalUrl,
+      },
+    };
 
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12 space-y-6 animate-fade-in text-right rtl:text-right ltr:text-left">
+        <SeoHead
+          language={currentLang}
+          pageTitle={`${title} | OmniFetch Pro`}
+          pageDescription={excerpt}
+          customCanonicalUrl={canonicalUrl}
+        />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingSchema) }} />
+
         <button
-          onClick={() => setSelectedPost(null)}
+          onClick={handleBackToList}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs transition-all shadow-md"
         >
           <ArrowLeft className={`w-4 h-4 ${isRtl ? 'rotate-180' : ''}`} />
@@ -220,7 +279,7 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
           return (
             <div
               key={post.id}
-              onClick={() => setSelectedPost(post)}
+              onClick={() => handleSelectPost(post)}
               className="group bg-slate-900/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl hover:shadow-purple-950/40 transition-all duration-300 flex flex-col justify-between cursor-pointer"
             >
               <div className="aspect-video overflow-hidden bg-slate-950 relative">

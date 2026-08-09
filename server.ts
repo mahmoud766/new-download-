@@ -91,6 +91,25 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Canonical Host & HTTPS Redirect Middleware
+  app.use((req: Request, res: Response, next: express.NextFunction) => {
+    const host = (req.headers.host || '').toLowerCase();
+    const rawProto = req.headers['x-forwarded-proto'];
+    const proto = (Array.isArray(rawProto) ? rawProto[0] : rawProto || 'https').toLowerCase();
+
+    // Direct www subdomains (e.g., www.omnifetchpro.com) to primary apex domain https://omnifetchpro.com
+    if (host.startsWith('www.omnifetchpro.com') || host.startsWith('www.omnifetch.com')) {
+      return res.redirect(301, `https://omnifetchpro.com${req.originalUrl}`);
+    }
+
+    // Direct HTTP traffic to HTTPS on primary domain
+    if (proto === 'http' && (host.includes('omnifetchpro.com') || host.includes('omnifetch.com'))) {
+      return res.redirect(301, `https://omnifetchpro.com${req.originalUrl}`);
+    }
+
+    next();
+  });
+
   // Mount Gemini routes
   app.use('/api', geminiRoutes);
 
@@ -2528,10 +2547,11 @@ async function startServer() {
 
   // Dynamic Sitemap.xml
   app.get('/sitemap.xml', (req: Request, res: Response) => {
-    const host = req.headers.host || 'omnidownloader-1000549238299.us-west1.run.app';
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const baseUrl = `${protocol}://${host}`;
-    const routes = [
+    const host = req.headers.host || '';
+    const isProductionDomain = host.includes('omnifetchpro.com') || host.includes('omnifetch.com');
+    const baseUrl = isProductionDomain ? 'https://omnifetchpro.com' : `${req.headers['x-forwarded-proto'] || 'https'}://${host || 'omnifetchpro.com'}`;
+    
+    const coreRoutes = [
       '',
       '/tiktok',
       '/facebook',
@@ -2547,23 +2567,64 @@ async function startServer() {
       '/threads',
       '/linkedin',
       '/blog',
+      '/blog/download-online-videos-responsibly',
+      '/blog/mp4-vs-webm-guide',
+      '/blog/resolution-and-bitrate-explained',
+      '/blog/save-videos-for-offline-use',
+      '/blog/why-video-downloads-fail',
+      '/blog/mobile-vs-desktop-video-formats',
+      '/blog/how-to-download-tiktok-videos-without-watermark-2026',
+      '/blog/best-free-youtube-shorts-and-4k-video-downloaders',
+      '/legal/about',
+      '/legal/contact',
       '/legal/privacy',
       '/legal/terms',
       '/legal/dmca',
       '/legal/cookies',
-      '/legal/about',
-      '/legal/contact',
+      '/legal/disclaimer',
     ];
+
+    // Add generated 20 platform topic blog article slugs
+    const platformTopicSlugs = [
+      'youtube-4k-downloader-guide',
+      'tiktok-no-watermark-ssstik-snaptik',
+      'instagram-reels-stories-saver',
+      'facebook-hd-video-downloader',
+      'twitter-x-video-gif-downloader',
+      'pinterest-video-downloader-mp4',
+      'soundcloud-mp3-320kbps-extractor',
+      'snapchat-spotlight-memories-saver',
+      'threads-video-image-downloader',
+      'twitch-clips-vod-downloader',
+      'linkedin-video-downloader-hd',
+      'vimeo-1080p-video-extractor',
+      'telegram-video-media-downloader',
+      'convert-video-to-mp3-audio-guide',
+      'iphone-ios-video-downloader-safari',
+      'android-apk-video-downloader-guide',
+      '4k-vs-1080p-bitrate-resolution-guide',
+      'dmca-fair-use-legal-video-downloading',
+      'top-10-free-video-downloaders-2026',
+      'batch-download-multiple-videos-guide',
+    ];
+
+    const generatedBlogRoutes: string[] = [];
+    for (let i = 1; i <= 100; i++) {
+      const topic = platformTopicSlugs[(i - 1) % platformTopicSlugs.length];
+      generatedBlogRoutes.push(`/blog/${topic}-part-${i}`);
+    }
+
+    const allRoutes = [...coreRoutes, ...generatedBlogRoutes];
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${routes
+${allRoutes
   .map(
     (route) => `  <url>
     <loc>${baseUrl}${route}</loc>
     <lastmod>${new Date().toISOString().split('T')[0]}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>${route === '' ? '1.0' : '0.8'}</priority>
+    <changefreq>${route === '' || route === '/blog' ? 'daily' : 'weekly'}</changefreq>
+    <priority>${route === '' ? '1.0' : route.startsWith('/blog/') ? '0.7' : '0.9'}</priority>
   </url>`
   )
   .join('\n')}
@@ -2576,9 +2637,10 @@ ${routes
 
   // Dynamic Robots.txt
   app.get('/robots.txt', (req: Request, res: Response) => {
-    const host = req.headers.host || 'omnidownloader-1000549238299.us-west1.run.app';
-    const protocol = req.headers['x-forwarded-proto'] || 'https';
-    const baseUrl = `${protocol}://${host}`;
+    const host = req.headers.host || '';
+    const isProductionDomain = host.includes('omnifetchpro.com') || host.includes('omnifetch.com');
+    const baseUrl = isProductionDomain ? 'https://omnifetchpro.com' : `${req.headers['x-forwarded-proto'] || 'https'}://${host || 'omnifetchpro.com'}`;
+    
     const content = `User-agent: *
 Allow: /
 Allow: /ads.txt
@@ -2591,6 +2653,98 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
     res.send(content);
   });
+
+  // Route Validation & 404 Soft-404 Prevention Infrastructure
+  const validPublicRoutes = new Set([
+    '/',
+    '/tiktok',
+    '/facebook',
+    '/facebook-reels',
+    '/instagram',
+    '/instagram-reels',
+    '/youtube',
+    '/youtube-shorts',
+    '/snapchat',
+    '/twitter',
+    '/pinterest',
+    '/reddit',
+    '/threads',
+    '/linkedin',
+    '/blog',
+    '/admin',
+    '/legal/about',
+    '/legal/contact',
+    '/legal/privacy',
+    '/legal/terms',
+    '/legal/dmca',
+    '/legal/cookies',
+    '/legal/disclaimer',
+  ]);
+
+  const coreBlogSlugs = new Set([
+    'download-online-videos-responsibly',
+    'mp4-vs-webm-guide',
+    'resolution-and-bitrate-explained',
+    'save-videos-for-offline-use',
+    'why-video-downloads-fail',
+    'mobile-vs-desktop-video-formats',
+    'how-to-download-tiktok-videos-without-watermark-2026',
+    'best-free-youtube-shorts-and-4k-video-downloaders',
+  ]);
+
+  const platformTopicSlugs = [
+    'youtube-4k-downloader-guide',
+    'tiktok-no-watermark-ssstik-snaptik',
+    'instagram-reels-stories-saver',
+    'facebook-hd-video-downloader',
+    'twitter-x-video-gif-downloader',
+    'pinterest-video-downloader-mp4',
+    'soundcloud-mp3-320kbps-extractor',
+    'snapchat-spotlight-memories-saver',
+    'threads-video-image-downloader',
+    'twitch-clips-vod-downloader',
+    'linkedin-video-downloader-hd',
+    'vimeo-1080p-video-extractor',
+    'telegram-video-media-downloader',
+    'convert-video-to-mp3-audio-guide',
+    'iphone-ios-video-downloader-safari',
+    'android-apk-video-downloader-guide',
+    '4k-vs-1080p-bitrate-resolution-guide',
+    'dmca-fair-use-legal-video-downloading',
+    'top-10-free-video-downloaders-2026',
+    'batch-download-multiple-videos-guide',
+  ];
+
+  const generatedBlogSlugs = new Set<string>();
+  for (let i = 1; i <= 100; i++) {
+    const topic = platformTopicSlugs[(i - 1) % platformTopicSlugs.length];
+    generatedBlogSlugs.add(`${topic}-part-${i}`);
+  }
+
+  const isPathValid = (reqPath: string): boolean => {
+    let cleanPath = (reqPath || '/').toLowerCase().trim();
+    if (cleanPath.length > 1 && cleanPath.endsWith('/')) {
+      cleanPath = cleanPath.slice(0, -1);
+    }
+    if (!cleanPath) cleanPath = '/';
+
+    if (validPublicRoutes.has(cleanPath)) return true;
+
+    if (cleanPath.startsWith('/blog/')) {
+      const slug = cleanPath.replace('/blog/', '');
+      if (coreBlogSlugs.has(slug) || generatedBlogSlugs.has(slug)) return true;
+    }
+
+    if (
+      cleanPath.startsWith('/assets/') ||
+      cleanPath.startsWith('/public/') ||
+      /\.(js|css|png|jpg|jpeg|svg|ico|json|woff2|txt|xml|map)$/i.test(cleanPath)
+    ) {
+      return true;
+    }
+
+    return false;
+  };
 
   // Integration with Vite
   if (process.env.NODE_ENV !== 'production') {
@@ -2617,8 +2771,57 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       })
     );
     app.get('*', (req: Request, res: Response) => {
-      res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
-      res.sendFile(path.join(distPath, 'index.html'));
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API Endpoint Not Found', status: 404 });
+      }
+
+      if (isPathValid(req.path)) {
+        res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+        return res.sendFile(path.join(distPath, 'index.html'));
+      }
+
+      // Serve true HTTP 404 page for unknown routes
+      res.status(404);
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.send(`<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 Page Not Found | OmniFetch Pro</title>
+    <meta name="description" content="The requested page could not be found on OmniFetch Pro." />
+    <meta name="robots" content="noindex, nofollow" />
+    <style>
+      body { background-color: #020617; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; text-align: center; }
+      .card { max-width: 520px; width: 100%; background: #0f172a; border: 1px solid #1e293b; border-radius: 20px; padding: 40px 24px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+      .badge { display: inline-block; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); font-weight: 700; font-size: 14px; padding: 6px 16px; border-radius: 9999px; margin-bottom: 20px; }
+      h1 { font-size: 32px; font-weight: 800; margin: 0 0 12px; color: #ffffff; }
+      p { font-size: 15px; color: #94a3b8; line-height: 1.6; margin: 0 0 28px; }
+      .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 28px; }
+      .link-btn { display: block; background: #1e293b; color: #cbd5e1; text-decoration: none; padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; border: 1px solid #334155; transition: all 0.2s; }
+      .link-btn:hover { background: #334155; color: #ffffff; border-color: #6366f1; }
+      .home-btn { display: inline-block; background: #6366f1; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 12px; font-weight: 700; font-size: 15px; transition: background 0.2s; }
+      .home-btn:hover { background: #4f46e5; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="badge">404 ERROR</div>
+      <h1>Page Not Found</h1>
+      <p>The page you requested does not exist or may have been moved.</p>
+      <div class="grid">
+        <a href="/" class="link-btn">Home</a>
+        <a href="/tiktok" class="link-btn">TikTok Downloader</a>
+        <a href="/youtube" class="link-btn">YouTube Downloader</a>
+        <a href="/instagram" class="link-btn">Instagram Downloader</a>
+        <a href="/facebook" class="link-btn">Facebook Downloader</a>
+        <a href="/blog" class="link-btn">Blog &amp; Guides</a>
+      </div>
+      <a href="/" class="home-btn">Return to Homepage</a>
+    </div>
+  </body>
+</html>`);
     });
   }
 

@@ -304,12 +304,27 @@ export default function App() {
   const handleSelectPlatform = (slug: PlatformSlug) => {
     setCurrentPlatform(slug);
     setActiveView('home');
+    const path = slug === 'all' ? '/' : `/${slug}`;
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', path);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenLegal = (type: 'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact') => {
     setLegalType(type);
     setActiveView('legal');
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', `/legal/${type}`);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOpenBlog = () => {
+    setActiveView('blog');
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', '/blog');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -345,7 +360,7 @@ export default function App() {
           onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           onOpenHistory={() => setHistoryOpen(true)}
           onOpenAdmin={handleOpenAdmin}
-          onOpenBlog={() => setActiveView('blog')}
+          onOpenBlog={handleOpenBlog}
           onOpenAiStudio={() => setAiStudioOpen(true)}
           onOpenLegal={handleOpenLegal}
           historyCount={historyCount}
