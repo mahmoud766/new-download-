@@ -19,7 +19,6 @@ export function AdBanner({ slot, className = '' }: AdProps) {
   });
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const desktopContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const updateAd = () => {
@@ -37,81 +36,100 @@ export function AdBanner({ slot, className = '' }: AdProps) {
     };
   }, [slot]);
 
-  // Execute inline scripts deferred to prevent blocking main thread (TBT)
   useEffect(() => {
     if (!adConfig || !adConfig.enabled || !adConfig.code) {
       return;
     }
 
-    let timerId: ReturnType<typeof setTimeout> | null = null;
-    let idleId: number | null = null;
-    let executed = false;
+    const container = containerRef.current;
+    if (!container) return;
 
-    const runScriptOnContainer = (container: HTMLDivElement | null) => {
-      if (!container) return;
-      container.innerHTML = adConfig.code;
+    let resizeObserver: ResizeObserver | null = null;
 
-      const scriptElements = Array.from(container.querySelectorAll('script')) as HTMLScriptElement[];
-      scriptElements.forEach((oldScript: HTMLScriptElement) => {
-        const newScript = document.createElement('script');
-        Array.from(oldScript.attributes).forEach((attr: Attr) => {
-          newScript.setAttribute(attr.name, attr.value);
-        });
-        if (oldScript.innerHTML) {
-          newScript.innerHTML = oldScript.innerHTML;
-        }
-        oldScript.parentNode?.replaceChild(newScript, oldScript);
+    // Set HTML content
+    container.innerHTML = adConfig.code;
+
+    // Execute non-push script elements (e.g. loading adsbygoogle.js library)
+    const scriptElements = Array.from(container.querySelectorAll('script')) as HTMLScriptElement[];
+    scriptElements.forEach((oldScript: HTMLScriptElement) => {
+      // If inline script contains adsbygoogle.push, remove it so we don't trigger duplicate push
+      if (!oldScript.src && (oldScript.innerHTML.includes('adsbygoogle') || oldScript.innerHTML.includes('push'))) {
+        oldScript.remove();
+        return;
+      }
+
+      const newScript = document.createElement('script');
+      Array.from(oldScript.attributes).forEach((attr: Attr) => {
+        newScript.setAttribute(attr.name, attr.value);
       });
-    };
+      if (oldScript.innerHTML) {
+        newScript.innerHTML = oldScript.innerHTML;
+      }
+      oldScript.parentNode?.replaceChild(newScript, oldScript);
+    });
 
-    const runScript = () => {
-      if (executed) return;
-      executed = true;
-
-      runScriptOnContainer(containerRef.current);
-      runScriptOnContainer(desktopContainerRef.current);
-
+    // Handle AdSense push safely
+    const triggerPush = (targetIns: HTMLElement) => {
+      if (targetIns.hasAttribute('data-adsbygoogle-status') || targetIns.getAttribute('data-pushed') === 'true') {
+        return;
+      }
+      const insWidth = Math.max(
+        targetIns.offsetWidth || 0,
+        targetIns.clientWidth || 0,
+        container.offsetWidth || 0,
+        container.clientWidth || 0
+      );
+      if (insWidth < 250) {
+        return;
+      }
+      targetIns.setAttribute('data-pushed', 'true');
       try {
-        if (adConfig.code.includes('adsbygoogle')) {
-          const hasWidth = (containerRef.current && containerRef.current.clientWidth > 0) ||
-                           (desktopContainerRef.current && desktopContainerRef.current.clientWidth > 0);
-          if (hasWidth) {
-            ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-          }
-        }
-      } catch (e) {
-        // Suppress AdSense push errors during automated Lighthouse audit
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+      } catch {
+        // Quietly catch any AdSense push errors
       }
     };
 
-    // Defer ad script loading until browser is idle or after user interaction
-    const onUserInteraction = () => {
-      runScript();
-      cleanupEvents();
-    };
+    const insEl = container.querySelector<HTMLElement>('ins.adsbygoogle');
+    if (insEl) {
+      if (!insEl.style.display || insEl.style.display === 'none') {
+        insEl.style.display = 'block';
+      }
+      insEl.style.minWidth = '250px';
+      insEl.style.width = '100%';
 
-    const cleanupEvents = () => {
-      window.removeEventListener('scroll', onUserInteraction);
-      window.removeEventListener('mousemove', onUserInteraction);
-      window.removeEventListener('touchstart', onUserInteraction);
-    };
+      const checkAndPush = () => {
+        if (!container || !insEl) return;
+        const currentWidth = Math.max(
+          container.clientWidth || 0,
+          container.offsetWidth || 0,
+          insEl.clientWidth || 0,
+          insEl.offsetWidth || 0
+        );
+        if (currentWidth >= 250) {
+          triggerPush(insEl);
+        }
+      };
 
-    window.addEventListener('scroll', onUserInteraction, { passive: true, once: true });
-    window.addEventListener('mousemove', onUserInteraction, { passive: true, once: true });
-    window.addEventListener('touchstart', onUserInteraction, { passive: true, once: true });
+      checkAndPush();
 
-    if ('requestIdleCallback' in window) {
-      idleId = (window as any).requestIdleCallback(() => runScript(), { timeout: 3000 });
-    } else {
-      timerId = setTimeout(runScript, 2500);
+      if (typeof ResizeObserver !== 'undefined' && !insEl.getAttribute('data-pushed')) {
+        resizeObserver = new ResizeObserver(() => {
+          checkAndPush();
+        });
+        resizeObserver.observe(container);
+        try {
+          resizeObserver.observe(insEl);
+        } catch {
+          // ignore if element observation fails
+        }
+      }
     }
 
     return () => {
-      if (idleId !== null && 'cancelIdleCallback' in window) {
-        (window as any).cancelIdleCallback(idleId);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
       }
-      if (timerId !== null) clearTimeout(timerId);
-      cleanupEvents();
     };
   }, [adConfig]);
 
@@ -119,10 +137,7 @@ export function AdBanner({ slot, className = '' }: AdProps) {
     return null;
   }
 
-  // Determine strict style cage parameters to physically prevent iframe resizing shifts
   const isLargeSlot = slot === 'post_result' || slot === 'mid_result' || slot === 'sidebar';
-  const mobileHeight = '100px';
-  const desktopHeight = isLargeSlot ? '280px' : '250px';
 
   return (
     <div
@@ -130,57 +145,17 @@ export function AdBanner({ slot, className = '' }: AdProps) {
       aria-label="Advertisement Banner"
       className={`w-full my-4 flex flex-col items-center justify-center transition-all ${className}`}
     >
-      {/* Mobile Ad Wrapper (flex md:hidden) */}
-      <div
-        className="flex md:hidden w-full flex-col items-center justify-center overflow-hidden bg-transparent"
-        style={{
-          display: 'flex',
-          width: '100%',
-          height: mobileHeight,
-          minHeight: mobileHeight,
-          maxHeight: mobileHeight,
-          overflow: 'hidden',
-          contain: 'strict',
-        }}
-      >
-        <div className="text-[10px] uppercase font-mono tracking-wider text-slate-300 mb-1 flex items-center gap-1 shrink-0">
-          <span>إعلان (Advertisement)</span>
-        </div>
-        <div
-          ref={containerRef}
-          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-2 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
-          style={{
-            height: '80px',
-            minHeight: '80px',
-            maxHeight: '80px',
-            contain: 'strict',
-          }}
-        />
+      <div className="text-[10px] uppercase font-mono tracking-wider text-slate-300 mb-1 flex items-center gap-1 shrink-0">
+        <span>إعلان (Advertisement)</span>
       </div>
 
-      {/* Desktop Ad Wrapper (hidden md:flex) */}
       <div
-        className="hidden md:flex w-full justify-center items-center overflow-hidden bg-transparent"
-        style={{ height: '280px', minHeight: '280px', maxHeight: '280px', contain: 'strict' }}
-      >
-        <div className="flex flex-col items-center justify-center w-full h-full">
-          <div className="text-[10px] uppercase font-mono tracking-wider text-slate-300 mb-1 flex items-center gap-1 shrink-0">
-            <span>إعلان (Advertisement)</span>
-          </div>
-          <div
-            ref={desktopContainerRef}
-            className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-2 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
-            style={{
-              height: '250px',
-              minHeight: '250px',
-              maxHeight: '250px',
-              contain: 'strict',
-            }}
-          />
-        </div>
-      </div>
+        ref={containerRef}
+        className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-2 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
+        style={{
+          minHeight: isLargeSlot ? '250px' : '90px',
+        }}
+      />
     </div>
   );
 }
-
-

@@ -218,6 +218,14 @@ export const VisitorsTrendChart: React.FC<Props> = ({ onShowToast }) => {
             <Loader2 className="w-6 h-6 animate-spin" />
             <span className="text-xs font-bold">جاري تحميل بيانات الزوار من Firestore...</span>
           </div>
+        ) : !loading && data.length === 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 rounded-xl backdrop-blur-sm z-10 text-slate-400 gap-2 p-4 text-center">
+            <TrendingUp className="w-8 h-8 text-slate-600 mb-1" />
+            <p className="text-sm font-bold text-slate-300">لا توجد بيانات كافية بعد</p>
+            <p className="text-xs text-slate-500 max-w-sm">
+              لم يتم تسجيل حركة زوار في قاعدة بيانات Firestore بعد. سيتم بناء الرسم البياني تلقائياً فور تلقي زيارات حقيقية.
+            </p>
+          </div>
         ) : null}
 
         <ResponsiveContainer width="100%" height="100%">

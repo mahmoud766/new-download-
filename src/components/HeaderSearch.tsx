@@ -24,6 +24,7 @@ import { t } from '../i18n/translations';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { getFaqsConfig, getBlogsConfig } from '../lib/storage';
 import { DEFAULT_PAGES } from '../lib/adminStorage';
+import { getSafeText } from '../lib/safeLang';
 
 export interface SearchResultItem {
   id: string;
@@ -98,8 +99,8 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
     // 2. FAQs & Help Topics
     const faqs = getFaqsConfig();
     faqs.forEach((faq) => {
-      const qText = faq.question[currentLang] || faq.question.en || faq.question.ar || '';
-      const aText = faq.answer[currentLang] || faq.answer.en || faq.answer.ar || '';
+      const qText = getSafeText(faq?.question, currentLang);
+      const aText = getSafeText(faq?.answer, currentLang);
 
       items.push({
         id: `faq-${faq.id}`,
@@ -123,8 +124,8 @@ export const HeaderSearch: React.FC<HeaderSearchProps> = ({
     // 3. Blog Articles
     const blogs = getBlogsConfig();
     blogs.forEach((post) => {
-      const titleText = post.title[currentLang] || post.title.en || post.title.ar || '';
-      const excerptText = post.excerpt[currentLang] || post.excerpt.en || post.excerpt.ar || '';
+      const titleText = getSafeText(post?.title, currentLang);
+      const excerptText = getSafeText(post?.excerpt, currentLang);
 
       items.push({
         id: `blog-${post.id}`,

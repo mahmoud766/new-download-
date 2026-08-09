@@ -30,14 +30,14 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
   const [timeRange, setTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('7d');
   const [stats, setStats] = useState<{
     totalDownloads: number;
-    activeLiveUsers: number;
-    visitorsToday: number;
-    adsenseRevenueToday: number;
+    activeLiveUsers: number | null;
+    visitorsToday: number | null;
+    adsenseRevenueToday: number | null;
   }>({
     totalDownloads: 0,
-    activeLiveUsers: 1,
-    visitorsToday: 1,
-    adsenseRevenueToday: 0,
+    activeLiveUsers: null,
+    visitorsToday: null,
+    adsenseRevenueToday: null,
   });
 
   const fetchAnalytics = async () => {
@@ -48,9 +48,9 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
         if (data.success && data.analytics) {
           setStats({
             totalDownloads: data.analytics.totalDownloads || 0,
-            activeLiveUsers: data.analytics.activeLiveUsers || 1,
-            visitorsToday: data.analytics.visitorsToday || 1,
-            adsenseRevenueToday: data.analytics.adsenseRevenueToday || 0,
+            activeLiveUsers: typeof data.analytics.activeLiveUsers === 'number' ? data.analytics.activeLiveUsers : null,
+            visitorsToday: typeof data.analytics.visitorsToday === 'number' ? data.analytics.visitorsToday : null,
+            adsenseRevenueToday: typeof data.analytics.adsenseRevenueToday === 'number' ? data.analytics.adsenseRevenueToday : null,
           });
         }
       }
@@ -109,7 +109,7 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
       </div>
 
       {/* Main KPI Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {/* Active Live Users */}
         <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/30 relative overflow-hidden">
           <div className="flex items-center justify-between mb-2">
@@ -120,9 +120,18 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <Activity className="w-4 h-4 animate-pulse" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">{stats.activeLiveUsers}</div>
-          <p className="text-[11px] text-emerald-400/90 mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3.0 h-3.0" /> نشط حالياً على الموقع
+          <div className="text-xl font-black text-white">
+            {stats.activeLiveUsers !== null ? stats.activeLiveUsers : 'لا توجد بيانات كافية بعد'}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+            {stats.activeLiveUsers !== null ? (
+              <>
+                <ArrowUpRight className="w-3 h-3 text-emerald-400" />
+                <span className="text-emerald-400 font-bold">نشط حالياً</span>
+              </>
+            ) : (
+              <span>المصدر: GA4 Realtime (غير متصل)</span>
+            )}
           </p>
         </div>
 
@@ -134,9 +143,18 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <Users className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">{stats.visitorsToday.toLocaleString()}</div>
-          <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3 h-3" /> جاري التتبع المباشر
+          <div className="text-xl font-black text-white">
+            {stats.visitorsToday !== null ? stats.visitorsToday.toLocaleString('ar-EG') : 'لا توجد بيانات كافية بعد'}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+            {stats.visitorsToday !== null ? (
+              <>
+                <ArrowUpRight className="w-3 h-3 text-emerald-400" />
+                <span className="text-emerald-400">جاري التتبع المباشر</span>
+              </>
+            ) : (
+              <span>المصدر: GA4 API (غير متصل)</span>
+            )}
           </p>
         </div>
 
@@ -148,9 +166,9 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <Download className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">{stats.totalDownloads.toLocaleString()}</div>
+          <div className="text-2xl font-black text-white">{stats.totalDownloads.toLocaleString('ar-EG')}</div>
           <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-            <ArrowUpRight className="w-3 h-3" /> مسجلة في قاعدة بيانات PostgreSQL
+            <ArrowUpRight className="w-3 h-3" /> سجلات PostgreSQL الحقيقية
           </p>
         </div>
 
@@ -162,9 +180,11 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white">${stats.adsenseRevenueToday.toFixed(2)}</div>
-          <p className="text-[11px] text-amber-300/80 mt-1">
-            حالة الإعلانات: <span className="font-bold text-white">نشطة المزامنة</span>
+          <div className="text-xl font-black text-white">
+            {stats.adsenseRevenueToday !== null ? `$${stats.adsenseRevenueToday.toFixed(2)}` : 'غير مرتبط بـ API'}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            يتطلب Google AdSense Management API
           </p>
         </div>
       </div>
@@ -186,11 +206,13 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
         </div>
         <div>
           <span className="text-slate-400 block mb-1">جلسات المعاينة الحية</span>
-          <span className="text-sm font-bold text-white">{stats.activeLiveUsers} جلسة</span>
+          <span className="text-sm font-bold text-white">
+            {stats.activeLiveUsers !== null ? `${stats.activeLiveUsers} جلسة` : 'غير متصل بـ GA4'}
+          </span>
         </div>
         <div>
           <span className="text-slate-400 block mb-1">إجمالي التنزيلات المؤكدة</span>
-          <span className="text-sm font-bold text-purple-400">{stats.totalDownloads.toLocaleString()}</span>
+          <span className="text-sm font-bold text-purple-400">{stats.totalDownloads.toLocaleString('ar-EG')}</span>
         </div>
         <div>
           <span className="text-slate-400 block mb-1">تكامل Google Analytics</span>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Trash2, HelpCircle, Save, Layers } from 'lucide-react';
 import { FAQItem, SupportedLanguage } from '../../types';
 import { saveFaqsConfig } from '../../lib/storage';
+import { getSafeText } from '../../lib/safeLang';
 
 interface Props {
   faqs: FAQItem[];
@@ -122,9 +123,9 @@ export const FaqManagerTab: React.FC<Props> = ({
                   {faq.platform}
                 </span>
                 <h4 className="font-extrabold text-white text-sm pt-1">
-                  {faq.question.ar || faq.question.en}
+                  {getSafeText(faq.question, currentLang || 'ar')}
                 </h4>
-                <p className="text-slate-400">{faq.answer.ar || faq.answer.en}</p>
+                <p className="text-slate-400">{getSafeText(faq.answer, currentLang || 'ar')}</p>
               </div>
               <button
                 onClick={() => handleDeleteFaq(faq.id)}

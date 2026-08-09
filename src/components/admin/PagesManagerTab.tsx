@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Eye, FileText, CheckCircle2, XCircle, ArrowUpDown, Save } from 'lucide-react';
 import { ManagedPage, SupportedLanguage } from '../../types';
 import { getManagedPages, saveManagedPages, fetchManagedPagesFromDb } from '../../lib/adminStorage';
+import { getSafeText } from '../../lib/safeLang';
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -47,13 +48,15 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
   };
 
   const handleSavePage = () => {
-    if (!editingPage || !editingPage.title) {
+    const pageTitle = getSafeText(editingPage?.title, 'ar');
+    if (!editingPage || !pageTitle) {
       onShowToast('يرجى كتابة عنوان الصفحة');
       return;
     }
-    const cleanSlug = editingPage.slug || editingPage.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const cleanSlug = editingPage.slug || pageTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const pageToSave: ManagedPage = {
       ...editingPage,
+      title: pageTitle,
       slug: cleanSlug,
       updatedAt: new Date().toISOString().split('T')[0],
     };
@@ -102,43 +105,51 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-200">
-            {pages.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-800/40">
-                <td className="py-3 px-4 font-bold text-white">{p.title}</td>
-                <td className="py-3 px-4 font-mono text-purple-400">/{p.slug}</td>
-                <td className="py-3 px-4">
-                  {p.published ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
-                      <CheckCircle2 className="w-3 h-3" /> منشور
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800 text-slate-400">
-                      <XCircle className="w-3 h-3" /> مسودة
-                    </span>
-                  )}
-                </td>
-                <td className="py-3 px-4 font-mono">{p.order}</td>
-                <td className="py-3 px-4 text-slate-400">{p.updatedAt}</td>
-                <td className="py-3 px-4 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      onClick={() => handleEdit(p)}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-400"
-                      title="تعديل"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(p.id)}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400"
-                      title="حذف"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+            {pages.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-8 text-center text-slate-400">
+                  لا توجد صفحات حالياً. اضغط على "إنشاء صفحة جديدة" لإضافة أول صفحة.
                 </td>
               </tr>
-            ))}
+            ) : (
+              pages.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-800/40">
+                  <td className="py-3 px-4 font-bold text-white">{getSafeText(p.title, 'ar')}</td>
+                  <td className="py-3 px-4 font-mono text-purple-400">/{p.slug}</td>
+                  <td className="py-3 px-4">
+                    {p.published ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
+                        <CheckCircle2 className="w-3 h-3" /> منشور
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800 text-slate-400">
+                        <XCircle className="w-3 h-3" /> مسودة
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3 px-4 font-mono">{p.order}</td>
+                  <td className="py-3 px-4 text-slate-400">{p.updatedAt}</td>
+                  <td className="py-3 px-4 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleEdit(p)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-purple-400"
+                        title="تعديل"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-rose-400"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -156,7 +167,7 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
                 <label className="block text-slate-400 mb-1 font-semibold">عنوان الصفحة</label>
                 <input
                   type="text"
-                  value={editingPage.title}
+                  value={getSafeText(editingPage.title, 'ar')}
                   onChange={(e) => setEditingPage({ ...editingPage, title: e.target.value })}
                   placeholder="مثال: سياسة الخصوصية"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
@@ -167,7 +178,7 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
                 <label className="block text-slate-400 mb-1 font-semibold">رابط الصفحة (Slug)</label>
                 <input
                   type="text"
-                  value={editingPage.slug}
+                  value={editingPage.slug || ''}
                   onChange={(e) => setEditingPage({ ...editingPage, slug: e.target.value })}
                   placeholder="privacy-policy"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-mono"
@@ -178,7 +189,7 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
                 <label className="block text-slate-400 mb-1 font-semibold">محتوى الصفحة (HTML / Markdown Supported)</label>
                 <textarea
                   rows={6}
-                  value={editingPage.content}
+                  value={getSafeText(editingPage.content, 'ar')}
                   onChange={(e) => setEditingPage({ ...editingPage, content: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-purple-500 resize-none font-sans"
                 />

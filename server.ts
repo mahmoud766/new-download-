@@ -2581,6 +2581,7 @@ ${routes
     const baseUrl = `${protocol}://${host}`;
     const content = `User-agent: *
 Allow: /
+Allow: /ads.txt
 Disallow: /admin
 Disallow: /api/
 

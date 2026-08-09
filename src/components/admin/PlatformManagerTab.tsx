@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { PlatformConfig, PlatformSlug, SupportedLanguage } from '../../types';
 import { getStoredPlatformsConfig, saveStoredPlatformsConfig } from '../../lib/adminStorage';
+import { getSafeText, getSafeArray } from '../../lib/safeLang';
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -39,14 +40,14 @@ const PlatformFormCard: React.FC<{
   onOpenEdit: (slug: string) => void;
   onToggleActive: (slug: string) => void;
 }> = ({ slug, p, onUpdate, onOpenEdit, onToggleActive }) => {
-  const [metaTitle, setMetaTitle] = useState(p.titleTemplate.ar || p.titleTemplate.en || '');
-  const [metaDescription, setMetaDescription] = useState(p.description.ar || p.description.en || '');
-  const [keywordsStr, setKeywordsStr] = useState(p.seoKeywords.join(', '));
+  const [metaTitle, setMetaTitle] = useState(getSafeText(p.titleTemplate, 'ar'));
+  const [metaDescription, setMetaDescription] = useState(getSafeText(p.description, 'ar'));
+  const [keywordsStr, setKeywordsStr] = useState((p.seoKeywords || []).join(', '));
 
   React.useEffect(() => {
-    setMetaTitle(p.titleTemplate.ar || p.titleTemplate.en || '');
-    setMetaDescription(p.description.ar || p.description.en || '');
-    setKeywordsStr(p.seoKeywords.join(', '));
+    setMetaTitle(getSafeText(p.titleTemplate, 'ar'));
+    setMetaDescription(getSafeText(p.description, 'ar'));
+    setKeywordsStr((p.seoKeywords || []).join(', '));
   }, [p]);
 
   return (
@@ -493,13 +494,14 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                     <label className="block text-slate-300 font-bold mb-1">عنوان H1 بالعربية (Meta Page Title)</label>
                     <input
                       type="text"
-                      value={activePlatformData.titleTemplate.ar || ''}
-                      onChange={(e) =>
+                      value={getSafeText(activePlatformData.titleTemplate, 'ar')}
+                      onChange={(e) => {
+                        const prevTT = typeof activePlatformData.titleTemplate === 'object' && activePlatformData.titleTemplate ? activePlatformData.titleTemplate : { en: '' };
                         setActivePlatformData({
                           ...activePlatformData,
-                          titleTemplate: { ...activePlatformData.titleTemplate, ar: e.target.value },
-                        })
-                      }
+                          titleTemplate: { en: prevTT.en || e.target.value, ...prevTT, ar: e.target.value },
+                        });
+                      }}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white font-semibold focus:outline-none focus:border-purple-500"
                     />
                   </div>
@@ -509,13 +511,14 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                   <label className="block text-slate-300 font-bold mb-1">الوصف الفرعي (Meta Subtitle Tagline)</label>
                   <textarea
                     rows={2}
-                    value={activePlatformData.subtitle.ar || ''}
-                    onChange={(e) =>
+                    value={getSafeText(activePlatformData.subtitle, 'ar')}
+                    onChange={(e) => {
+                      const prevSub = typeof activePlatformData.subtitle === 'object' && activePlatformData.subtitle ? activePlatformData.subtitle : { en: '' };
                       setActivePlatformData({
                         ...activePlatformData,
-                        subtitle: { ...activePlatformData.subtitle, ar: e.target.value },
-                      })
-                    }
+                        subtitle: { en: prevSub.en || e.target.value, ...prevSub, ar: e.target.value },
+                      });
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-purple-500 resize-none font-sans"
                   />
                 </div>
@@ -524,13 +527,14 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                   <label className="block text-slate-300 font-bold mb-1">الوصف الكامل للـ Meta Description</label>
                   <textarea
                     rows={3}
-                    value={activePlatformData.description.ar || ''}
-                    onChange={(e) =>
+                    value={getSafeText(activePlatformData.description, 'ar')}
+                    onChange={(e) => {
+                      const prevDesc = typeof activePlatformData.description === 'object' && activePlatformData.description ? activePlatformData.description : { en: '' };
                       setActivePlatformData({
                         ...activePlatformData,
-                        description: { ...activePlatformData.description, ar: e.target.value },
-                      })
-                    }
+                        description: { en: prevDesc.en || e.target.value, ...prevDesc, ar: e.target.value },
+                      });
+                    }}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-purple-500 resize-none font-sans"
                   />
                 </div>
@@ -583,17 +587,18 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                 <div>
                   <label className="block text-slate-300 font-bold mb-1.5">مميزات الخدمة لهذه المنصة (Key Features List)</label>
                   <div className="space-y-2">
-                    {(activePlatformData.features.ar || []).map((feat, idx) => (
+                    {getSafeArray(activePlatformData.features, 'ar').map((feat, idx) => (
                       <div key={idx} className="flex gap-2">
                         <input
                           type="text"
                           value={feat}
                           onChange={(e) => {
-                            const newFeats = [...(activePlatformData.features.ar || [])];
+                            const newFeats = [...getSafeArray(activePlatformData.features, 'ar')];
                             newFeats[idx] = e.target.value;
+                            const prevFeatObj = typeof activePlatformData.features === 'object' && activePlatformData.features ? activePlatformData.features : { en: [] };
                             setActivePlatformData({
                               ...activePlatformData,
-                              features: { ...activePlatformData.features, ar: newFeats },
+                              features: { en: prevFeatObj.en || newFeats, ...prevFeatObj, ar: newFeats },
                             });
                           }}
                           className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
@@ -601,10 +606,11 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                         <button
                           type="button"
                           onClick={() => {
-                            const newFeats = (activePlatformData.features.ar || []).filter((_, i) => i !== idx);
+                            const newFeats = getSafeArray(activePlatformData.features, 'ar').filter((_, i) => i !== idx);
+                            const prevFeatObj = typeof activePlatformData.features === 'object' && activePlatformData.features ? activePlatformData.features : { en: [] };
                             setActivePlatformData({
                               ...activePlatformData,
-                              features: { ...activePlatformData.features, ar: newFeats },
+                              features: { en: prevFeatObj.en || newFeats, ...prevFeatObj, ar: newFeats },
                             });
                           }}
                           className="px-3 py-2 bg-slate-800 hover:bg-rose-600/20 text-rose-400 rounded-xl font-bold"
@@ -616,10 +622,11 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                     <button
                       type="button"
                       onClick={() => {
-                        const newFeats = [...(activePlatformData.features.ar || []), 'ميزة جديدة'];
+                        const newFeats = [...getSafeArray(activePlatformData.features, 'ar'), 'ميزة جديدة'];
+                        const prevFeatObj = typeof activePlatformData.features === 'object' && activePlatformData.features ? activePlatformData.features : { en: [] };
                         setActivePlatformData({
                           ...activePlatformData,
-                          features: { ...activePlatformData.features, ar: newFeats },
+                          features: { en: prevFeatObj.en || newFeats, ...prevFeatObj, ar: newFeats },
                         });
                       }}
                       className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-purple-300 font-bold rounded-xl"
@@ -633,7 +640,7 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                   <label className="block text-slate-300 font-bold mb-1">الصيغ والجودات المدعومة (Supported Formats)</label>
                   <input
                     type="text"
-                    value={activePlatformData.supportedFormats.join(', ')}
+                    value={(activePlatformData.supportedFormats || []).join(', ')}
                     onChange={(e) =>
                       setActivePlatformData({
                         ...activePlatformData,
@@ -674,10 +681,10 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
                 <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
                   <span className="text-[10px] text-emerald-400 font-mono">https://omnifetch.com/{editingSlug}</span>
                   <h5 className="text-sm font-bold text-sky-400">
-                    {activePlatformData.titleTemplate.ar || activePlatformData.name}
+                    {getSafeText(activePlatformData.titleTemplate, 'ar', activePlatformData.name)}
                   </h5>
                   <p className="text-slate-400 line-clamp-2">
-                    {activePlatformData.description.ar || activePlatformData.subtitle.ar}
+                    {getSafeText(activePlatformData.description, 'ar', getSafeText(activePlatformData.subtitle, 'ar'))}
                   </p>
                 </div>
 

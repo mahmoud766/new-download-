@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Edit2, Trash2, BookOpen, Save, Eye, Search, Calendar, Tag } from 'lucide-react';
 import { BlogPost, SupportedLanguage } from '../../types';
 import { saveBlogsConfig } from '../../lib/storage';
+import { getSafeText } from '../../lib/safeLang';
 
 interface Props {
   blogs: BlogPost[];
@@ -53,11 +54,12 @@ export const BlogManagerTab: React.FC<Props> = ({
   };
 
   const handleSavePost = () => {
-    if (!editingPost || !editingPost.title.ar) {
+    const currentTitle = getSafeText(editingPost?.title, 'ar');
+    if (!editingPost || !currentTitle) {
       onShowToast('يرجى إدخال عنوان المقال بالعربية');
       return;
     }
-    const slug = editingPost.slug || editingPost.title.ar.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const slug = editingPost.slug || currentTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     const postToSave = { ...editingPost, slug };
 
     const exists = blogList.some((b) => b.id === postToSave.id);
@@ -74,7 +76,7 @@ export const BlogManagerTab: React.FC<Props> = ({
   };
 
   const filteredBlogs = blogList.filter((b) =>
-    (b.title.ar || b.title.en || '').toLowerCase().includes(searchTerm.toLowerCase())
+    getSafeText(b.title, currentLang || 'ar').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -108,46 +110,52 @@ export const BlogManagerTab: React.FC<Props> = ({
       </div>
 
       {/* Blog Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredBlogs.map((post) => (
-          <div
-            key={post.id}
-            className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-3 relative flex flex-col justify-between"
-          >
-            <div className="space-y-2">
-              <div className="h-32 rounded-xl overflow-hidden bg-slate-950 relative">
-                <img src={post.coverImage} alt={post.title.ar} className="w-full h-full object-cover" />
-                <span className="absolute top-2 right-2 px-2.5 py-1 rounded-md bg-slate-950/80 text-purple-300 text-[10px] font-bold border border-purple-500/30 uppercase">
-                  {post.category}
+      {filteredBlogs.length === 0 ? (
+        <div className="p-8 text-center bg-slate-900 rounded-2xl border border-slate-800 text-slate-400 text-xs">
+          لا توجد مقالات مطابقة للبحث حالياً.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredBlogs.map((post) => (
+            <div
+              key={post.id}
+              className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-3 relative flex flex-col justify-between"
+            >
+              <div className="space-y-2">
+                <div className="h-32 rounded-xl overflow-hidden bg-slate-950 relative">
+                  <img src={post.coverImage} alt={getSafeText(post.title, 'ar')} className="w-full h-full object-cover" />
+                  <span className="absolute top-2 right-2 px-2.5 py-1 rounded-md bg-slate-950/80 text-purple-300 text-[10px] font-bold border border-purple-500/30 uppercase">
+                    {post.category}
+                  </span>
+                </div>
+
+                <h3 className="font-extrabold text-sm text-white line-clamp-2">{getSafeText(post.title, currentLang || 'ar')}</h3>
+                <p className="text-xs text-slate-400 line-clamp-2">{getSafeText(post.excerpt, currentLang || 'ar')}</p>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                  <Calendar className="w-3 h-3" /> {post.publishedAt}
                 </span>
-              </div>
-
-              <h3 className="font-extrabold text-sm text-white line-clamp-2">{post.title.ar || post.title.en}</h3>
-              <p className="text-xs text-slate-400 line-clamp-2">{post.excerpt.ar || post.excerpt.en}</p>
-            </div>
-
-            <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-              <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> {post.publishedAt}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => handleEdit(post)}
-                  className="p-1.5 rounded-lg bg-slate-800 text-purple-400 hover:bg-slate-700"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => handleDelete(post.id)}
-                  className="p-1.5 rounded-lg bg-slate-800 text-rose-400 hover:bg-slate-700"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => handleEdit(post)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-purple-400 hover:bg-slate-700"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(post.id)}
+                    className="p-1.5 rounded-lg bg-slate-800 text-rose-400 hover:bg-slate-700"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {/* Blog Editor Modal */}
       {isModalOpen && editingPost && (
@@ -162,13 +170,14 @@ export const BlogManagerTab: React.FC<Props> = ({
                 <label className="block text-slate-400 mb-1 font-semibold">عنوان المقال (بالعربية)</label>
                 <input
                   type="text"
-                  value={editingPost.title.ar || ''}
-                  onChange={(e) =>
+                  value={getSafeText(editingPost.title, 'ar')}
+                  onChange={(e) => {
+                    const prevTitle = typeof editingPost.title === 'object' && editingPost.title ? editingPost.title : {};
                     setEditingPost({
                       ...editingPost,
-                      title: { ...editingPost.title, ar: e.target.value, en: e.target.value },
-                    })
-                  }
+                      title: { ...prevTitle, ar: e.target.value, en: e.target.value },
+                    });
+                  }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
                 />
               </div>
@@ -203,13 +212,14 @@ export const BlogManagerTab: React.FC<Props> = ({
                 <label className="block text-slate-400 mb-1 font-semibold">الملخص (Excerpt)</label>
                 <textarea
                   rows={2}
-                  value={editingPost.excerpt.ar || ''}
-                  onChange={(e) =>
+                  value={getSafeText(editingPost.excerpt, 'ar')}
+                  onChange={(e) => {
+                    const prevExcerpt = typeof editingPost.excerpt === 'object' && editingPost.excerpt ? editingPost.excerpt : {};
                     setEditingPost({
                       ...editingPost,
-                      excerpt: { ...editingPost.excerpt, ar: e.target.value, en: e.target.value },
-                    })
-                  }
+                      excerpt: { ...prevExcerpt, ar: e.target.value, en: e.target.value },
+                    });
+                  }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none resize-none"
                 />
               </div>
@@ -218,13 +228,14 @@ export const BlogManagerTab: React.FC<Props> = ({
                 <label className="block text-slate-400 mb-1 font-semibold">محتوى المقال بالكامل</label>
                 <textarea
                   rows={6}
-                  value={editingPost.content.ar || ''}
-                  onChange={(e) =>
+                  value={getSafeText(editingPost.content, 'ar')}
+                  onChange={(e) => {
+                    const prevContent = typeof editingPost.content === 'object' && editingPost.content ? editingPost.content : {};
                     setEditingPost({
                       ...editingPost,
-                      content: { ...editingPost.content, ar: e.target.value, en: e.target.value },
-                    })
-                  }
+                      content: { ...prevContent, ar: e.target.value, en: e.target.value },
+                    });
+                  }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 focus:outline-none resize-none"
                 />
               </div>

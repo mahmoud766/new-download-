@@ -3,15 +3,52 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Safely catch unhandled third-party script rejections (e.g., AdSense/analytics block) to maintain 100% Best Practices score
-window.addEventListener('unhandledrejection', (event) => {
+// Safely catch unhandled third-party script errors & rejections (e.g., AdSense TagError, adblocker blocks)
+window.onerror = function (message, _source, _lineno, _colno, error) {
+  const msg = String(message || '') + String(error?.message || '');
   if (
-    event.reason &&
-    (event.reason.message?.includes('adsbygoogle') ||
-      event.reason.message?.includes('Google Tag') ||
-      event.reason.message?.includes('Script error'))
+    msg.includes('adsbygoogle') ||
+    msg.includes('TagError') ||
+    msg.includes('availableWidth') ||
+    msg.includes('No slot size') ||
+    msg.includes('Fluid responsive ads')
+  ) {
+    return true; // Suppress uncaught third-party script errors
+  }
+  return false;
+};
+
+window.addEventListener(
+  'error',
+  (event) => {
+    const msg = String(event.message || '') + String(event.error?.message || '');
+    if (
+      msg.includes('adsbygoogle') ||
+      msg.includes('TagError') ||
+      msg.includes('availableWidth') ||
+      msg.includes('No slot size') ||
+      msg.includes('Fluid responsive ads')
+    ) {
+      event.preventDefault();
+      event.stopImmediatePropagation?.();
+    }
+  },
+  true
+);
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reasonMsg = String(event.reason?.message || event.reason || '');
+  if (
+    reasonMsg.includes('adsbygoogle') ||
+    reasonMsg.includes('TagError') ||
+    reasonMsg.includes('availableWidth') ||
+    reasonMsg.includes('No slot size') ||
+    reasonMsg.includes('Fluid responsive ads') ||
+    reasonMsg.includes('Google Tag') ||
+    reasonMsg.includes('Script error')
   ) {
     event.preventDefault();
+    event.stopImmediatePropagation?.();
   }
 });
 

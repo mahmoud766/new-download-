@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SupportedLanguage, BlogPost } from '../types';
 import { getBlogsConfig } from '../lib/storage';
+import { getSafeText } from '../lib/safeLang';
 import { SEO_ARTICLES_CATALOG } from '../config/seoArticlesData';
 import {
   BookOpen,
@@ -50,8 +51,8 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
   ];
 
   const filteredBlogs = blogs.filter((post) => {
-    const titleText = (post.title[currentLang] || post.title.ar || post.title.en || '').toLowerCase();
-    const excerptText = (post.excerpt[currentLang] || post.excerpt.ar || post.excerpt.en || '').toLowerCase();
+    const titleText = getSafeText(post?.title, currentLang).toLowerCase();
+    const excerptText = getSafeText(post?.excerpt, currentLang).toLowerCase();
     const query = searchQuery.toLowerCase();
 
     const matchesSearch = titleText.includes(query) || excerptText.includes(query) || post.tags?.some(t => t.toLowerCase().includes(query));
@@ -64,8 +65,8 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
   const currentPosts = filteredBlogs.slice((currentPage - 1) * postsPerPage, currentPage * postsPerPage);
 
   if (selectedPost) {
-    const title = selectedPost.title[currentLang] || selectedPost.title.ar || selectedPost.title.en;
-    const content = selectedPost.content[currentLang] || selectedPost.content.ar || selectedPost.content.en;
+    const title = getSafeText(selectedPost?.title, currentLang);
+    const content = getSafeText(selectedPost?.content, currentLang);
 
     return (
       <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12 space-y-6 animate-fade-in text-right rtl:text-right ltr:text-left">
@@ -213,8 +214,8 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
       {/* Articles Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {currentPosts.map((post) => {
-          const postTitle = post.title[currentLang] || post.title.ar || post.title.en;
-          const postExcerpt = post.excerpt[currentLang] || post.excerpt.ar || post.excerpt.en;
+          const postTitle = getSafeText(post?.title, currentLang);
+          const postExcerpt = getSafeText(post?.excerpt, currentLang);
 
           return (
             <div
