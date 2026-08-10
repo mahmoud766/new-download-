@@ -45,7 +45,7 @@ export const AdManagerTab: React.FC<Props> = ({
   // AdSense Generator Modal State
   const [showAdSenseGenerator, setShowAdSenseGenerator] = useState(false);
   const [targetSlotId, setTargetSlotId] = useState<string>('header_banner');
-  const [publisherId, setPublisherId] = useState('ca-pub-1234567890123456');
+  const [publisherId, setPublisherId] = useState('ca-pub-6708942894533593');
   const [adUnitId, setAdUnitId] = useState('9876543210');
   const [adFormat, setAdFormat] = useState<'auto' | 'fluid' | 'rectangle' | 'horizontal'>('auto');
 

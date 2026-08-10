@@ -133,7 +133,14 @@ export function Navbar({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Logo & Brand Name */}
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => onSelectPlatform('all')}>
+          <a
+            href="/"
+            className="flex items-center gap-3 cursor-pointer group"
+            onClick={(e) => {
+              e.preventDefault();
+              onSelectPlatform('all');
+            }}
+          >
             {siteSettings.logoUrl ? (
               <img
                 src={siteSettings.logoUrl}
@@ -161,7 +168,7 @@ export function Navbar({
                 Universal Video Downloader
               </p>
             </div>
-          </div>
+          </a>
 
           {/* Desktop Navigation Links */}
           <nav className="hidden md:flex items-center gap-1">
@@ -228,14 +235,18 @@ export function Navbar({
               )}
             </div>
 
-            {/* Blog Button */}
-            <button
-              onClick={onOpenBlog}
+            {/* Blog Link */}
+            <a
+              href="/blog"
+              onClick={(e) => {
+                e.preventDefault();
+                onOpenBlog();
+              }}
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold text-slate-200 hover:bg-slate-800/80 hover:text-white transition-all"
             >
               <BookOpen className="w-4 h-4 text-emerald-400" />
               <span>{t('blog', currentLang)}</span>
-            </button>
+            </a>
 
             {/* AI Studio Button */}
             <button

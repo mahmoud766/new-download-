@@ -72,12 +72,16 @@ export function Footer({
             <ul className="space-y-1.5 text-xs">
               {platforms.slice(0, 6).map((p) => (
                 <li key={p.slug}>
-                  <button
-                    onClick={() => onSelectPlatform(p.slug)}
+                  <a
+                    href={`/${p.slug}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onSelectPlatform(p.slug);
+                    }}
                     className="hover:text-indigo-400 py-1 transition-colors min-h-[44px] flex items-center"
                   >
                     {p.name} Downloader
-                  </button>
+                  </a>
                 </li>
               ))}
             </ul>
@@ -89,12 +93,16 @@ export function Footer({
             <ul className="space-y-1.5 text-xs">
               {platforms.slice(6).map((p) => (
                 <li key={p.slug}>
-                  <button
-                    onClick={() => onSelectPlatform(p.slug)}
+                  <a
+                    href={`/${p.slug}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onSelectPlatform(p.slug);
+                    }}
                     className="hover:text-indigo-400 py-1 transition-colors min-h-[44px] flex items-center"
                   >
                     {p.name} Downloader
-                  </button>
+                  </a>
                 </li>
               ))}
             </ul>
@@ -105,44 +113,100 @@ export function Footer({
             <h3 className="text-sm font-bold text-white uppercase tracking-wider">Legal & Support</h3>
             <ul className="space-y-1.5 text-xs">
               <li>
-                <button onClick={() => onOpenLegal('about')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/about"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('about');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   About Us
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('privacy')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/privacy"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('privacy');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   {t('privacyPolicy', currentLang)}
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('terms')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/terms"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('terms');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   {t('termsOfService', currentLang)}
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('dmca')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/dmca"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('dmca');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   {t('dmca', currentLang)}
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('cookies')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/cookies"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('cookies');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   {t('cookiePolicy', currentLang)}
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('disclaimer')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/disclaimer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('disclaimer');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   Disclaimer
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onOpenLegal('contact')} className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/legal/contact"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenLegal('contact');
+                  }}
+                  className="hover:text-indigo-400 py-1 min-h-[44px] flex items-center"
+                >
                   {t('contactUs', currentLang)}
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={onOpenBlog} className="hover:text-indigo-400 text-emerald-400 font-bold py-1 min-h-[44px] flex items-center">
+                <a
+                  href="/blog"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onOpenBlog();
+                  }}
+                  className="hover:text-indigo-400 text-emerald-400 font-bold py-1 min-h-[44px] flex items-center"
+                >
                   {t('blog', currentLang)}
-                </button>
+                </a>
               </li>
               <li>
                 <button onClick={triggerPwaInstall} className="hover:text-purple-300 text-purple-400 font-bold py-1 min-h-[44px] flex items-center gap-1.5">

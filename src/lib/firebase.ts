@@ -132,11 +132,23 @@ export async function fetchDailyVisitorsFromFirestore(): Promise<DailyVisitorDat
         ...(docSnap.data() as Omit<DailyVisitorData, 'id'>)
       }));
     }
-    return [];
   } catch (err) {
-    console.error('Error fetching daily visitors from Firestore:', err);
-    return [];
+    console.error('Error fetching daily visitors from Firestore, falling back to server API:', err);
   }
+
+  try {
+    const res = await fetch('/api/analytics/daily-visitors');
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && Array.isArray(body.data)) {
+        return body.data;
+      }
+    }
+  } catch (apiErr) {
+    console.error('Error fetching daily visitors from API:', apiErr);
+  }
+
+  return [];
 }
 
 // 7. Fetch Top Performing Pages Analytics from Firestore
@@ -161,11 +173,23 @@ export async function fetchTopPagesFromFirestore(): Promise<TopPageData[]> {
         ...(d.data() as Omit<TopPageData, 'id'>)
       }));
     }
-    return [];
   } catch (err) {
-    console.error('Error fetching top pages from Firestore:', err);
-    return [];
+    console.error('Error fetching top pages from Firestore, falling back to server API:', err);
   }
+
+  try {
+    const res = await fetch('/api/analytics/top-pages');
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && Array.isArray(body.data)) {
+        return body.data;
+      }
+    }
+  } catch (apiErr) {
+    console.error('Error fetching top pages from API:', apiErr);
+  }
+
+  return [];
 }
 
 // 8. Fetch Platform Traffic Breakdown from Firestore
@@ -189,11 +213,23 @@ export async function fetchPlatformTrafficFromFirestore(): Promise<PlatformTraff
         ...(d.data() as Omit<PlatformTrafficData, 'id'>)
       }));
     }
-    return [];
   } catch (err) {
-    console.error('Error fetching platform traffic from Firestore:', err);
-    return [];
+    console.error('Error fetching platform traffic from Firestore, falling back to server API:', err);
   }
+
+  try {
+    const res = await fetch('/api/analytics/platform-traffic');
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && Array.isArray(body.data)) {
+        return body.data;
+      }
+    }
+  } catch (apiErr) {
+    console.error('Error fetching platform traffic from API:', apiErr);
+  }
+
+  return [];
 }
 
 // 9. Real Trending Downloads Tracker

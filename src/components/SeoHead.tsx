@@ -114,7 +114,7 @@ export function SeoHead({ platform = 'all', language, pageTitle, pageDescription
         '@type': 'ListItem',
         position: 1,
         name: 'Home',
-        item: window.location.origin,
+        item: 'https://omnifetchpro.com',
       },
       ...(platform !== 'all'
         ? [

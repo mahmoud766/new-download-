@@ -78,9 +78,13 @@ export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsPr
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
           {platforms.map((p) => (
-            <div
+            <a
               key={p.slug}
-              onClick={() => onSelectPlatform(p.slug)}
+              href={`/${p.slug}`}
+              onClick={(e) => {
+                e.preventDefault();
+                onSelectPlatform(p.slug);
+              }}
               className="group relative p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between overflow-hidden"
             >
               <div className="space-y-3">
@@ -111,7 +115,7 @@ export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsPr
                 <span>Start Downloading</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
-            </div>
+            </a>
           ))}
         </div>
       </div>

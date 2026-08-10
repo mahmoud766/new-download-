@@ -3,8 +3,8 @@ import { WifiOff, ShieldAlert } from 'lucide-react';
 import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './types';
 import { isRTL, detectUserLanguage } from './i18n/translations';
 import { getDownloadHistory, fetchSiteSettingsFromDb, initRealtimeSyncLoop } from './lib/storage';
-import { DEFAULT_SITE_SETTINGS } from './config/siteConfig';
-import { trackPageView } from './lib/analytics';
+import { DEFAULT_SITE_SETTINGS, PLATFORMS_CONFIG } from './config/siteConfig';
+import { trackPageView, initAnalyticsHeartbeat } from './lib/analytics';
 
 // Critical On-Screen Components
 import { Navbar } from './components/Navbar';
@@ -38,7 +38,15 @@ const ExtraToolsSection = lazy(() => import('./components/ExtraToolsSection').th
 
 export default function App() {
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>(() => detectUserLanguage());
-  const [currentPlatform, setCurrentPlatform] = useState<PlatformSlug>('all');
+  const [currentPlatform, setCurrentPlatform] = useState<PlatformSlug>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname.toLowerCase().replace('/', '').split('/')[0];
+      if (p && PLATFORMS_CONFIG[p as PlatformSlug]) {
+        return p as PlatformSlug;
+      }
+    }
+    return 'all';
+  });
 
   const handleSelectLang = (lang: SupportedLanguage) => {
     setCurrentLang(lang);
@@ -64,7 +72,18 @@ export default function App() {
     }
     return 'home';
   });
-  const [legalType, setLegalType] = useState<'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact'>('privacy');
+  const [legalType, setLegalType] = useState<'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact'>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes('/legal/')) {
+        const type = path.replace('/legal/', '').split('/')[0];
+        if (['privacy', 'terms', 'dmca', 'disclaimer', 'cookies', 'about', 'contact'].includes(type)) {
+          return type as any;
+        }
+      }
+    }
+    return 'privacy';
+  });
 
   // Secret Admin Access Security Gate State
   const [showSecretGate, setShowSecretGate] = useState<boolean>(() => {
@@ -107,12 +126,30 @@ export default function App() {
       } else if (path.includes('/legal')) {
         setActiveView('legal');
         setShowSecretGate(false);
+        const type = path.replace('/legal/', '').split('/')[0];
+        if (['privacy', 'terms', 'dmca', 'disclaimer', 'cookies', 'about', 'contact'].includes(type)) {
+          setLegalType(type as any);
+        }
+      } else {
+        setActiveView('home');
+        setShowSecretGate(false);
+        const p = path.replace('/', '').split('/')[0];
+        if (p && PLATFORMS_CONFIG[p as PlatformSlug]) {
+          setCurrentPlatform(p as PlatformSlug);
+        } else {
+          setCurrentPlatform('all');
+        }
       }
     };
 
     window.addEventListener('popstate', checkPath);
     checkPath();
     return () => window.removeEventListener('popstate', checkPath);
+  }, []);
+
+  // Start Live Analytics Heartbeat
+  useEffect(() => {
+    initAnalyticsHeartbeat();
   }, []);
 
   // GA4 SPA Page View Tracking (Public website only, strictly excludes admin)
@@ -342,12 +379,47 @@ export default function App() {
     }
   };
 
+  const getSeoProps = () => {
+    if (activeView === 'legal') {
+      const titles: Record<string, string> = {
+        privacy: 'Privacy Policy | OmniFetch Pro',
+        terms: 'Terms of Service | OmniFetch Pro',
+        dmca: 'DMCA Copyright Policy | OmniFetch Pro',
+        disclaimer: 'Legal Disclaimer | OmniFetch Pro',
+        cookies: 'Cookie Policy | OmniFetch Pro',
+        about: 'About Us | OmniFetch Pro',
+        contact: 'Contact Us & Technical Support | OmniFetch Pro',
+      };
+      const descs: Record<string, string> = {
+        privacy: 'Read the official Privacy Policy for OmniFetch Pro. Learn about our data handling, security standards, GDPR compliance, and Google AdSense cookie policies.',
+        terms: 'Review the Terms of Service for using OmniFetch Pro online video extraction utility and downloader.',
+        dmca: 'OmniFetch Pro DMCA Copyright Policy. Read about our takedown notice procedure, intellectual property standards, and contact details.',
+        disclaimer: 'Read the Legal Disclaimer for OmniFetch Pro video downloader utility, trademark notices, and third-party platform disclosures.',
+        cookies: 'Learn about how OmniFetch Pro uses essential, analytics, and Google AdSense advertising cookies.',
+        about: 'Discover OmniFetch Pro, the premier free online video downloader and media converter utility for social media content.',
+        contact: 'Get in touch with the OmniFetch Pro support team for general inquiries, DMCA notices, and technical feedback.',
+      };
+      return {
+        pageTitle: titles[legalType] || 'Legal Document | OmniFetch Pro',
+        pageDescription: descs[legalType] || 'Official legal documentation for OmniFetch Pro.',
+        customCanonicalUrl: `https://omnifetchpro.com/legal/${legalType}`,
+      };
+    } else if (activeView === 'blog') {
+      return {
+        pageTitle: 'Blog & Technical Guides | OmniFetch Pro',
+        pageDescription: 'Explore expert guides, video downloading tutorials, MP4/MP3 format explanations, and technical articles on OmniFetch Pro.',
+        customCanonicalUrl: 'https://omnifetchpro.com/blog',
+      };
+    }
+    return {};
+  };
+
   return (
     <div className={`min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white flex flex-col justify-between overflow-x-hidden transition-colors duration-300 ${
       theme === 'light' ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-100'
     }`}>
       {/* Dynamic SEO Meta & Schema Injector */}
-      <SeoHead platform={currentPlatform} language={currentLang} />
+      <SeoHead platform={currentPlatform} language={currentLang} {...getSeoProps()} />
 
       <div>
         {/* Navigation Bar */}

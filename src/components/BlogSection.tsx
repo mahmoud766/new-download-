@@ -196,8 +196,8 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
             </h2>
             <p className="text-xs text-slate-300">
               {isRtl
-                ? 'جرب أداة OmniDownloader الاستثنائية مجاناً بدون علامة مائية وبأعلى جودة 4K.'
-                : 'Try OmniDownloader for free with zero watermark and maximum 4K speed.'}
+                ? 'جرب أداة OmniFetch Pro الاستثنائية مجاناً بدون علامة مائية وبأعلى جودة 4K.'
+                : 'Try OmniFetch Pro for free with zero watermark and maximum 4K speed.'}
             </p>
             <button
               onClick={onBack}
@@ -225,7 +225,7 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
           </button>
           <h1 className="text-2xl sm:text-4xl font-black text-white flex items-center gap-3">
             <BookOpen className="w-8 h-8 text-purple-500" />
-            <span>{isRtl ? 'دليل ومقالات أومني دونلودر الشامل (100 مقال SEO)' : 'OmniDownloader SEO Knowledge Hub'}</span>
+            <span>{isRtl ? 'دليل ومقالات أومني فيتش برو الشامل (100 مقال SEO)' : 'OmniFetch Pro SEO Knowledge Hub'}</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
             {isRtl

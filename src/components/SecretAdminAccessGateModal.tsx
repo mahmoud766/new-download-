@@ -135,7 +135,7 @@ export const SecretAdminAccessGateModal: React.FC<Props> = ({
         </div>
 
         <div className="text-[11px] text-center text-slate-500 font-mono">
-          OmniDownloader Secure Gate Guard v2.4
+          OmniFetch Pro Secure Gate Guard v2.4
         </div>
 
       </div>
