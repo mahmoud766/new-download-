@@ -4,6 +4,7 @@ import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { t } from '../i18n/translations';
 import { getSiteSettings } from '../lib/storage';
 import { getStoredPlatformsConfig, fetchPlatformsConfigFromDb } from '../lib/adminStorage';
+import { AdBanner } from './AdBanner';
 import { ArrowRight, Sparkles, Video, Globe, Youtube, Instagram, Facebook, Clapperboard, Tv, Ghost, Twitter, Pin, MessageSquare, AtSign, Linkedin } from 'lucide-react';
 
 interface PlatformCardsProps {
@@ -64,10 +65,59 @@ export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsPr
     }
   };
 
+  const firstChunk = platforms.slice(0, 4);
+  const secondChunk = platforms.slice(4, 8);
+  const thirdChunk = platforms.slice(8);
+
+  const renderCardGroup = (group: typeof platforms) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+      {group.map((p) => (
+        <a
+          key={p.slug}
+          href={`/${p.slug}`}
+          onClick={(e) => {
+            e.preventDefault();
+            onSelectPlatform(p.slug);
+          }}
+          className="group relative p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between overflow-hidden"
+        >
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 group-hover:scale-110 transition-transform">
+                {getPlatformIcon(p.slug)}
+              </div>
+
+              {p.popular && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  POPULAR
+                </span>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-lg font-bold text-white group-hover:text-indigo-300 transition-colors">
+                {p.name} Downloader
+              </h3>
+              <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
+                {p.subtitle[currentLang] || p.subtitle.en}
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 mt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-indigo-400 group-hover:text-indigo-300">
+            <span>Start Downloading</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+
   return (
     <section className="py-12 bg-slate-950/60 border-y border-slate-800/80">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center space-y-3 mb-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="text-center space-y-3 mb-6">
           <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
             {t('supportedPlatforms', currentLang)}
           </h2>
@@ -76,48 +126,26 @@ export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsPr
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-          {platforms.map((p) => (
-            <a
-              key={p.slug}
-              href={`/${p.slug}`}
-              onClick={(e) => {
-                e.preventDefault();
-                onSelectPlatform(p.slug);
-              }}
-              className="group relative p-5 rounded-3xl bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 shadow-xl hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col justify-between overflow-hidden"
-            >
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 group-hover:scale-110 transition-transform">
-                    {getPlatformIcon(p.slug)}
-                  </div>
+        {/* Group 1 Service Cards */}
+        {renderCardGroup(firstChunk)}
 
-                  {p.popular && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                      <Sparkles className="w-3 h-3 text-amber-400" />
-                      POPULAR
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-bold text-white group-hover:text-indigo-300 transition-colors">
-                    {p.name} Downloader
-                  </h3>
-                  <p className="text-xs text-slate-400 line-clamp-2 mt-1 leading-relaxed">
-                    {p.subtitle[currentLang] || p.subtitle.en}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-4 mt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold text-indigo-400 group-hover:text-indigo-300">
-                <span>Start Downloading</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </div>
-            </a>
-          ))}
+        {/* Ad Separator 1 (Responsive Leaderboard 735x90) */}
+        <div className="w-full my-6 flex justify-center">
+          <AdBanner slot="service_separator_1" className="w-full max-w-4xl" />
         </div>
+
+        {/* Group 2 Service Cards */}
+        {secondChunk.length > 0 && renderCardGroup(secondChunk)}
+
+        {/* Ad Separator 2 (Responsive Leaderboard 735x90) */}
+        {secondChunk.length > 0 && (
+          <div className="w-full my-6 flex justify-center">
+            <AdBanner slot="service_separator_2" className="w-full max-w-4xl" />
+          </div>
+        )}
+
+        {/* Group 3 Service Cards */}
+        {thirdChunk.length > 0 && renderCardGroup(thirdChunk)}
       </div>
     </section>
   );

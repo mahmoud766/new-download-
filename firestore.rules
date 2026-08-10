@@ -20,29 +20,35 @@ service cloud.firestore {
       }
     }
 
-    // Analytics collections (read/write for system/admin dashboard initialization)
+    // Analytics collections (public read, write requires auth)
     match /analytics_daily_visitors/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /analytics_top_pages/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /analytics_platform_traffic/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /trending_downloads/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /global_settings/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /seo_translations/{documentId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
   }
 }

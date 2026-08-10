@@ -2,6 +2,7 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import { SupportedLanguage, ManagedPage } from '../types';
 import { ArrowLeft, ShieldCheck, Send, CheckCircle2, Mail, FileText, Lock, Globe2, HelpCircle } from 'lucide-react';
 import { getManagedPages, fetchManagedPagesFromDb } from '../lib/adminStorage';
+import { AdBanner } from './AdBanner';
 
 interface LegalProps {
   type: 'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact';
@@ -567,6 +568,9 @@ export function LegalPage({ type, currentLang, onBack, onShowToast }: LegalProps
           </>
         )}
       </div>
+
+      {/* Legal Page Bottom Ad Slot */}
+      <AdBanner slot="LEGAL_BOTTOM" />
     </div>
   );
 }

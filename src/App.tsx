@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { WifiOff, ShieldAlert } from 'lucide-react';
 import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './types';
 import { isRTL, detectUserLanguage } from './i18n/translations';
-import { getDownloadHistory, fetchSiteSettingsFromDb, initRealtimeSyncLoop } from './lib/storage';
+import { getDownloadHistory, fetchSiteSettingsFromDb, fetchAdsConfigFromDb, initRealtimeSyncLoop } from './lib/storage';
 import { DEFAULT_SITE_SETTINGS, PLATFORMS_CONFIG } from './config/siteConfig';
 import { trackPageView, initAnalyticsHeartbeat } from './lib/analytics';
 
@@ -245,6 +245,7 @@ export default function App() {
   useEffect(() => {
     initRealtimeSyncLoop();
     fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
+    fetchAdsConfigFromDb().catch(() => {});
 
     const handleSettingsUpdated = (e: any) => {
       if (e?.detail) {
@@ -463,6 +464,11 @@ export default function App() {
         <main>
           {activeView === 'home' && (
             <>
+              {/* Home Top Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 pt-4">
+                <AdBanner slot="HOME_TOP" />
+              </div>
+
               {/* Hero Downloader Zone */}
               <HeroDownloader
                 currentLang={currentLang}
@@ -482,6 +488,11 @@ export default function App() {
                 onError={(msg) => setToastMessage(msg)}
                 onReset={() => setCurrentResult(null)}
               />
+
+              {/* Home After Hero Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_HERO" />
+              </div>
 
               {/* Header Leaderboard Ad Slot */}
               <div className="max-w-7xl mx-auto px-4">
@@ -515,11 +526,21 @@ export default function App() {
                 }}
               />
 
+              {/* Home After Trending Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_TRENDING" />
+              </div>
+
               {/* Supported Platforms Grid */}
               <PlatformCards
                 currentLang={currentLang}
                 onSelectPlatform={handleSelectPlatform}
               />
+
+              {/* Home After Platform Grid Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_PLATFORM" />
+              </div>
 
               {/* Integrated Media Power Tools */}
               <Suspense fallback={null}>
@@ -529,11 +550,26 @@ export default function App() {
                 />
               </Suspense>
 
+              {/* Home After Tools Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_TOOLS" />
+              </div>
+
               {/* How it Works - 3 Steps */}
               <StepsSection currentLang={currentLang} />
 
+              {/* Home After How To Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_HOW_TO" />
+              </div>
+
               {/* Features List */}
               <FeaturesSection currentLang={currentLang} />
+
+              {/* Home After Why Us / Features Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_WHY_US" />
+              </div>
 
               {/* Service-Specific Deep Landing Guide Content */}
               <PlatformLandingContent
@@ -547,8 +583,22 @@ export default function App() {
               {/* FAQs with Schema */}
               <FAQSection currentLang={currentLang} platform={currentPlatform} />
 
+              {/* Home After Security & FAQ Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_SECURITY" />
+              </div>
+
               {/* User Testimonials */}
               <ReviewsSection currentLang={currentLang} />
+
+              {/* Home After Reviews / Home Bottom Ad Slot */}
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_AFTER_REVIEWS" />
+              </div>
+
+              <div className="max-w-7xl mx-auto px-4 my-2">
+                <AdBanner slot="HOME_BOTTOM" />
+              </div>
             </>
           )}
 

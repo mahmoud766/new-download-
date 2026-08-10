@@ -87,11 +87,21 @@ export interface FAQItem {
 
 export interface AdPlacementConfig {
   id: string;
-  slot: 'header_banner' | 'pre_result' | 'post_result' | 'sidebar' | 'in_article' | 'footer_banner';
+  slot: 'header_banner' | 'pre_result' | 'post_result' | 'sidebar' | 'in_article' | 'footer_banner' | 'service_separator_1' | 'service_separator_2' | 'HOME_TOP' | 'HOME_AFTER_HERO' | 'HOME_AFTER_TRENDING' | 'HOME_AFTER_PLATFORM' | 'HOME_AFTER_TOOLS' | 'HOME_AFTER_HOW_TO' | 'HOME_AFTER_WHY_US' | 'HOME_AFTER_FACEBOOK_GUIDE' | 'HOME_AFTER_SECURITY' | 'HOME_AFTER_REVIEWS' | 'HOME_BOTTOM' | 'PLATFORM_TOP' | 'PLATFORM_AFTER_TOOL' | 'PLATFORM_AFTER_DESCRIPTION' | 'PLATFORM_AFTER_FAQ' | 'PLATFORM_BOTTOM' | 'BLOG_TOP' | 'BLOG_AFTER_INTRO' | 'BLOG_MIDDLE' | 'BLOG_AFTER_CONTENT' | 'BLOG_BOTTOM' | 'LEGAL_BOTTOM' | string;
   name: string;
   enabled: boolean;
   code: string;
-  heightPx: number;
+  heightPx?: number;
+  provider?: 'adsense' | 'adsterra' | 'custom_html' | string;
+  publisherId?: string;
+  slotId?: string;
+  format?: 'auto' | 'rectangle' | 'horizontal' | 'vertical' | 'fluid' | string;
+  responsive?: boolean;
+  mobileEnabled?: boolean;
+  desktopEnabled?: boolean;
+  lazyLoad?: boolean;
+  frequency?: number;
+  priority?: number;
 }
 
 export interface BlogPost {

@@ -2,6 +2,7 @@ import React from 'react';
 import { SupportedLanguage, PlatformSlug } from '../types';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { CheckCircle2, ShieldCheck, Zap, HelpCircle, AlertCircle, FileText, Smartphone, Laptop, Lock, ArrowRight } from 'lucide-react';
+import { AdBanner } from './AdBanner';
 
 interface PlatformLandingContentProps {
   currentPlatform: PlatformSlug;
@@ -84,6 +85,9 @@ export function PlatformLandingContent({
                 ))}
             </div>
           </div>
+
+          {/* Home After Facebook/Platform Guide Ad Slot */}
+          <AdBanner slot="HOME_AFTER_FACEBOOK_GUIDE" />
         </div>
       </section>
     );
@@ -92,6 +96,9 @@ export function PlatformLandingContent({
   return (
     <section className="py-12 sm:py-16 bg-slate-900/60 border-t border-slate-800/80">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 space-y-12">
+        {/* Platform Page Top Ad Slot */}
+        <AdBanner slot="PLATFORM_TOP" />
+
         {/* Dynamic Service Header */}
         <div className="text-center space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20 text-xs font-bold">
@@ -111,6 +118,9 @@ export function PlatformLandingContent({
               : `OmniFetch Pro provides an optimized extraction engine specifically built for ${platformName}. Download public posts, reels, shorts, and audio files directly in original HD quality without apps or user registration.`}
           </p>
         </div>
+
+        {/* Platform After Tool Ad Slot */}
+        <AdBanner slot="PLATFORM_AFTER_TOOL" />
 
         {/* Step-by-Step Instructions */}
         <div className="p-6 sm:p-8 rounded-3xl bg-slate-950 border border-slate-800 space-y-6">
@@ -188,6 +198,9 @@ export function PlatformLandingContent({
           </div>
         </div>
 
+        {/* Platform After Description Ad Slot */}
+        <AdBanner slot="PLATFORM_AFTER_DESCRIPTION" />
+
         {/* Troubleshooting & FAQ */}
         <div className="p-6 sm:p-8 rounded-3xl bg-slate-950 border border-slate-800 space-y-4">
           <h3 className="text-xl font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-3">
@@ -215,6 +228,9 @@ export function PlatformLandingContent({
             </div>
           </div>
         </div>
+
+        {/* Platform After FAQ Ad Slot */}
+        <AdBanner slot="PLATFORM_AFTER_FAQ" />
 
         {/* Internal Cross Navigation & Links */}
         <div className="pt-4 flex flex-wrap items-center justify-between gap-4 border-t border-slate-800">
@@ -245,6 +261,9 @@ export function PlatformLandingContent({
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* Platform Bottom Ad Slot */}
+        <AdBanner slot="PLATFORM_BOTTOM" />
       </div>
     </section>
   );

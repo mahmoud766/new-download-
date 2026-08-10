@@ -4,6 +4,7 @@ import { getBlogsConfig } from '../lib/storage';
 import { getSafeText } from '../lib/safeLang';
 import { SEO_ARTICLES_CATALOG } from '../config/seoArticlesData';
 import { SeoHead } from './SeoHead';
+import { AdBanner } from './AdBanner';
 import {
   BookOpen,
   Search,
@@ -129,6 +130,9 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
         />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingSchema) }} />
 
+        {/* Blog Top Ad Slot */}
+        <AdBanner slot="BLOG_TOP" />
+
         <button
           onClick={handleBackToList}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800 font-bold text-xs transition-all shadow-md"
@@ -179,14 +183,23 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
             </button>
           </div>
 
+          {/* Blog After Intro Ad Slot */}
+          <AdBanner slot="BLOG_AFTER_INTRO" />
+
           <div className="aspect-video rounded-2xl overflow-hidden bg-slate-950 my-6 border border-slate-800 shadow-xl">
             <img src={selectedPost.coverImage} alt={title} className="w-full h-full object-cover" />
           </div>
+
+          {/* Blog In-Article Middle Ad Slot */}
+          <AdBanner slot="BLOG_MIDDLE" />
 
           {/* Article Body */}
           <div className="prose prose-invert max-w-none text-slate-200 text-sm sm:text-base leading-relaxed whitespace-pre-wrap pt-2">
             {content}
           </div>
+
+          {/* Blog After Content Ad Slot */}
+          <AdBanner slot="BLOG_AFTER_CONTENT" />
 
           {/* Bottom Quick Download CTA */}
           <div className="p-6 bg-gradient-to-r from-purple-900/60 via-slate-900 to-indigo-900/60 border border-purple-500/30 rounded-2xl space-y-3 mt-8">
@@ -206,6 +219,9 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
               {isRtl ? 'الانتقال لأداة التحميل الرئيسية' : 'Go to Main Downloader'}
             </button>
           </div>
+
+          {/* Blog Bottom Ad Slot */}
+          <AdBanner slot="BLOG_BOTTOM" />
         </article>
       </div>
     );
@@ -250,24 +266,29 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
         </div>
       </div>
 
-      {/* Category Pills */}
-      <div className="flex flex-wrap items-center gap-2">
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            onClick={() => {
-              setSelectedCategory(cat.id);
-              setCurrentPage(1);
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              selectedCategory === cat.id
-                ? 'bg-purple-600 text-white border-purple-400/50 shadow-lg shadow-purple-900/40'
-                : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white'
-            }`}
-          >
-            {cat.name}
-          </button>
-        ))}
+      {/* Category Pills & Sidebar Ad */}
+      <div className="flex flex-col lg:flex-row items-start justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2 flex-1">
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => {
+                setSelectedCategory(cat.id);
+                setCurrentPage(1);
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                selectedCategory === cat.id
+                  ? 'bg-purple-600 text-white border-purple-400/50 shadow-lg shadow-purple-900/40'
+                  : 'bg-slate-900/80 text-slate-400 border-slate-800 hover:text-white'
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+        <div className="w-full lg:w-auto shrink-0">
+          <AdBanner slot="sidebar" className="my-0" />
+        </div>
       </div>
 
       {/* Articles Grid */}

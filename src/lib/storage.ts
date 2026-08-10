@@ -1,5 +1,6 @@
 import { MediaResult, SiteSettings, AdPlacementConfig, FAQItem, BlogPost, DownloadLogItem } from '../types';
 import { DEFAULT_SITE_SETTINGS, DEFAULT_ADS_CONFIG, DEFAULT_FAQS, INITIAL_BLOG_POSTS } from '../config/siteConfig';
+import { saveFirestoreGlobalSettings } from './firebase';
 
 const HISTORY_KEY = 'omnifetch_download_history_v1';
 
@@ -119,7 +120,7 @@ export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
     const res = await fetch('/api/ads');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.ads && Array.isArray(data.ads)) {
+      if (data.success && data.ads && Array.isArray(data.ads) && data.ads.length > 0) {
         cachedAdsConfig = data.ads;
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
@@ -134,6 +135,7 @@ export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
 }
 
 export async function saveAdsConfigToDb(ads: AdPlacementConfig[]): Promise<AdPlacementConfig[]> {
+  // 1. Post to PostgreSQL server API
   const res = await fetch('/api/ads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -141,9 +143,16 @@ export async function saveAdsConfigToDb(ads: AdPlacementConfig[]): Promise<AdPla
   });
   if (!res.ok) throw new Error(`Server returned status ${res.status}`);
   const data = await res.json();
-  if (!data.success) throw new Error('Failed to save ads config');
+  if (!data.success || !data.verified) throw new Error('Database write verification failed');
 
-  cachedAdsConfig = ads;
+  // 2. Mirror synchronously to Firestore so client & remote sync stay 100% identical
+  try {
+    await saveFirestoreGlobalSettings({ adsConfig: ads });
+  } catch (fsErr) {
+    console.warn('Notice: Mirroring adsConfig to Firestore warning:', fsErr);
+  }
+
+  cachedAdsConfig = data.ads || ads;
   if (data.syncVersion) currentSyncVersion = data.syncVersion;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
@@ -151,10 +160,59 @@ export async function saveAdsConfigToDb(ads: AdPlacementConfig[]): Promise<AdPla
   return cachedAdsConfig;
 }
 
-export function saveAdsConfig(ads: AdPlacementConfig[]): void {
+export async function saveAdsConfig(ads: AdPlacementConfig[]): Promise<AdPlacementConfig[]> {
   cachedAdsConfig = ads;
-  saveAdsConfigToDb(ads).catch((e) => console.error('Background save ads error:', e));
+  return await saveAdsConfigToDb(ads);
 }
+
+// --- Adsterra Auto-Sync Engine API Helpers ---
+export async function testAdsterraConnection(token?: string): Promise<{ success: boolean; connected: boolean; message: string; domainsCount?: number }> {
+  const res = await fetch('/api/admin/adsterra/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Adsterra connection test failed');
+  }
+  return data;
+}
+
+export async function fetchAdsterraMappingsFromDb(): Promise<any> {
+  const res = await fetch('/api/admin/adsterra/mappings');
+  if (!res.ok) throw new Error(`Failed to fetch mappings: HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || 'Failed to fetch mappings');
+  return data;
+}
+
+export async function triggerAdsterraSync(isDryRun: boolean = false): Promise<any> {
+  const res = await fetch('/api/admin/adsterra/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isDryRun }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Adsterra Sync failed');
+  }
+  return data;
+}
+
+export async function saveAdsterraMappingsToDb(mappings: any[]): Promise<any> {
+  const res = await fetch('/api/admin/adsterra/mappings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mappings }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.success) {
+    throw new Error(data.message || 'Failed to save mappings');
+  }
+  return data;
+}
+
 
 // --- FAQs & Blogs ---
 export function getFaqsConfig(): FAQItem[] {

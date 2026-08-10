@@ -163,3 +163,64 @@ model ProviderSetting {
   @@index([platform])
   @@index([enabled])
 }
+
+model AdsterraDomain {
+  id               String   @id @default(cuid())
+  adsterraDomainId String   @unique
+  domainName       String
+  status           String   @default("ACTIVE")
+  rawData          String?  @default("{}")
+  lastSyncedAt     DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model AdsterraPlacement {
+  id                  String   @id @default(cuid())
+  adsterraPlacementId String   @unique
+  domainId            String?
+  name                String
+  format              String   // e.g. "native_300x250", "leaderboard_728x90", "popunder", "social_bar", "smartlink"
+  status              String   @default("ACTIVE")
+  rawData             String?  @default("{}")
+  lastSyncedAt        DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AdsterraSmartlink {
+  id                  String   @id @default(cuid())
+  adsterraSmartlinkId String   @unique
+  url                 String
+  name                String
+  status              String   @default("ACTIVE")
+  rawData             String?  @default("{}")
+  lastSyncedAt        DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AdsterraPlacementMapping {
+  id                  String   @id @default(cuid())
+  adsterraPlacementId String   @unique
+  omnifetchSlot       String   @unique
+  source              String   @default("adsterra_auto") // "adsterra_auto" or "manual"
+  enabled             Boolean  @default(true)
+  confidence          Int      @default(90)
+  manualOverride      Boolean  @default(false)
+  lastSyncedAt        DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model AdsterraSyncLog {
+  id              String   @id @default(cuid())
+  status          String   // "SUCCESS", "PARTIAL", "FAILED", "DRY_RUN"
+  domainsCount    Int      @default(0)
+  placementsCount Int      @default(0)
+  smartlinksCount Int      @default(0)
+  details         String?  @default("")
+  errorMessage    String?  @default("")
+  createdAt       DateTime @default(now())
+}
+
