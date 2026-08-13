@@ -203,6 +203,11 @@ export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
       iframe.setAttribute('scrolling', 'no');
       iframe.setAttribute('frameBorder', '0');
 
+      // Strict Security Sandbox: Allow script execution and forms, but DISALLOW allow-top-navigation
+      // This physically prevents third-party ad scripts from redirecting the parent window.
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox');
+      iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+
       iframe.srcdoc = `<!DOCTYPE html>
 <html>
 <head>
@@ -234,9 +239,34 @@ ${finalCode}
       return;
     }
 
-    // Strategy C: Custom Raw HTML or Banner Image Link
+    // Strategy C: Custom Raw HTML or Banner Image Link (Wrapped in Sandboxed Iframe for Safety)
     if (rawCode) {
-      container.innerHTML = rawCode;
+      const iframe = document.createElement('iframe');
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.style.overflow = 'hidden';
+      iframe.style.backgroundColor = 'transparent';
+      iframe.setAttribute('scrolling', 'no');
+      iframe.setAttribute('frameBorder', '0');
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox');
+      iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+
+      iframe.srcdoc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; text-align: center; }
+  img { max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+${rawCode}
+</body>
+</html>`;
+
+      container.appendChild(iframe);
       setAdStatus('LOADED');
     } else {
       setAdStatus('NO_FILL');

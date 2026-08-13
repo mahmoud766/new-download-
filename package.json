@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "postinstall": "npx prisma generate && (node node_modules/youtube-dl-exec/scripts/postinstall.js || true)",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:security": "node scripts/security-audit.js"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
