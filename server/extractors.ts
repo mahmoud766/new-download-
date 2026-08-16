@@ -1,28 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
-import youtubedl from 'youtube-dl-exec';
 import ytdl from '@distube/ytdl-core';
 import { recordTelemetry } from './telemetry';
 import { prisma } from '../src/lib/prisma';
-
-export function ensureYtDlpBinary() {
-  try {
-    const binPath = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
-    if (!fs.existsSync(binPath)) {
-      console.log('[OmniFetch] yt-dlp binary missing, running postinstall...');
-      const scriptPath = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'scripts', 'postinstall.js');
-      if (fs.existsSync(scriptPath)) {
-        execSync(`node "${scriptPath}"`, { stdio: 'inherit' });
-      }
-    }
-  } catch (err) {
-    console.error('Failed to ensure yt-dlp binary:', err);
-  }
-}
-
-// Ensure binary exists at module initialization
-ensureYtDlpBinary();
 
 export interface ExtractedMediaResult {
   status: 'SUCCESS' | 'FAILED';
@@ -49,17 +29,14 @@ export interface ExtractedMediaResult {
 
 const INITIAL_SEED_PROVIDERS = [
   { providerKey: 'tikwm_api', name: 'TikWM API', type: 'Extractor Engine', platform: 'TikTok', enabled: true, priority: 1 },
-  { providerKey: 'ytdlp_tiktok', name: 'yt-dlp TikTok', type: 'Extractor Engine', platform: 'TikTok', enabled: true, priority: 2 },
-  { providerKey: 'ytdl_core', name: 'ytdl-core', type: 'Extractor Engine', platform: 'YouTube', enabled: true, priority: 1 },
-  { providerKey: 'ytdlp_native', name: 'yt-dlp Native', type: 'Extractor Engine', platform: 'YouTube', enabled: true, priority: 2 },
-  { providerKey: 'ytdlp_multiclient', name: 'yt-dlp Multi-Client', type: 'Extractor Engine', platform: 'YouTube', enabled: true, priority: 3 },
-  { providerKey: 'loader_to', name: 'Loader.to CDN', type: 'Extractor Engine', platform: 'YouTube', enabled: true, priority: 4 },
-  { providerKey: 'cobalt_api', name: 'Cobalt API', type: 'Extractor Engine', platform: 'YouTube', enabled: true, priority: 5 },
-  { providerKey: 'instagram_mirrors', name: 'Instagram Mirrors', type: 'Extractor Engine', platform: 'Instagram', enabled: true, priority: 1 },
-  { providerKey: 'fb_plugin', name: 'FB Plugin Scraper', type: 'Extractor Engine', platform: 'Facebook', enabled: true, priority: 1 },
-  { providerKey: 'ytdlp_fb', name: 'yt-dlp Facebook', type: 'Extractor Engine', platform: 'Facebook', enabled: true, priority: 2 },
-  { providerKey: 'cobalt_vkr_fb', name: 'Cobalt / VKR API', type: 'Extractor Engine', platform: 'Facebook', enabled: true, priority: 3 },
-  { providerKey: 'opengraph', name: 'OpenGraph Scraper', type: 'Extractor Engine', platform: 'General', enabled: true, priority: 1 },
+  { providerKey: 'cobalt_tiktok', name: 'Cobalt TikTok API', type: 'External Engine', platform: 'TikTok', enabled: true, priority: 2 },
+  { providerKey: 'ytdl_core', name: 'ytdl-core', type: 'Node Native', platform: 'YouTube', enabled: true, priority: 1 },
+  { providerKey: 'loader_to', name: 'Loader.to CDN', type: 'CDN Conversion', platform: 'YouTube', enabled: true, priority: 2 },
+  { providerKey: 'cobalt_api', name: 'Cobalt API', type: 'External Engine', platform: 'YouTube', enabled: true, priority: 3 },
+  { providerKey: 'instagram_mirrors', name: 'Instagram Mirrors', type: 'HTML Mirror Scraper', platform: 'Instagram', enabled: true, priority: 1 },
+  { providerKey: 'fb_plugin', name: 'FB Plugin Scraper', type: 'Facebook Scraper', platform: 'Facebook', enabled: true, priority: 1 },
+  { providerKey: 'cobalt_vkr_fb', name: 'Cobalt / VKR API', type: 'External Engine', platform: 'Facebook', enabled: true, priority: 2 },
+  { providerKey: 'opengraph', name: 'OpenGraph Scraper', type: 'Metadata Scraper', platform: 'General', enabled: true, priority: 1 },
 ];
 
 /**
@@ -197,51 +174,61 @@ async function runTikWmApi(cleanUrl: string, requestId?: string): Promise<Extrac
   return null;
 }
 
-async function runYtDlpTikTok(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
-  const ytdlpStart = Date.now();
-  try {
-    ensureYtDlpBinary();
-    const output: any = await youtubedl(cleanUrl, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      format: 'best',
-    });
-    if (output && (output.url || output.formats?.[0]?.url)) {
-      recordTelemetry({
-        requestId,
-        provider: 'yt-dlp TikTok',
-        platform: 'TikTok',
-        latencyMs: Date.now() - ytdlpStart,
-        success: true,
-        targetUrl: cleanUrl,
+async function runCobaltTikTok(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+  const cobaltStart = Date.now();
+  const cobaltEndpoints = [
+    'https://api.cobalt.tools/api/json',
+    'https://co.wuk.sh/api/json',
+    'https://cobalt.m3u8.cx/api/json',
+    'https://cobalt-api.kwippy.com/api/json',
+  ];
+
+  for (const cobaltUrl of cobaltEndpoints) {
+    try {
+      const cobaltRes = await fetch(cobaltUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: cleanUrl,
+          videoQuality: '1080',
+        }),
       });
-      return {
-        status: 'SUCCESS',
-        title: output.title || 'TikTok Video',
-        thumbnail: output.thumbnail || output.thumbnails?.[0]?.url,
-        video_url: output.url || output.formats?.[0]?.url,
-      };
-    }
-    recordTelemetry({
-      requestId,
-      provider: 'yt-dlp TikTok',
-      platform: 'TikTok',
-      latencyMs: Date.now() - ytdlpStart,
-      success: false,
-      errorMessage: 'yt-dlp TikTok returned no output URL',
-      targetUrl: cleanUrl,
-    });
-  } catch (e: any) {
-    recordTelemetry({
-      requestId,
-      provider: 'yt-dlp TikTok',
-      platform: 'TikTok',
-      latencyMs: Date.now() - ytdlpStart,
-      success: false,
-      errorMessage: e?.message || 'yt-dlp TikTok failed',
-      targetUrl: cleanUrl,
-    });
+
+      if (cobaltRes.ok) {
+        const cobaltData: any = await cobaltRes.json();
+        const finalUrl = cobaltData.url || cobaltData.stream || (cobaltData.picker && cobaltData.picker[0]?.url);
+        if (finalUrl && typeof finalUrl === 'string' && finalUrl.startsWith('http')) {
+          recordTelemetry({
+            requestId,
+            provider: 'Cobalt TikTok API',
+            platform: 'TikTok',
+            latencyMs: Date.now() - cobaltStart,
+            success: true,
+            targetUrl: cleanUrl,
+          });
+          return {
+            status: 'SUCCESS',
+            title: 'TikTok Video',
+            thumbnail: '',
+            video_url: finalUrl,
+          };
+        }
+      }
+    } catch (e) {}
   }
+
+  recordTelemetry({
+    requestId,
+    provider: 'Cobalt TikTok API',
+    platform: 'TikTok',
+    latencyMs: Date.now() - cobaltStart,
+    success: false,
+    errorMessage: 'All Cobalt TikTok instances failed',
+    targetUrl: cleanUrl,
+  });
   return null;
 }
 
@@ -285,114 +272,6 @@ async function runYtdlCore(ytUrl: string, fallbackTitle: string, fallbackThumb: 
       latencyMs: Date.now() - ytdlStart,
       success: false,
       errorMessage: ytdlErr?.message || String(ytdlErr),
-      targetUrl: ytUrl,
-    });
-  }
-  return null;
-}
-
-async function runYtDlpNative(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string): Promise<ExtractedMediaResult | null> {
-  const ytDlpStart = Date.now();
-  try {
-    ensureYtDlpBinary();
-    const output: any = await youtubedl(ytUrl, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      noCheckCertificates: true,
-      jsRuntimes: 'node',
-      extractorArgs: 'youtube:player_client=mweb,android',
-      format: 'best',
-    } as any);
-
-    const directUrl = output.url || output.formats?.find((f: any) => f.vcodec !== 'none' && f.acodec !== 'none' && f.url)?.url || output.formats?.[0]?.url;
-    if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
-      recordTelemetry({
-        requestId,
-        provider: 'yt-dlp Native',
-        platform: 'YouTube',
-        latencyMs: Date.now() - ytDlpStart,
-        success: true,
-        targetUrl: ytUrl,
-      });
-      return {
-        status: 'SUCCESS',
-        title: output.title || fallbackTitle,
-        thumbnail: output.thumbnail || output.thumbnails?.[0]?.url || fallbackThumb,
-        video_url: directUrl,
-        forceProxy: true,
-      };
-    }
-    recordTelemetry({
-      requestId,
-      provider: 'yt-dlp Native',
-      platform: 'YouTube',
-      latencyMs: Date.now() - ytDlpStart,
-      success: false,
-      errorMessage: 'yt-dlp returned no direct URL',
-      targetUrl: ytUrl,
-    });
-  } catch (ytError: any) {
-    recordTelemetry({
-      requestId,
-      provider: 'yt-dlp Native',
-      platform: 'YouTube',
-      latencyMs: Date.now() - ytDlpStart,
-      success: false,
-      errorMessage: ytError?.message || String(ytError),
-      targetUrl: ytUrl,
-    });
-  }
-  return null;
-}
-
-async function runYtDlpMultiClient(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string): Promise<ExtractedMediaResult | null> {
-  const ytDlpMultiStart = Date.now();
-  try {
-    ensureYtDlpBinary();
-    const output: any = await youtubedl(ytUrl, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      noCheckCertificates: true,
-      jsRuntimes: 'node',
-      extractorArgs: 'youtube:player_client=tv,ios,mweb',
-      format: 'best',
-    } as any);
-
-    const directUrl = output.url || output.formats?.find((f: any) => f.vcodec !== 'none' && f.acodec !== 'none' && f.url)?.url || output.formats?.[0]?.url;
-    if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
-      recordTelemetry({
-        requestId,
-        provider: 'yt-dlp Multi-Client',
-        platform: 'YouTube',
-        latencyMs: Date.now() - ytDlpMultiStart,
-        success: true,
-        targetUrl: ytUrl,
-      });
-      return {
-        status: 'SUCCESS',
-        title: output.title || fallbackTitle,
-        thumbnail: output.thumbnail || output.thumbnails?.[0]?.url || fallbackThumb,
-        video_url: directUrl,
-        forceProxy: true,
-      };
-    }
-    recordTelemetry({
-      requestId,
-      provider: 'yt-dlp Multi-Client',
-      platform: 'YouTube',
-      latencyMs: Date.now() - ytDlpMultiStart,
-      success: false,
-      errorMessage: 'yt-dlp Multi-Client returned no direct URL',
-      targetUrl: ytUrl,
-    });
-  } catch (ytError2: any) {
-    recordTelemetry({
-      requestId,
-      provider: 'yt-dlp Multi-Client',
-      platform: 'YouTube',
-      latencyMs: Date.now() - ytDlpMultiStart,
-      success: false,
-      errorMessage: ytError2?.message || 'yt-dlp Multi-Client failed',
       targetUrl: ytUrl,
     });
   }
@@ -749,65 +628,6 @@ async function runFbPluginScraper(fbUrl: string, rawUrl: string, cleanUrl: strin
   return null;
 }
 
-async function runYtDlpFacebook(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
-  const fbStart = Date.now();
-  const mobileFbUrl = fbUrl.replace('www.facebook.com', 'm.facebook.com');
-  const ytdlCandidateUrls = [mobileFbUrl, fbUrl, rawUrl].filter((u, i, arr) => u && arr.indexOf(u) === i);
-  for (const targetUrl of ytdlCandidateUrls) {
-    try {
-      const output: any = await youtubedl(targetUrl, {
-        dumpSingleJson: true,
-        noWarnings: true,
-        format: 'best[protocol^=http][ext=mp4]/best[ext=mp4]/best',
-        addHeader: [
-          'User-Agent:Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-          'Accept-Language:en-US,en;q=0.9',
-        ],
-      });
-
-      if (output) {
-        const validFormat = output.formats?.slice().reverse().find(
-          (f: any) => f.url && f.url.startsWith('http') && !f.url.includes('.m3u8') && !f.url.includes('.mpd') && !f.url.includes('lookaside.fbsbx.com') && f.vcodec !== 'none' && f.acodec !== 'none'
-        ) || output.formats?.slice().reverse().find(
-          (f: any) => f.url && f.url.startsWith('http') && !f.url.includes('.m3u8') && !f.url.includes('.mpd') && !f.url.includes('lookaside.fbsbx.com')
-        );
-
-        const finalUrl = validFormat ? validFormat.url : (
-          output.url && !output.url.includes('lookaside') && !output.url.includes('.m3u8') && !output.url.includes('.mpd') ? output.url : null
-        );
-
-        if (finalUrl) {
-          recordTelemetry({
-            requestId,
-            provider: 'yt-dlp Facebook',
-            platform: 'Facebook',
-            latencyMs: Date.now() - fbStart,
-            success: true,
-            targetUrl: cleanUrl,
-          });
-          return {
-            status: 'SUCCESS',
-            title: output.title || 'Facebook Video',
-            thumbnail: output.thumbnail || output.thumbnails?.[0]?.url,
-            video_url: finalUrl,
-            forceProxy: true,
-          };
-        }
-      }
-    } catch (e) {}
-  }
-  recordTelemetry({
-    requestId,
-    provider: 'yt-dlp Facebook',
-    platform: 'Facebook',
-    latencyMs: Date.now() - fbStart,
-    success: false,
-    errorMessage: 'yt-dlp Facebook failed to extract valid MP4',
-    targetUrl: cleanUrl,
-  });
-  return null;
-}
-
 async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
   const fbStart = Date.now();
   const cobaltInstances = [
@@ -894,30 +714,6 @@ async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, r
 
 async function runOpenGraphScraper(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
   const fallbackStart = Date.now();
-  try {
-    const output: any = await youtubedl(cleanUrl, {
-      dumpSingleJson: true,
-      noWarnings: true,
-      format: 'best',
-    });
-    if (output && (output.url || output.formats?.[0]?.url)) {
-      recordTelemetry({
-        requestId,
-        provider: 'OpenGraph Scraper',
-        platform: 'General',
-        latencyMs: Date.now() - fallbackStart,
-        success: true,
-        targetUrl: cleanUrl,
-      });
-      return {
-        status: 'SUCCESS',
-        title: output.title || 'Media File',
-        thumbnail: output.thumbnail || output.thumbnails?.[0]?.url,
-        video_url: output.url || output.formats?.[0]?.url,
-      };
-    }
-  } catch {}
-
   try {
     const pageRes = await fetch(cleanUrl, {
       headers: {
@@ -1006,8 +802,11 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
         if (p.providerKey === 'tikwm_api') {
           const res = await runTikWmApi(cleanUrl, requestId);
           if (res) return res;
-        } else if (p.providerKey === 'ytdlp_tiktok') {
-          const res = await runYtDlpTikTok(cleanUrl, requestId);
+        } else if (p.providerKey === 'cobalt_tiktok') {
+          const res = await runCobaltTikTok(cleanUrl, requestId);
+          if (res) return res;
+        } else if (p.providerKey === 'opengraph') {
+          const res = await runOpenGraphScraper(cleanUrl, requestId);
           if (res) return res;
         }
       }
@@ -1041,17 +840,14 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
         if (p.providerKey === 'ytdl_core') {
           const res = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId);
           if (res) return res;
-        } else if (p.providerKey === 'ytdlp_native') {
-          const res = await runYtDlpNative(ytUrl, fallbackTitle, fallbackThumb, requestId);
-          if (res) return res;
-        } else if (p.providerKey === 'ytdlp_multiclient') {
-          const res = await runYtDlpMultiClient(ytUrl, fallbackTitle, fallbackThumb, requestId);
-          if (res) return res;
         } else if (p.providerKey === 'loader_to') {
           const res = await runLoaderTo(ytUrl, fallbackTitle, fallbackThumb, requestId);
           if (res) return res;
         } else if (p.providerKey === 'cobalt_api') {
           const res = await runCobaltApi(ytUrl, fallbackTitle, fallbackThumb, requestId);
+          if (res) return res;
+        } else if (p.providerKey === 'opengraph') {
+          const res = await runOpenGraphScraper(ytUrl, requestId);
           if (res) return res;
         }
       }
@@ -1071,11 +867,11 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
         if (p.providerKey === 'fb_plugin') {
           const res = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId);
           if (res) return res;
-        } else if (p.providerKey === 'ytdlp_fb') {
-          const res = await runYtDlpFacebook(fbUrl, rawUrl, cleanUrl, requestId);
-          if (res) return res;
         } else if (p.providerKey === 'cobalt_vkr_fb') {
           const res = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId);
+          if (res) return res;
+        } else if (p.providerKey === 'opengraph') {
+          const res = await runOpenGraphScraper(fbUrl, requestId);
           if (res) return res;
         }
       }
@@ -1086,6 +882,9 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
       for (const p of enabledProviders) {
         if (p.providerKey === 'instagram_mirrors') {
           const res = await runInstagramMirrors(cleanUrl, requestId);
+          if (res) return res;
+        } else if (p.providerKey === 'opengraph') {
+          const res = await runOpenGraphScraper(cleanUrl, requestId);
           if (res) return res;
         }
       }

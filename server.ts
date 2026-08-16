@@ -2,14 +2,13 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { Readable } from 'node:stream';
-import { spawn } from 'child_process';
 import { createServer as createViteServer } from 'vite';
 import ytdl from '@distube/ytdl-core';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import geminiRoutes from './server/geminiRoutes';
-import { extractMedia, ensureYtDlpBinary, getProviderSettingsFromDb } from './server/extractors';
+import { extractMedia, getProviderSettingsFromDb } from './server/extractors';
 import { prisma } from './lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 
@@ -390,6 +389,66 @@ async function startServer() {
     }
   });
 
+  // Ad Security Sanitizer
+  function sanitizeAdCode(code: string, zoneKey: string, formatName: string): string {
+    if (!code || code.trim().length < 10) {
+      return buildAdsterraCode(zoneKey, formatName);
+    }
+
+    const lower = code.toLowerCase();
+    // Security Rule 1: Reject dangerous JavaScript constructs and redirect payloads
+    const dangerousConstructs = [
+      'window.top', 'top.location', 'parent.location', 'window.open',
+      'location.replace', 'location.href', 'location.assign',
+      'document.write', 'eval(', 'new function', 'popunder', 'popup',
+      'javascript:', 'data:text/html', 'window.navigate'
+    ];
+    for (const dangerous of dangerousConstructs) {
+      if (lower.includes(dangerous)) {
+        console.warn(`[Ad Security Sanitizer] Rejected ad code containing dangerous construct: "${dangerous}"`);
+        return buildAdsterraCode(zoneKey, formatName);
+      }
+    }
+
+    // Security Rule 2: Validate external script source domains
+    const scriptSrcMatches = Array.from(code.matchAll(/src\s*=\s*["']([^"']+)["']/gi));
+    for (const m of scriptSrcMatches) {
+      const srcUrl = m[1];
+      try {
+        const parsedUrl = new URL(srcUrl.startsWith('//') ? `https:${srcUrl}` : srcUrl);
+        const host = parsedUrl.hostname.toLowerCase();
+        const isAllowedDomain =
+          host.endsWith('highperformanceformat.com') ||
+          host.endsWith('effectivecpmnetwork.com') ||
+          host.endsWith('googlesyndication.com') ||
+          host.endsWith('doubleclick.net') ||
+          host.endsWith('google.com');
+        if (!isAllowedDomain) {
+          console.warn(`[Ad Security Sanitizer] Rejected script from unauthorized domain: "${host}"`);
+          return buildAdsterraCode(zoneKey, formatName);
+        }
+      } catch (e) {
+        console.warn(`[Ad Security Sanitizer] Invalid script URL in ad code: "${srcUrl}"`);
+        return buildAdsterraCode(zoneKey, formatName);
+      }
+    }
+    
+    const keyMatches = Array.from(code.matchAll(/highperformanceformat\.com\/([^\/]+)\/invoke\.js/gi));
+    for (const m of keyMatches) {
+      const extractedKey = m[1];
+      if (!/^[a-f0-9]{32}$/i.test(extractedKey)) {
+        return buildAdsterraCode(zoneKey, formatName);
+      }
+    }
+
+    const atOptionKeyMatch = code.match(/'key'\s*:\s*'([^']+)'/i) || code.match(/"key"\s*:\s*"([^"]+)"/i);
+    if (atOptionKeyMatch && !/^[a-f0-9]{32}$/i.test(atOptionKeyMatch[1])) {
+      return buildAdsterraCode(zoneKey, formatName);
+    }
+
+    return code;
+  }
+
   // 2. Ad Placement Configurations API (Prisma PostgreSQL + Verified Persistence)
   app.get('/api/ads', async (req: Request, res: Response) => {
     try {
@@ -430,65 +489,6 @@ async function startServer() {
         { id: 'ad-sidebar', slot: 'sidebar', name: 'Sidebar Ad Banner', format: 'vertical_160x600', heightPx: 250 },
         { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50 },
       ];
-
-      function sanitizeAdCode(code: string, zoneKey: string, formatName: string): string {
-        if (!code || code.trim().length < 10) {
-          return buildAdsterraCode(zoneKey, formatName);
-        }
-
-        const lower = code.toLowerCase();
-        // Security Rule 1: Reject dangerous JavaScript constructs and redirect payloads
-        const dangerousConstructs = [
-          'window.top', 'top.location', 'parent.location', 'window.open',
-          'location.replace', 'location.href', 'location.assign',
-          'document.write', 'eval(', 'new function', 'popunder', 'popup',
-          'javascript:', 'data:text/html', 'window.navigate'
-        ];
-        for (const dangerous of dangerousConstructs) {
-          if (lower.includes(dangerous)) {
-            console.warn(`[Ad Security Sanitizer] Rejected ad code containing dangerous construct: "${dangerous}"`);
-            return buildAdsterraCode(zoneKey, formatName);
-          }
-        }
-
-        // Security Rule 2: Validate external script source domains
-        const scriptSrcMatches = Array.from(code.matchAll(/src\s*=\s*["']([^"']+)["']/gi));
-        for (const m of scriptSrcMatches) {
-          const srcUrl = m[1];
-          try {
-            const parsedUrl = new URL(srcUrl.startsWith('//') ? `https:${srcUrl}` : srcUrl);
-            const host = parsedUrl.hostname.toLowerCase();
-            const isAllowedDomain =
-              host.endsWith('highperformanceformat.com') ||
-              host.endsWith('effectivecpmnetwork.com') ||
-              host.endsWith('googlesyndication.com') ||
-              host.endsWith('doubleclick.net') ||
-              host.endsWith('google.com');
-            if (!isAllowedDomain) {
-              console.warn(`[Ad Security Sanitizer] Rejected script from unauthorized domain: "${host}"`);
-              return buildAdsterraCode(zoneKey, formatName);
-            }
-          } catch (e) {
-            console.warn(`[Ad Security Sanitizer] Invalid script URL in ad code: "${srcUrl}"`);
-            return buildAdsterraCode(zoneKey, formatName);
-          }
-        }
-        
-        const keyMatches = Array.from(code.matchAll(/highperformanceformat\.com\/([^\/]+)\/invoke\.js/gi));
-        for (const m of keyMatches) {
-          const extractedKey = m[1];
-          if (!/^[a-f0-9]{32}$/i.test(extractedKey)) {
-            return buildAdsterraCode(zoneKey, formatName);
-          }
-        }
-
-        const atOptionKeyMatch = code.match(/'key'\s*:\s*'([^']+)'/i) || code.match(/"key"\s*:\s*"([^"]+)"/i);
-        if (atOptionKeyMatch && !/^[a-f0-9]{32}$/i.test(atOptionKeyMatch[1])) {
-          return buildAdsterraCode(zoneKey, formatName);
-        }
-
-        return code;
-      }
 
       const mergedAds = ALL_DEFAULT_SLOTS.map((defItem) => {
         const existing = Array.isArray(dbAds) ? dbAds.find((a: any) => a.slot === defItem.slot || a.id === defItem.id) : null;
@@ -3411,88 +3411,6 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
               }
             } catch (ytConvErr) {
               console.warn('[YouTube Engine] Direct conversion notice:', ytConvErr);
-            }
-          }
-
-          // 2. Secondary fallback: yt-dlp spawn pipe if conversion didn't stream
-          if (!resultStream && streamTarget) {
-            try {
-              ensureYtDlpBinary();
-              const binPath = path.join(process.cwd(), 'node_modules', 'youtube-dl-exec', 'bin', 'yt-dlp');
-              const safeAsciiFilename = filename.replace(/[^\x20-\x7E]/g, '_').replace(/"/g, '');
-              const encodedFilename = encodeURIComponent(filename);
-
-              const ytArgs = [
-                '--no-warnings',
-                '--no-check-certificates',
-                '--js-runtimes', 'node',
-                '-f', 'best[ext=mp4]/best',
-                '-o', '-',
-                streamTarget
-              ];
-
-              if (isYtTarget) {
-                ytArgs.splice(4, 0, '--extractor-args', 'youtube:player_client=android_vr,mweb,android');
-              }
-
-              const ytProc = spawn(binPath, ytArgs);
-
-              let dataEmitted = false;
-              let stderrText = '';
-
-              ytProc.stderr.on('data', (chunk) => {
-                stderrText += chunk.toString();
-              });
-
-              ytProc.stdout.on('data', (chunk) => {
-                if (!dataEmitted) {
-                  dataEmitted = true;
-                  if (!res.headersSent) {
-                    res.setHeader('Access-Control-Allow-Origin', '*');
-                    res.setHeader('Accept-Ranges', 'bytes');
-                    res.setHeader('Content-Type', 'application/octet-stream');
-                    res.setHeader('X-Content-Type-Options', 'nosniff');
-                    res.setHeader('Content-Disposition', `attachment; filename="${safeAsciiFilename}"; filename*=UTF-8''${encodedFilename}`);
-                    res.status(200);
-                  }
-                }
-                res.write(chunk);
-              });
-
-              ytProc.on('error', (err) => {
-                console.error('yt-dlp spawn stream error:', err);
-                if (!dataEmitted && !res.headersSent) {
-                  res.status(500).json({ error: 'Failed to stream video via yt-dlp: ' + err.message, directUrl: fetchUrl });
-                }
-              });
-
-              ytProc.on('close', (code) => {
-                if (!dataEmitted) {
-                  if (!res.headersSent) {
-                    const errorMsg = stderrText.includes('Sign in') || stderrText.includes('bot')
-                      ? 'Upstream YouTube CDN blocked server request due to bot protection.'
-                      : (stderrText.trim() || `yt-dlp exited with code ${code}`);
-                    res.status(403).json({
-                      error: errorMsg,
-                      directUrl: fetchUrl,
-                    });
-                  } else {
-                    res.end();
-                  }
-                } else {
-                  res.end();
-                }
-              });
-
-              req.on('close', () => {
-                if (!ytProc.killed) {
-                  ytProc.kill();
-                }
-              });
-
-              return;
-            } catch (ytSpawnErr) {
-              console.error('yt-dlp fallback error:', ytSpawnErr);
             }
           }
         }
