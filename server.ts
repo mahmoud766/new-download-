@@ -493,7 +493,12 @@ async function startServer() {
       const mergedAds = ALL_DEFAULT_SLOTS.map((defItem) => {
         const existing = Array.isArray(dbAds) ? dbAds.find((a: any) => a.slot === defItem.slot || a.id === defItem.id) : null;
         const rawZoneKey = existing?.slotId || existing?.id || defItem.slot || '';
-        const rawCode = existing?.code || '';
+        let rawCode = existing?.code || '';
+        if (typeof rawCode === 'string' && rawCode.startsWith('base64:')) {
+          try {
+            rawCode = Buffer.from(rawCode.slice(7), 'base64').toString('utf-8');
+          } catch {}
+        }
         const fmt = existing?.format || defItem.format;
         const sanitizedCode = sanitizeAdCode(rawCode, rawZoneKey, fmt);
 
@@ -573,11 +578,19 @@ async function startServer() {
       }
     }
 
-    // Sanitize every ad placement code server-side before saving to DB
+    // Decode WAF Base64 transport encoding if present & sanitize every ad placement code server-side before saving to DB
     const sanitizedAds = ads.map((item: any) => {
+      let rawCode = item.code || '';
+      if (typeof rawCode === 'string' && rawCode.startsWith('base64:')) {
+        try {
+          rawCode = Buffer.from(rawCode.slice(7), 'base64').toString('utf-8');
+        } catch (err) {
+          console.warn('[Ads API] Failed to decode base64 ad code for slot:', item.id);
+        }
+      }
       const zoneKey = item.slotId || item.id || item.slot || '';
       const fmt = item.format || 'auto';
-      const cleanCode = sanitizeAdCode(item.code || '', zoneKey, fmt);
+      const cleanCode = sanitizeAdCode(rawCode, zoneKey, fmt);
       return {
         ...item,
         code: cleanCode,

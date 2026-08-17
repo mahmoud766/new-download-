@@ -110,6 +110,48 @@ export function saveSiteSettings(settings: Partial<SiteSettings>): SiteSettings 
   return cachedSettings;
 }
 
+// --- Base64 Transport Helpers for WAF Safety ---
+export function encodeUtf8ToBase64(str: string): string {
+  if (!str) return '';
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  }
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str, 'utf-8').toString('base64');
+  }
+  return str;
+}
+
+export function decodeBase64ToUtf8(b64: string): string {
+  if (!b64) return '';
+  if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+    try {
+      const binary = window.atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new TextDecoder('utf-8').decode(bytes);
+    } catch {
+      return b64;
+    }
+  }
+  if (typeof Buffer !== 'undefined') {
+    try {
+      return Buffer.from(b64, 'base64').toString('utf-8');
+    } catch {
+      return b64;
+    }
+  }
+  return b64;
+}
+
 // --- Ads Management ---
 export function getAdsConfig(): AdPlacementConfig[] {
   return cachedAdsConfig;
@@ -121,7 +163,17 @@ export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.ads && Array.isArray(data.ads) && data.ads.length > 0) {
-        cachedAdsConfig = data.ads;
+        const decodedAds: AdPlacementConfig[] = data.ads.map((ad: AdPlacementConfig) => {
+          let cleanCode = ad.code || '';
+          if (typeof cleanCode === 'string' && cleanCode.startsWith('base64:')) {
+            cleanCode = decodeBase64ToUtf8(cleanCode.slice(7));
+          }
+          return {
+            ...ad,
+            code: cleanCode,
+          };
+        });
+        cachedAdsConfig = decodedAds;
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
         }
@@ -135,24 +187,50 @@ export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
 }
 
 export async function saveAdsConfigToDb(ads: AdPlacementConfig[]): Promise<AdPlacementConfig[]> {
-  // 1. Post to PostgreSQL server API
+  // 1. Prepare WAF-safe transport payload by encoding code strings in Base64
+  const transportAds = ads.map((ad) => {
+    let transportCode = ad.code || '';
+    if (typeof transportCode === 'string' && transportCode.length > 0 && !transportCode.startsWith('base64:')) {
+      transportCode = 'base64:' + encodeUtf8ToBase64(transportCode);
+    }
+    return {
+      ...ad,
+      code: transportCode,
+    };
+  });
+
+  // 2. Post WAF-safe payload to PostgreSQL server API
   const res = await fetch('/api/ads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ads }),
+    body: JSON.stringify({ ads: transportAds }),
   });
   if (!res.ok) throw new Error(`Server returned status ${res.status}`);
   const data = await res.json();
   if (!data.success || !data.verified) throw new Error('Database write verification failed');
 
-  // 2. Mirror synchronously to Firestore so client & remote sync stay 100% identical
+  // 3. Mirror synchronously to Firestore so client & remote sync stay 100% identical
   try {
     await saveFirestoreGlobalSettings({ adsConfig: ads });
   } catch (fsErr) {
     console.warn('Notice: Mirroring adsConfig to Firestore warning:', fsErr);
   }
 
-  cachedAdsConfig = data.ads || ads;
+  // 4. Decode returned ads for local in-memory and event caching
+  const returnedAds: AdPlacementConfig[] = Array.isArray(data.ads)
+    ? data.ads.map((ad: AdPlacementConfig) => {
+        let cleanCode = ad.code || '';
+        if (typeof cleanCode === 'string' && cleanCode.startsWith('base64:')) {
+          cleanCode = decodeBase64ToUtf8(cleanCode.slice(7));
+        }
+        return {
+          ...ad,
+          code: cleanCode,
+        };
+      })
+    : ads;
+
+  cachedAdsConfig = returnedAds;
   if (data.syncVersion) currentSyncVersion = data.syncVersion;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
