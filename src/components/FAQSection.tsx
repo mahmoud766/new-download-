@@ -14,9 +14,17 @@ export function FAQSection({ currentLang, platform = 'general' }: FAQProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
   useEffect(() => {
-    const allFaqs = getFaqsConfig();
-    const filtered = allFaqs.filter((f) => f.platform === 'general' || f.platform === platform);
-    setFaqs(filtered.length > 0 ? filtered : allFaqs);
+    const updateFaqs = () => {
+      const allFaqs = getFaqsConfig();
+      const filtered = allFaqs.filter((f) => f.platform === 'general' || f.platform === platform);
+      setFaqs(filtered.length > 0 ? filtered : allFaqs);
+    };
+    updateFaqs();
+
+    window.addEventListener('omnifetch_faqs_updated', updateFaqs);
+    return () => {
+      window.removeEventListener('omnifetch_faqs_updated', updateFaqs);
+    };
   }, [platform]);
 
   // Schema.org FAQPage payload

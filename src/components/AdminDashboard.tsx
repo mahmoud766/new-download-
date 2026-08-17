@@ -47,6 +47,8 @@ import {
   getAdsConfig,
   getFaqsConfig,
   getBlogsConfig,
+  fetchFaqsConfigFromDb,
+  fetchBlogsConfigFromDb,
 } from '../lib/storage';
 import { auth, onAuthStateChanged, signOut, User, saveFirestoreGlobalSettings, fetchFirestoreGlobalSettings } from '../lib/firebase';
 
@@ -141,11 +143,20 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
   const [tempHeaderStyle, setTempHeaderStyle] = useState<'sticky' | 'fixed' | 'static' | 'floating'>(settings.headerStyle || 'sticky');
   const [tempMaintenanceMode, setTempMaintenanceMode] = useState<boolean>(!!settings.maintenanceMode);
 
-  // Sync remote settings from Firestore on mount
+  // Sync remote settings from PostgreSQL & Firestore on mount
   useEffect(() => {
     let isMounted = true;
     async function syncRemoteSettings() {
       try {
+        const [remoteFaqs, remoteBlogs] = await Promise.all([
+          fetchFaqsConfigFromDb(),
+          fetchBlogsConfigFromDb(),
+        ]);
+        if (isMounted) {
+          if (remoteFaqs && remoteFaqs.length > 0) setFaqs(remoteFaqs);
+          if (remoteBlogs && remoteBlogs.length > 0) setBlogs(remoteBlogs);
+        }
+
         const remote = await fetchFirestoreGlobalSettings();
         if (remote && isMounted) {
           if (remote.siteSettings) {
@@ -154,20 +165,33 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           if (remote.adsConfig) {
             setAds(remote.adsConfig);
           }
-          if (remote.faqsConfig) {
+          if (remote.faqsConfig && remote.faqsConfig.length > 0) {
             setFaqs(remote.faqsConfig);
           }
-          if (remote.blogsConfig) {
+          if (remote.blogsConfig && remote.blogsConfig.length > 0) {
             setBlogs(remote.blogsConfig);
           }
         }
       } catch (err) {
-        console.warn('Notice: Remote Firestore settings fetch:', err);
+        console.warn('Notice: Remote settings fetch:', err);
       }
     }
     syncRemoteSettings();
+
+    const handleFaqsUpdated = (e: CustomEvent) => {
+      if (e.detail && Array.isArray(e.detail)) setFaqs(e.detail);
+    };
+    const handleBlogsUpdated = (e: CustomEvent) => {
+      if (e.detail && Array.isArray(e.detail)) setBlogs(e.detail);
+    };
+
+    window.addEventListener('omnifetch_faqs_updated' as any, handleFaqsUpdated);
+    window.addEventListener('omnifetch_blogs_updated' as any, handleBlogsUpdated);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('omnifetch_faqs_updated' as any, handleFaqsUpdated);
+      window.removeEventListener('omnifetch_blogs_updated' as any, handleBlogsUpdated);
     };
   }, []);
 

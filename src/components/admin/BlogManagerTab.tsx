@@ -21,6 +21,12 @@ export const BlogManagerTab: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Sync if parent updates
+  React.useEffect(() => {
+    setBlogList(blogs);
+  }, [blogs]);
 
   const handleOpenNew = () => {
     setEditingPost({
@@ -45,15 +51,23 @@ export const BlogManagerTab: React.FC<Props> = ({
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     const updated = blogList.filter((b) => b.id !== id);
-    setBlogList(updated);
-    saveBlogsConfig(updated);
-    onUpdateBlogs(updated);
-    onShowToast('تم حذف المقال.');
+    setIsSaving(true);
+    try {
+      await saveBlogsConfig(updated);
+      setBlogList(updated);
+      onUpdateBlogs(updated);
+      onShowToast('تم حذف المقال وتحديث قاعدة البيانات بنجاح.');
+    } catch (err: any) {
+      console.error('Error deleting blog:', err);
+      onShowToast('خطأ في حذف المقال من قاعدة البيانات: ' + (err?.message || 'فشل الاتصال'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSavePost = () => {
+  const handleSavePost = async () => {
     const currentTitle = getSafeText(editingPost?.title, 'ar');
     if (!editingPost || !currentTitle) {
       onShowToast('يرجى إدخال عنوان المقال بالعربية');
@@ -67,12 +81,20 @@ export const BlogManagerTab: React.FC<Props> = ({
       ? blogList.map((b) => (b.id === postToSave.id ? postToSave : b))
       : [postToSave, ...blogList];
 
-    setBlogList(updated);
-    saveBlogsConfig(updated);
-    onUpdateBlogs(updated);
-    setIsModalOpen(false);
-    setEditingPost(null);
-    onShowToast('تم نشر / حفظ المقال بنجاح!');
+    setIsSaving(true);
+    try {
+      await saveBlogsConfig(updated);
+      setBlogList(updated);
+      onUpdateBlogs(updated);
+      setIsModalOpen(false);
+      setEditingPost(null);
+      onShowToast('تم نشر / حفظ المقال في قاعدة البيانات بنجاح!');
+    } catch (err: any) {
+      console.error('Error saving blog:', err);
+      onShowToast('خطأ في حفظ المقال في قاعدة البيانات: ' + (err?.message || 'فشل الاتصال'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const filteredBlogs = blogList.filter((b) =>

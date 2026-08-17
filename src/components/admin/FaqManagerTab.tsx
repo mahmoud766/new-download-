@@ -21,8 +21,14 @@ export const FaqManagerTab: React.FC<Props> = ({
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [platform, setPlatform] = useState<string>('general');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleAddFaq = () => {
+  // Sync if parent updates
+  React.useEffect(() => {
+    setFaqList(faqs);
+  }, [faqs]);
+
+  const handleAddFaq = async () => {
     if (!question || !answer) {
       onShowToast('يرجى إدخال السؤال والجواب');
       return;
@@ -35,20 +41,36 @@ export const FaqManagerTab: React.FC<Props> = ({
       answer: { ar: answer, en: answer, fr: answer, es: answer, de: answer, it: answer },
     };
     const updated = [...faqList, item];
-    setFaqList(updated);
-    saveFaqsConfig(updated);
-    onUpdateFaqs(updated);
-    setQuestion('');
-    setAnswer('');
-    onShowToast('تم إضافة السؤال الشائع وتفعيل FAQ Schema تلقائياً!');
+    setIsSaving(true);
+    try {
+      await saveFaqsConfig(updated);
+      setFaqList(updated);
+      onUpdateFaqs(updated);
+      setQuestion('');
+      setAnswer('');
+      onShowToast('تمت إضافة السؤال الشائع وحفظه في قاعدة البيانات بنجاح!');
+    } catch (err: any) {
+      console.error('Error saving FAQ:', err);
+      onShowToast('خطأ في حفظ السؤال في قاعدة البيانات: ' + (err?.message || 'فشل الاتصال'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteFaq = (id: string) => {
+  const handleDeleteFaq = async (id: string) => {
     const updated = faqList.filter((f) => f.id !== id);
-    setFaqList(updated);
-    saveFaqsConfig(updated);
-    onUpdateFaqs(updated);
-    onShowToast('تم حذف السؤال الشائع.');
+    setIsSaving(true);
+    try {
+      await saveFaqsConfig(updated);
+      setFaqList(updated);
+      onUpdateFaqs(updated);
+      onShowToast('تم حذف السؤال الشائع وتحديث قاعدة البيانات بنجاح.');
+    } catch (err: any) {
+      console.error('Error deleting FAQ:', err);
+      onShowToast('خطأ في حذف السؤال من قاعدة البيانات: ' + (err?.message || 'فشل الاتصال'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

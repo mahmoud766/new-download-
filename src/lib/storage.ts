@@ -219,22 +219,102 @@ export function getFaqsConfig(): FAQItem[] {
   return cachedFaqs;
 }
 
-export function saveFaqsConfig(faqs: FAQItem[]): void {
+export async function fetchFaqsConfigFromDb(): Promise<FAQItem[]> {
+  try {
+    const res = await fetch('/api/faqs');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.faqs)) {
+        cachedFaqs = data.faqs.length > 0 ? data.faqs : DEFAULT_FAQS;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_faqs_updated', { detail: cachedFaqs }));
+        }
+        return cachedFaqs;
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching FAQs from DB:', e);
+  }
+  return cachedFaqs;
+}
+
+export async function saveFaqsConfigToDb(faqs: FAQItem[]): Promise<FAQItem[]> {
+  const res = await fetch('/api/faqs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ faqs }),
+  });
+  if (!res.ok) {
+    throw new Error(`Server returned status ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.success) {
+    throw new Error(data.message || data.error || 'Failed to save FAQs');
+  }
+  cachedFaqs = Array.isArray(data.faqs) ? data.faqs : faqs;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_faqs_updated', { detail: cachedFaqs }));
+  }
+  return cachedFaqs;
+}
+
+export async function saveFaqsConfig(faqs: FAQItem[]): Promise<FAQItem[]> {
   cachedFaqs = faqs;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_faqs_updated', { detail: faqs }));
   }
+  return saveFaqsConfigToDb(faqs);
 }
 
 export function getBlogsConfig(): BlogPost[] {
   return cachedBlogs;
 }
 
-export function saveBlogsConfig(blogs: BlogPost[]): void {
+export async function fetchBlogsConfigFromDb(): Promise<BlogPost[]> {
+  try {
+    const res = await fetch('/api/blogs');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.blogs)) {
+        cachedBlogs = data.blogs.length > 0 ? data.blogs : INITIAL_BLOG_POSTS;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_blogs_updated', { detail: cachedBlogs }));
+        }
+        return cachedBlogs;
+      }
+    }
+  } catch (e) {
+    console.error('Error fetching Blogs from DB:', e);
+  }
+  return cachedBlogs;
+}
+
+export async function saveBlogsConfigToDb(blogs: BlogPost[]): Promise<BlogPost[]> {
+  const res = await fetch('/api/blogs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ blogs }),
+  });
+  if (!res.ok) {
+    throw new Error(`Server returned status ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.success) {
+    throw new Error(data.message || data.error || 'Failed to save blogs');
+  }
+  cachedBlogs = Array.isArray(data.blogs) ? data.blogs : blogs;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_blogs_updated', { detail: cachedBlogs }));
+  }
+  return cachedBlogs;
+}
+
+export async function saveBlogsConfig(blogs: BlogPost[]): Promise<BlogPost[]> {
   cachedBlogs = blogs;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_blogs_updated', { detail: blogs }));
   }
+  return saveBlogsConfigToDb(blogs);
 }
 
 function logDownloadEvent(result: MediaResult): void {
@@ -255,6 +335,8 @@ export function initRealtimeSyncLoop(): void {
   // Initial load
   fetchSiteSettingsFromDb();
   fetchAdsConfigFromDb();
+  fetchFaqsConfigFromDb();
+  fetchBlogsConfigFromDb();
 
   // Poll sync version every 3 seconds for zero-refresh real-time updates
   setInterval(async () => {
@@ -269,6 +351,8 @@ export function initRealtimeSyncLoop(): void {
             currentSyncVersion = data.version;
             fetchSiteSettingsFromDb();
             fetchAdsConfigFromDb();
+            fetchFaqsConfigFromDb();
+            fetchBlogsConfigFromDb();
           }
         }
       }

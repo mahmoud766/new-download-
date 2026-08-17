@@ -1335,6 +1335,104 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }
   });
 
+  // 6b. FAQs API (Prisma PostgreSQL)
+  app.get('/api/faqs', async (req: Request, res: Response) => {
+    try {
+      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (!record || !record.faqsConfigJson) {
+        return res.json({ success: true, faqs: [], syncVersion: globalSyncVersion });
+      }
+      let faqs: any[] = [];
+      try {
+        const parsed = JSON.parse(record.faqsConfigJson);
+        faqs = Array.isArray(parsed) ? parsed : [];
+      } catch (parseErr) {
+        faqs = [];
+      }
+      return res.json({ success: true, faqs, syncVersion: globalSyncVersion });
+    } catch (e: any) {
+      console.error('[DB Error] PostgreSQL FAQs query failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
+  app.post('/api/faqs', async (req: Request, res: Response) => {
+    const rawFaqs = req.body?.faqs ?? (Array.isArray(req.body) ? req.body : null);
+    if (!rawFaqs || !Array.isArray(rawFaqs)) {
+      return res.status(400).json({ success: false, error: 'BAD_REQUEST', message: 'faqs array is required' });
+    }
+
+    globalSyncVersion += 1;
+    try {
+      await prisma.globalSettings.upsert({
+        where: { id: 'default' },
+        update: { faqsConfigJson: JSON.stringify(rawFaqs) },
+        create: { id: 'default', faqsConfigJson: JSON.stringify(rawFaqs) },
+      });
+      return res.json({ success: true, faqs: rawFaqs, syncVersion: globalSyncVersion });
+    } catch (e: any) {
+      console.error('[DB Error] PostgreSQL FAQs update failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
+  // 6c. Blogs API (Prisma PostgreSQL)
+  app.get('/api/blogs', async (req: Request, res: Response) => {
+    try {
+      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      if (!record || !record.blogsConfigJson) {
+        return res.json({ success: true, blogs: [], syncVersion: globalSyncVersion });
+      }
+      let blogs: any[] = [];
+      try {
+        const parsed = JSON.parse(record.blogsConfigJson);
+        blogs = Array.isArray(parsed) ? parsed : [];
+      } catch (parseErr) {
+        blogs = [];
+      }
+      return res.json({ success: true, blogs, syncVersion: globalSyncVersion });
+    } catch (e: any) {
+      console.error('[DB Error] PostgreSQL Blogs query failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
+  app.post('/api/blogs', async (req: Request, res: Response) => {
+    const rawBlogs = req.body?.blogs ?? (Array.isArray(req.body) ? req.body : null);
+    if (!rawBlogs || !Array.isArray(rawBlogs)) {
+      return res.status(400).json({ success: false, error: 'BAD_REQUEST', message: 'blogs array is required' });
+    }
+
+    globalSyncVersion += 1;
+    try {
+      await prisma.globalSettings.upsert({
+        where: { id: 'default' },
+        update: { blogsConfigJson: JSON.stringify(rawBlogs) },
+        create: { id: 'default', blogsConfigJson: JSON.stringify(rawBlogs) },
+      });
+      return res.json({ success: true, blogs: rawBlogs, syncVersion: globalSyncVersion });
+    } catch (e: any) {
+      console.error('[DB Error] PostgreSQL Blogs update failed:', e?.message || e);
+      return res.status(500).json({
+        success: false,
+        error: 'DATABASE_UNAVAILABLE',
+        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+      });
+    }
+  });
+
   // 7. SMTP & Email Alerts API (Prisma PostgreSQL Only)
   app.get('/api/smtp', async (req: Request, res: Response) => {
     try {

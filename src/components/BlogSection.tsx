@@ -38,20 +38,27 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
   const isRtl = currentLang === 'ar';
 
   useEffect(() => {
-    const customBlogs = getBlogsConfig();
-    // Combine custom stored blogs with 100 SEO articles catalog
-    const merged = [...customBlogs, ...SEO_ARTICLES_CATALOG];
-    setBlogs(merged);
+    const updateBlogs = () => {
+      const customBlogs = getBlogsConfig();
+      const merged = [...customBlogs, ...SEO_ARTICLES_CATALOG];
+      setBlogs(merged);
 
-    // Parse URL slug if visiting /blog/:slug directly
-    const path = window.location.pathname.toLowerCase();
-    if (path.startsWith('/blog/') && path.length > 6) {
-      const slug = path.replace('/blog/', '').replace(/\/$/, '');
-      const match = merged.find((p) => p.slug === slug || p.id === slug);
-      if (match) {
-        setSelectedPost(match);
+      // Parse URL slug if visiting /blog/:slug directly
+      const path = window.location.pathname.toLowerCase();
+      if (path.startsWith('/blog/') && path.length > 6) {
+        const slug = path.replace('/blog/', '').replace(/\/$/, '');
+        const match = merged.find((p) => p.slug === slug || p.id === slug);
+        if (match) {
+          setSelectedPost(match);
+        }
       }
-    }
+    };
+    updateBlogs();
+
+    window.addEventListener('omnifetch_blogs_updated', updateBlogs);
+    return () => {
+      window.removeEventListener('omnifetch_blogs_updated', updateBlogs);
+    };
   }, []);
 
   const handleSelectPost = (post: BlogPost) => {
