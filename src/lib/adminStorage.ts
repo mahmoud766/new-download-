@@ -180,6 +180,9 @@ export async function fetchGlobalSeoFromDb(): Promise<GlobalSeoConfig> {
       if (data.success && data.seo) {
         cachedSeo = { ...cachedSeo, ...data.seo };
         applySeoToDocument(cachedSeo);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_seo_updated', { detail: cachedSeo }));
+        }
         return cachedSeo;
       }
     }
@@ -274,13 +277,21 @@ export async function fetchRedirectRulesFromDb(): Promise<RedirectRule[]> {
     const res = await fetch('/api/redirects');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.redirects) cachedRedirects = data.redirects;
+      if (data.success && data.redirects) {
+        cachedRedirects = data.redirects;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_redirects_updated', { detail: cachedRedirects }));
+        }
+      }
     }
   } catch (e) {}
   return cachedRedirects;
 }
 export function saveRedirectRules(rules: RedirectRule[]): void {
   cachedRedirects = rules;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_redirects_updated', { detail: cachedRedirects }));
+  }
   fetch('/api/redirects', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -322,13 +333,21 @@ export async function fetchAdminUsersFromDb(): Promise<AdminUser[]> {
     const res = await fetch('/api/users');
     if (res.ok) {
       const data = await res.json();
-      if (data.success && data.users) cachedUsers = data.users;
+      if (data.success && data.users) {
+        cachedUsers = data.users;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_users_updated', { detail: cachedUsers }));
+        }
+      }
     }
   } catch (e) {}
   return cachedUsers;
 }
 export function saveAdminUsers(users: AdminUser[]): void {
   cachedUsers = users;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_users_updated', { detail: cachedUsers }));
+  }
   fetch('/api/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -353,6 +372,9 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig> {
           ipBlacklist: Array.isArray(data.security.ipBlacklist) ? data.security.ipBlacklist : DEFAULT_SECURITY.ipBlacklist,
           blockedCountries: Array.isArray(data.security.blockedCountries) ? data.security.blockedCountries : DEFAULT_SECURITY.blockedCountries,
         };
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_security_updated', { detail: cachedSecurity }));
+        }
       }
     }
   } catch (e) {}
@@ -360,6 +382,9 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig> {
 }
 export function saveSecurityConfig(sec: SecurityConfig): void {
   cachedSecurity = sec;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('omnifetch_security_updated', { detail: cachedSecurity }));
+  }
   fetch('/api/security', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -381,6 +406,9 @@ export async function fetchSmtpConfigFromDb(): Promise<SmtpConfig> {
           ...DEFAULT_SMTP_CONFIG,
           ...data.smtp,
         };
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_smtp_updated', { detail: cachedSmtp }));
+        }
       }
     }
   } catch (e) {
@@ -402,6 +430,9 @@ export async function saveSmtpConfig(config: SmtpConfig): Promise<{ success: boo
           ...DEFAULT_SMTP_CONFIG,
           ...data.smtp,
         };
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_smtp_updated', { detail: cachedSmtp }));
+        }
         return { success: true, smtp: cachedSmtp };
       }
       return { success: false, error: data.message || 'Saving SMTP config failed' };
@@ -427,6 +458,9 @@ export async function fetchEmailAlertsFromDb(): Promise<EmailAlertSettings> {
             ? data.alerts.recipientEmails
             : DEFAULT_EMAIL_ALERTS.recipientEmails,
         };
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_email_alerts_updated', { detail: cachedEmailAlerts }));
+        }
       }
     }
   } catch (e) {
@@ -451,6 +485,9 @@ export async function saveEmailAlertSettings(settings: EmailAlertSettings): Prom
             ? data.alerts.recipientEmails
             : DEFAULT_EMAIL_ALERTS.recipientEmails,
         };
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('omnifetch_email_alerts_updated', { detail: cachedEmailAlerts }));
+        }
         return { success: true, alerts: cachedEmailAlerts };
       }
       return { success: false, error: data.message || 'Saving Email Alerts failed' };

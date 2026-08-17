@@ -1,6 +1,16 @@
 import { MediaResult, SiteSettings, AdPlacementConfig, FAQItem, BlogPost, DownloadLogItem } from '../types';
 import { DEFAULT_SITE_SETTINGS, DEFAULT_ADS_CONFIG, DEFAULT_FAQS, INITIAL_BLOG_POSTS } from '../config/siteConfig';
 import { saveFirestoreGlobalSettings } from './firebase';
+import {
+  fetchPlatformsConfigFromDb,
+  fetchGlobalSeoFromDb,
+  fetchManagedPagesFromDb,
+  fetchRedirectRulesFromDb,
+  fetchAdminUsersFromDb,
+  fetchSecurityConfigFromDb,
+  fetchSmtpConfigFromDb,
+  fetchEmailAlertsFromDb,
+} from './adminStorage';
 
 const HISTORY_KEY = 'omnifetch_download_history_v1';
 
@@ -410,11 +420,23 @@ export function initRealtimeSyncLoop(): void {
   if (realtimeSyncInitialized || typeof window === 'undefined') return;
   realtimeSyncInitialized = true;
 
-  // Initial load
-  fetchSiteSettingsFromDb();
-  fetchAdsConfigFromDb();
-  fetchFaqsConfigFromDb();
-  fetchBlogsConfigFromDb();
+  // Initial load across all modules
+  const fetchAll = () => {
+    fetchSiteSettingsFromDb();
+    fetchAdsConfigFromDb();
+    fetchFaqsConfigFromDb();
+    fetchBlogsConfigFromDb();
+    fetchPlatformsConfigFromDb();
+    fetchGlobalSeoFromDb();
+    fetchManagedPagesFromDb();
+    fetchRedirectRulesFromDb();
+    fetchAdminUsersFromDb();
+    fetchSecurityConfigFromDb();
+    fetchSmtpConfigFromDb();
+    fetchEmailAlertsFromDb();
+  };
+
+  fetchAll();
 
   // Poll sync version every 3 seconds for zero-refresh real-time updates
   setInterval(async () => {
@@ -427,10 +449,7 @@ export function initRealtimeSyncLoop(): void {
             currentSyncVersion = data.version;
           } else if (data.version > currentSyncVersion) {
             currentSyncVersion = data.version;
-            fetchSiteSettingsFromDb();
-            fetchAdsConfigFromDb();
-            fetchFaqsConfigFromDb();
-            fetchBlogsConfigFromDb();
+            fetchAll();
           }
         }
       }
