@@ -147,6 +147,13 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
       if (r && r.length > 0) setRedirects(r);
     });
 
+    const handleSeoUpdated = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        setSeo(e.detail);
+      }
+    };
+    window.addEventListener('omnifetch_seo_updated' as any, handleSeoUpdated);
+
     try {
       if (seo.organizationSchema) {
         const parsed = JSON.parse(seo.organizationSchema);
@@ -166,6 +173,10 @@ export const SeoCenterTab: React.FC<Props> = ({ currentLang, onShowToast }) => {
     } catch (e) {
       // ignore parse errors on load
     }
+
+    return () => {
+      window.removeEventListener('omnifetch_seo_updated' as any, handleSeoUpdated);
+    };
   }, []);
 
   const handleApplyGeneratedSchemas = async () => {

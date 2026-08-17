@@ -44,7 +44,9 @@ import { SupportedLanguage, SiteSettings, AdPlacementConfig, FAQItem, BlogPost }
 import {
   getSiteSettings,
   saveSiteSettings,
+  fetchSiteSettingsFromDb,
   getAdsConfig,
+  fetchAdsConfigFromDb,
   getFaqsConfig,
   getBlogsConfig,
   fetchFaqsConfigFromDb,
@@ -148,11 +150,15 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
     let isMounted = true;
     async function syncRemoteSettings() {
       try {
-        const [remoteFaqs, remoteBlogs] = await Promise.all([
+        const [remoteSettings, remoteAds, remoteFaqs, remoteBlogs] = await Promise.all([
+          fetchSiteSettingsFromDb(),
+          fetchAdsConfigFromDb(),
           fetchFaqsConfigFromDb(),
           fetchBlogsConfigFromDb(),
         ]);
         if (isMounted) {
+          if (remoteSettings) setSettings(remoteSettings);
+          if (remoteAds && remoteAds.length > 0) setAds(remoteAds);
           if (remoteFaqs && remoteFaqs.length > 0) setFaqs(remoteFaqs);
           if (remoteBlogs && remoteBlogs.length > 0) setBlogs(remoteBlogs);
         }
@@ -162,7 +168,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           if (remote.siteSettings) {
             setSettings((prev) => ({ ...prev, ...remote.siteSettings }));
           }
-          if (remote.adsConfig) {
+          if (remote.adsConfig && Array.isArray(remote.adsConfig) && remote.adsConfig.length > 0) {
             setAds(remote.adsConfig);
           }
           if (remote.faqsConfig && remote.faqsConfig.length > 0) {
@@ -178,6 +184,12 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
     }
     syncRemoteSettings();
 
+    const handleSettingsUpdated = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') setSettings(e.detail);
+    };
+    const handleAdsUpdated = (e: CustomEvent) => {
+      if (e.detail && Array.isArray(e.detail)) setAds(e.detail);
+    };
     const handleFaqsUpdated = (e: CustomEvent) => {
       if (e.detail && Array.isArray(e.detail)) setFaqs(e.detail);
     };
@@ -185,11 +197,15 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
       if (e.detail && Array.isArray(e.detail)) setBlogs(e.detail);
     };
 
+    window.addEventListener('omnifetch_settings_updated' as any, handleSettingsUpdated);
+    window.addEventListener('omnifetch_ads_updated' as any, handleAdsUpdated);
     window.addEventListener('omnifetch_faqs_updated' as any, handleFaqsUpdated);
     window.addEventListener('omnifetch_blogs_updated' as any, handleBlogsUpdated);
 
     return () => {
       isMounted = false;
+      window.removeEventListener('omnifetch_settings_updated' as any, handleSettingsUpdated);
+      window.removeEventListener('omnifetch_ads_updated' as any, handleAdsUpdated);
       window.removeEventListener('omnifetch_faqs_updated' as any, handleFaqsUpdated);
       window.removeEventListener('omnifetch_blogs_updated' as any, handleBlogsUpdated);
     };

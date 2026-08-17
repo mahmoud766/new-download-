@@ -18,6 +18,16 @@ export const PagesManagerTab: React.FC<Props> = ({ currentLang, onShowToast }) =
     fetchManagedPagesFromDb().then((p) => {
       if (p && p.length > 0) setPages(p);
     });
+
+    const handlePagesUpdated = (e: CustomEvent) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setPages(e.detail);
+      }
+    };
+    window.addEventListener('omnifetch_pages_updated' as any, handlePagesUpdated);
+    return () => {
+      window.removeEventListener('omnifetch_pages_updated' as any, handlePagesUpdated);
+    };
   }, []);
 
   const handleOpenNew = () => {

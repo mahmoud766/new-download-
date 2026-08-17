@@ -25,7 +25,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { PlatformConfig, PlatformSlug, SupportedLanguage } from '../../types';
-import { getStoredPlatformsConfig, saveStoredPlatformsConfig } from '../../lib/adminStorage';
+import { getStoredPlatformsConfig, saveStoredPlatformsConfig, fetchPlatformsConfigFromDb } from '../../lib/adminStorage';
 import { getSafeText, getSafeArray } from '../../lib/safeLang';
 
 interface Props {
@@ -160,6 +160,24 @@ export const PlatformManagerTab: React.FC<Props> = ({ currentLang, onShowToast }
   const [activeModalSubTab, setActiveModalSubTab] = useState<'metatags' | 'content' | 'faqs' | 'ai_gen' | 'preview'>('metatags');
   const [searchFilter, setSearchFilter] = useState('');
   const [newKeywordInput, setNewKeywordInput] = useState('');
+
+  React.useEffect(() => {
+    fetchPlatformsConfigFromDb().then((dbPlatforms) => {
+      if (dbPlatforms && Object.keys(dbPlatforms).length > 0) {
+        setPlatforms(dbPlatforms);
+      }
+    });
+
+    const handlePlatformsUpdated = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        setPlatforms(e.detail);
+      }
+    };
+    window.addEventListener('omnifetch_platforms_updated' as any, handlePlatformsUpdated);
+    return () => {
+      window.removeEventListener('omnifetch_platforms_updated' as any, handlePlatformsUpdated);
+    };
+  }, []);
 
   const handleDirectUpdatePlatform = (
     slug: string,
