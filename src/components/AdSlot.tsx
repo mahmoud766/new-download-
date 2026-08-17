@@ -203,9 +203,9 @@ export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
       iframe.setAttribute('scrolling', 'no');
       iframe.setAttribute('frameBorder', '0');
 
-      // Strict Security Sandbox: Allow script execution and forms, but DISALLOW allow-top-navigation
-      // This physically prevents third-party ad scripts from redirecting the parent window.
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox');
+      // Standard Ad Sandbox: Allow scripts, same-origin, forms, popups, and user-initiated navigation
+      // 'allow-top-navigation-by-user-activation' and 'allow-popups' allow legitimate user clicks on ads to open destination links without letting malicious unprompted auto-redirects happen.
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
       iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
 
       iframe.srcdoc = `<!DOCTYPE html>
@@ -249,7 +249,7 @@ ${finalCode}
       iframe.style.backgroundColor = 'transparent';
       iframe.setAttribute('scrolling', 'no');
       iframe.setAttribute('frameBorder', '0');
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups-to-escape-sandbox');
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
       iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
 
       iframe.srcdoc = `<!DOCTYPE html>
