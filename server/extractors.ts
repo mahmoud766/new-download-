@@ -41,9 +41,11 @@ const INITIAL_SEED_PROVIDERS = [
 
 /**
  * Authoritative provider configuration lookup from Supabase PostgreSQL.
- * DO NOT return in-memory defaults when the database query fails or is unreachable.
+ * Case 1: Database available + ProviderSetting records exist -> return database providers.
+ * Case 2: Database available + table empty -> use INITIAL_SEED_PROVIDERS as operational fallback (no mutation on read).
+ * Case 3: Database unavailable -> use INITIAL_SEED_PROVIDERS as temporary resilience fallback with a clear warning (no mutation, no suppression).
  */
-export async function getProviderSettingsFromDb(): Promise<any[] | null> {
+export async function getProviderSettingsFromDb(): Promise<any[]> {
   try {
     const dbProviders = await prisma.providerSetting.findMany({
       orderBy: { priority: 'asc' },
@@ -53,24 +55,11 @@ export async function getProviderSettingsFromDb(): Promise<any[] | null> {
       return dbProviders;
     }
 
-    // Seed default configuration rows into Supabase database ONLY if table is empty
-    for (const p of INITIAL_SEED_PROVIDERS) {
-      await prisma.providerSetting.upsert({
-        where: { providerKey: p.providerKey },
-        update: {},
-        create: p,
-      }).catch(() => {});
-    }
-
-    const seeded = await prisma.providerSetting.findMany({
-      orderBy: { priority: 'asc' },
-    });
-
-    return seeded && seeded.length > 0 ? seeded : null;
+    // Table is empty in database -> operational fallback without mutating database
+    return INITIAL_SEED_PROVIDERS;
   } catch (err: any) {
-    console.error('[Provider DB Error] Database unavailable for ProviderSetting lookup:', err?.message || err);
-    // MUST NOT return operational in-memory fallback when Supabase is unreachable
-    return null;
+    console.warn('[Provider DB Warning] Database query failed for ProviderSetting lookup, utilizing operational provider config for extraction resilience:', err?.message || err);
+    return INITIAL_SEED_PROVIDERS;
   }
 }
 
