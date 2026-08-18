@@ -85,6 +85,8 @@ export async function processVideoFetch(rawUrl: string): Promise<MediaResult> {
 
   const platform = urlValidation.platform;
   const startTime = Date.now();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const response = await fetch('/api/fetch', {
@@ -93,7 +95,9 @@ export async function processVideoFetch(rawUrl: string): Promise<MediaResult> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ url: rawUrl }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     const durationMs = Date.now() - startTime;
     const resData = await response.json();
@@ -127,6 +131,20 @@ export async function processVideoFetch(rawUrl: string): Promise<MediaResult> {
 
     return resData.data;
   } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      const timeoutMsg = 'استغرقت عملية فحص واستخراج الفيديو وقتاً طويلاً. يرجى المحاولة مجدداً.';
+      addDebugLog({
+        url: rawUrl,
+        platform,
+        httpStatus: 504,
+        success: false,
+        durationMs: Date.now() - startTime,
+        error: timeoutMsg,
+        debugDetails: { stage: 'client_fetch_aborted_timeout' },
+      });
+      throw new Error(timeoutMsg);
+    }
     // If error was thrown above, addDebugLog was already called. But if it was a network error:
     if (!err.message?.includes('تعذر استخراج') && err.name === 'TypeError') {
       const durationMs = Date.now() - startTime;

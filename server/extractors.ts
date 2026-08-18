@@ -27,6 +27,42 @@ export interface ExtractedMediaResult {
   }>;
 }
 
+/**
+ * Resilient fetch wrapper with both per-request timeout AND parent abort propagation
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 8000,
+  parentSignal?: AbortSignal
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const onParentAbort = () => controller.abort();
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      clearTimeout(timeoutId);
+      controller.abort();
+    } else {
+      parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    }
+  }
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+    if (parentSignal) {
+      parentSignal.removeEventListener('abort', onParentAbort);
+    }
+  }
+}
+
 const INITIAL_SEED_PROVIDERS = [
   { providerKey: 'tikwm_api', name: 'TikWM API', type: 'Extractor Engine', platform: 'TikTok', enabled: true, priority: 1 },
   { providerKey: 'cobalt_tiktok', name: 'Cobalt TikTok API', type: 'External Engine', platform: 'TikTok', enabled: true, priority: 2 },
@@ -64,7 +100,7 @@ export async function getProviderSettingsFromDb(): Promise<any[]> {
 }
 
 // Helper to resolve Facebook share/redirect links to canonical URL
-async function resolveFacebookUrl(inputUrl: string): Promise<string> {
+async function resolveFacebookUrl(inputUrl: string, signal?: AbortSignal): Promise<string> {
   let fbUrl = inputUrl;
   if (fbUrl.includes('?mibextid=')) fbUrl = fbUrl.split('?mibextid=')[0];
   if (fbUrl.includes('?share_id=')) fbUrl = fbUrl.split('?share_id=')[0];
@@ -73,35 +109,28 @@ async function resolveFacebookUrl(inputUrl: string): Promise<string> {
 
   if (fbUrl.includes('/share/') || fbUrl.includes('fb.watch') || fbUrl.includes('fb.gg') || fbUrl.includes('m.facebook.com')) {
     try {
-      const userAgents = [
-        'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      ];
+      const res = await fetchWithTimeout(fbUrl, {
+        headers: {
+          'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        redirect: 'follow',
+      }, 5000, signal);
 
-      for (const ua of userAgents) {
-        const res = await fetch(fbUrl, {
-          headers: {
-            'User-Agent': ua,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-          redirect: 'follow',
-        });
+      if (res.ok) {
+        const resolvedRedirectUrl = res.url;
+        const html = await res.text();
+        const ogUrlMatch = html.match(/<meta[^>]*property=["']og:url["'][^>]*content=["']([^"']+)["']/i)
+          || html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i);
 
-        if (res.ok) {
-          const resolvedRedirectUrl = res.url;
-          const html = await res.text();
-          const ogUrlMatch = html.match(/<meta[^>]*property=["']og:url["'][^>]*content=["']([^"']+)["']/i)
-            || html.match(/<link[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i);
+        if (ogUrlMatch && ogUrlMatch[1] && ogUrlMatch[1].startsWith('http') && !ogUrlMatch[1].includes('/login')) {
+          const canonicalUrl = ogUrlMatch[1].replace(/&amp;/g, '&');
+          return canonicalUrl;
+        }
 
-          if (ogUrlMatch && ogUrlMatch[1] && ogUrlMatch[1].startsWith('http') && !ogUrlMatch[1].includes('/login')) {
-            const canonicalUrl = ogUrlMatch[1].replace(/&amp;/g, '&');
-            return canonicalUrl;
-          }
-
-          if (resolvedRedirectUrl && resolvedRedirectUrl.startsWith('http') && !resolvedRedirectUrl.includes('/login') && !resolvedRedirectUrl.includes('/share/')) {
-            return resolvedRedirectUrl;
-          }
+        if (resolvedRedirectUrl && resolvedRedirectUrl.startsWith('http') && !resolvedRedirectUrl.includes('/login') && !resolvedRedirectUrl.includes('/share/')) {
+          return resolvedRedirectUrl;
         }
       }
     } catch {}
@@ -110,24 +139,28 @@ async function resolveFacebookUrl(inputUrl: string): Promise<string> {
 }
 
 // Individual Provider Runners
-async function runTikWmApi(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runTikWmApi(cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const tkStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="TikWM API" targetUrl=${cleanUrl}`);
   try {
-    const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}`, {
+    const tikRes = await fetchWithTimeout(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       },
-    });
+    }, 7000, signal);
+
     if (tikRes.ok) {
       const json: any = await tikRes.json();
       if (json.code === 0 && json.data) {
         const videoUrl = json.data.hdplay || json.data.play;
         if (videoUrl) {
+          const latencyMs = Date.now() - tkStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="TikWM API" success=true latencyMs=${latencyMs}`);
           recordTelemetry({
             requestId,
             provider: 'TikWM API',
             platform: 'TikTok',
-            latencyMs: Date.now() - tkStart,
+            latencyMs,
             success: true,
             targetUrl: cleanUrl,
           });
@@ -140,21 +173,25 @@ async function runTikWmApi(cleanUrl: string, requestId?: string): Promise<Extrac
         }
       }
     }
+    const latencyMs = Date.now() - tkStart;
+    console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="TikWM API" success=false latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'TikWM API',
       platform: 'TikTok',
-      latencyMs: Date.now() - tkStart,
+      latencyMs,
       success: false,
-      errorMessage: 'TikWM API returned no play URL',
+      errorMessage: 'TikWM API did not return playable stream',
       targetUrl: cleanUrl,
     });
   } catch (tkErr: any) {
+    const latencyMs = Date.now() - tkStart;
+    console.warn(`[FETCH_PROVIDER_ERROR] requestId=${requestId} provider="TikWM API" error="${tkErr?.message || tkErr}" latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'TikWM API',
       platform: 'TikTok',
-      latencyMs: Date.now() - tkStart,
+      latencyMs,
       success: false,
       errorMessage: tkErr?.message || 'TikWM error',
       targetUrl: cleanUrl,
@@ -163,18 +200,19 @@ async function runTikWmApi(cleanUrl: string, requestId?: string): Promise<Extrac
   return null;
 }
 
-async function runCobaltTikTok(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runCobaltTikTok(cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const cobaltStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Cobalt TikTok API" targetUrl=${cleanUrl}`);
   const cobaltEndpoints = [
     'https://api.cobalt.tools/api/json',
     'https://co.wuk.sh/api/json',
     'https://cobalt.m3u8.cx/api/json',
-    'https://cobalt-api.kwippy.com/api/json',
   ];
 
   for (const cobaltUrl of cobaltEndpoints) {
+    if (signal?.aborted) break;
     try {
-      const cobaltRes = await fetch(cobaltUrl, {
+      const cobaltRes = await fetchWithTimeout(cobaltUrl, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -184,17 +222,19 @@ async function runCobaltTikTok(cleanUrl: string, requestId?: string): Promise<Ex
           url: cleanUrl,
           videoQuality: '1080',
         }),
-      });
+      }, 5000, signal);
 
       if (cobaltRes.ok) {
         const cobaltData: any = await cobaltRes.json();
         const finalUrl = cobaltData.url || cobaltData.stream || (cobaltData.picker && cobaltData.picker[0]?.url);
         if (finalUrl && typeof finalUrl === 'string' && finalUrl.startsWith('http')) {
+          const latencyMs = Date.now() - cobaltStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt TikTok API" success=true latencyMs=${latencyMs}`);
           recordTelemetry({
             requestId,
             provider: 'Cobalt TikTok API',
             platform: 'TikTok',
-            latencyMs: Date.now() - cobaltStart,
+            latencyMs,
             success: true,
             targetUrl: cleanUrl,
           });
@@ -209,11 +249,13 @@ async function runCobaltTikTok(cleanUrl: string, requestId?: string): Promise<Ex
     } catch (e) {}
   }
 
+  const latencyMs = Date.now() - cobaltStart;
+  console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt TikTok API" success=false latencyMs=${latencyMs}`);
   recordTelemetry({
     requestId,
     provider: 'Cobalt TikTok API',
     platform: 'TikTok',
-    latencyMs: Date.now() - cobaltStart,
+    latencyMs,
     success: false,
     errorMessage: 'All Cobalt TikTok instances failed',
     targetUrl: cleanUrl,
@@ -221,18 +263,30 @@ async function runCobaltTikTok(cleanUrl: string, requestId?: string): Promise<Ex
   return null;
 }
 
-async function runYtdlCore(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runYtdlCore(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const ytdlStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="ytdl-core" targetUrl=${ytUrl}`);
   try {
-    const info = await ytdl.getInfo(ytUrl);
+    const infoPromise = ytdl.getInfo(ytUrl);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('YTDL_TIMEOUT')), 8000)
+    );
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (signal?.aborted) reject(new Error('ABORTED'));
+      signal?.addEventListener('abort', () => reject(new Error('ABORTED')), { once: true });
+    });
+
+    const info: any = await Promise.race([infoPromise, timeoutPromise, abortPromise]);
     const videoFormats = ytdl.filterFormats(info.formats, 'videoandaudio');
     const directUrl = videoFormats[0]?.url || info.formats.find((f: any) => f.url)?.url;
     if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
+      const latencyMs = Date.now() - ytdlStart;
+      console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="ytdl-core" success=true latencyMs=${latencyMs}`);
       recordTelemetry({
         requestId,
         provider: 'ytdl-core',
         platform: 'YouTube',
-        latencyMs: Date.now() - ytdlStart,
+        latencyMs,
         success: true,
         targetUrl: ytUrl,
       });
@@ -244,21 +298,25 @@ async function runYtdlCore(ytUrl: string, fallbackTitle: string, fallbackThumb: 
         forceProxy: true,
       };
     }
+    const latencyMs = Date.now() - ytdlStart;
+    console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="ytdl-core" success=false latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'ytdl-core',
       platform: 'YouTube',
-      latencyMs: Date.now() - ytdlStart,
+      latencyMs,
       success: false,
       errorMessage: 'No direct video stream returned',
       targetUrl: ytUrl,
     });
   } catch (ytdlErr: any) {
+    const latencyMs = Date.now() - ytdlStart;
+    console.warn(`[FETCH_PROVIDER_ERROR] requestId=${requestId} provider="ytdl-core" error="${ytdlErr?.message || ytdlErr}" latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'ytdl-core',
       platform: 'YouTube',
-      latencyMs: Date.now() - ytdlStart,
+      latencyMs,
       success: false,
       errorMessage: ytdlErr?.message || String(ytdlErr),
       targetUrl: ytUrl,
@@ -267,42 +325,50 @@ async function runYtdlCore(ytUrl: string, fallbackTitle: string, fallbackThumb: 
   return null;
 }
 
-async function runLoaderTo(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runLoaderTo(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const ltoStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Loader.to CDN" targetUrl=${ytUrl}`);
   try {
-    const ltoInit = await fetch(`https://loader.to/ajax/download.php?format=720&url=${encodeURIComponent(ytUrl)}`, {
+    const ltoInit = await fetchWithTimeout(`https://loader.to/ajax/download.php?format=720&url=${encodeURIComponent(ytUrl)}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       },
-    });
+    }, 6000, signal);
+
     if (ltoInit.ok) {
       const ltoJson: any = await ltoInit.json();
       let directLto = ltoJson?.download_url || ltoJson?.url;
       if (!directLto && ltoJson?.progress_url) {
-        for (let attempt = 0; attempt < 20; attempt++) {
+        // Poll progress_url up to 8 attempts with timeout and signal check
+        for (let attempt = 0; attempt < 8; attempt++) {
+          if (signal?.aborted) break;
           await new Promise((r) => setTimeout(r, 1000));
-          const pRes = await fetch(ltoJson.progress_url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            },
-          });
-          if (pRes.ok) {
-            const pData: any = await pRes.json();
-            const foundUrl = pData?.download_url || pData?.url;
-            if (foundUrl && typeof foundUrl === 'string' && foundUrl.startsWith('http')) {
-              directLto = foundUrl;
-              break;
+          try {
+            const pRes = await fetchWithTimeout(ltoJson.progress_url, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+              },
+            }, 3000, signal);
+            if (pRes.ok) {
+              const pData: any = await pRes.json();
+              const foundUrl = pData?.download_url || pData?.url;
+              if (foundUrl && typeof foundUrl === 'string' && foundUrl.startsWith('http')) {
+                directLto = foundUrl;
+                break;
+              }
             }
-          }
+          } catch {}
         }
       }
 
       if (directLto && typeof directLto === 'string' && directLto.startsWith('http')) {
+        const latencyMs = Date.now() - ltoStart;
+        console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Loader.to CDN" success=true latencyMs=${latencyMs}`);
         recordTelemetry({
           requestId,
           provider: 'Loader.to CDN',
           platform: 'YouTube',
-          latencyMs: Date.now() - ltoStart,
+          latencyMs,
           success: true,
           targetUrl: ytUrl,
         });
@@ -315,21 +381,25 @@ async function runLoaderTo(ytUrl: string, fallbackTitle: string, fallbackThumb: 
         };
       }
     }
+    const latencyMs = Date.now() - ltoStart;
+    console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Loader.to CDN" success=false latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'Loader.to CDN',
       platform: 'YouTube',
-      latencyMs: Date.now() - ltoStart,
+      latencyMs,
       success: false,
       errorMessage: 'Loader.to returned no direct URL',
       targetUrl: ytUrl,
     });
   } catch (ltoErr: any) {
+    const latencyMs = Date.now() - ltoStart;
+    console.warn(`[FETCH_PROVIDER_ERROR] requestId=${requestId} provider="Loader.to CDN" error="${ltoErr?.message || ltoErr}" latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'Loader.to CDN',
       platform: 'YouTube',
-      latencyMs: Date.now() - ltoStart,
+      latencyMs,
       success: false,
       errorMessage: ltoErr?.message || 'Loader.to failed',
       targetUrl: ytUrl,
@@ -338,18 +408,19 @@ async function runLoaderTo(ytUrl: string, fallbackTitle: string, fallbackThumb: 
   return null;
 }
 
-async function runCobaltApi(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runCobaltApi(ytUrl: string, fallbackTitle: string, fallbackThumb: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const cobaltStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Cobalt API" targetUrl=${ytUrl}`);
   const cobaltEndpoints = [
     'https://api.cobalt.tools/api/json',
     'https://co.wuk.sh/api/json',
     'https://cobalt.m3u8.cx/api/json',
-    'https://cobalt-api.kwippy.com/api/json',
   ];
 
   for (const cobaltUrl of cobaltEndpoints) {
+    if (signal?.aborted) break;
     try {
-      const cobaltRes = await fetch(cobaltUrl, {
+      const cobaltRes = await fetchWithTimeout(cobaltUrl, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -360,17 +431,19 @@ async function runCobaltApi(ytUrl: string, fallbackTitle: string, fallbackThumb:
           videoQuality: '1080',
           filenamePattern: 'classic',
         }),
-      });
+      }, 5000, signal);
 
       if (cobaltRes.ok) {
         const cobaltData: any = await cobaltRes.json();
         const finalUrl = cobaltData.url || cobaltData.stream || (cobaltData.picker && cobaltData.picker[0]?.url);
         if (finalUrl && typeof finalUrl === 'string' && finalUrl.startsWith('http')) {
+          const latencyMs = Date.now() - cobaltStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt API" success=true latencyMs=${latencyMs}`);
           recordTelemetry({
             requestId,
             provider: 'Cobalt API',
             platform: 'YouTube',
-            latencyMs: Date.now() - cobaltStart,
+            latencyMs,
             success: true,
             targetUrl: ytUrl,
           });
@@ -386,11 +459,13 @@ async function runCobaltApi(ytUrl: string, fallbackTitle: string, fallbackThumb:
     } catch (e) {}
   }
 
+  const latencyMs = Date.now() - cobaltStart;
+  console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt API" success=false latencyMs=${latencyMs}`);
   recordTelemetry({
     requestId,
     provider: 'Cobalt API',
     platform: 'YouTube',
-    latencyMs: Date.now() - cobaltStart,
+    latencyMs,
     success: false,
     errorMessage: 'All Cobalt API instances failed',
     targetUrl: ytUrl,
@@ -398,8 +473,9 @@ async function runCobaltApi(ytUrl: string, fallbackTitle: string, fallbackThumb:
   return null;
 }
 
-async function runInstagramMirrors(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runInstagramMirrors(cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const igStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Instagram Mirrors" targetUrl=${cleanUrl}`);
   try {
     const igMatch = cleanUrl.match(/(?:instagram\.com|instagr\.am)\/(?:p|reel|reels|tv|stories)\/([a-zA-Z0-9_-]+)/i);
     const shortcode = igMatch ? igMatch[1] : null;
@@ -409,7 +485,7 @@ async function runInstagramMirrors(cleanUrl: string, requestId?: string): Promis
 
     if (shortcode) {
       try {
-        const oembedRes = await fetch(`https://www.instagram.com/oembed/?url=https://www.instagram.com/p/${shortcode}/`);
+        const oembedRes = await fetchWithTimeout(`https://www.instagram.com/oembed/?url=https://www.instagram.com/p/${shortcode}/`, {}, 3000, signal);
         if (oembedRes.ok) {
           const json: any = await oembedRes.json();
           if (json.title) igTitle = json.title;
@@ -419,91 +495,83 @@ async function runInstagramMirrors(cleanUrl: string, requestId?: string): Promis
       } catch {}
 
       const mirrorEndpoints = [
-        `https://www.instagram.com/reel/${shortcode}/`,
-        `https://www.instagram.com/p/${shortcode}/`,
         `https://ddinstagram.com/reel/${shortcode}/`,
-        `https://ddinstagram.com/p/${shortcode}/`,
         `https://vxinstagram.com/reel/${shortcode}/`,
-        `https://vxinstagram.com/p/${shortcode}/`,
-        `https://kkinstagram.com/reel/${shortcode}/`,
-        `https://instafix.app/p/${shortcode}/`,
         `https://instafix.app/reel/${shortcode}/`,
       ];
 
-      const userAgents = [
-        'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Twitterbot/1.0',
-        'TelegramBot (like TwitterBot)',
-      ];
-
       for (const mirrorUrl of mirrorEndpoints) {
-        for (const ua of userAgents) {
-          try {
-            const mirrorRes = await fetch(mirrorUrl, {
-              headers: {
-                'User-Agent': ua,
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-              },
-            });
+        if (signal?.aborted) break;
+        try {
+          const mirrorRes = await fetchWithTimeout(mirrorUrl, {
+            headers: {
+              'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          }, 4000, signal);
 
-            if (mirrorRes.ok) {
-              const html = await mirrorRes.text();
-              const ogVideoMatch = html.match(/<meta\s+property=["']og:video(?::secure_url|:url|)?["']\s+content=["']([^"']+)["']/i)
-                || html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:video(?::secure_url|:url|)?["']/i)
-                || html.match(/<meta\s+name=["']twitter:player:stream["']\s+content=["']([^"']+)["']/i)
-                || html.match(/<video[^>]*src=["']([^"']+)["']/i);
+          if (mirrorRes.ok) {
+            const html = await mirrorRes.text();
+            const ogVideoMatch = html.match(/<meta\s+property=["']og:video(?::secure_url|:url|)?["']\s+content=["']([^"']+)["']/i)
+              || html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:video(?::secure_url|:url|)?["']/i)
+              || html.match(/<meta\s+name=["']twitter:player:stream["']\s+content=["']([^"']+)["']/i)
+              || html.match(/<video[^>]*src=["']([^"']+)["']/i);
 
-              let ogVideo = ogVideoMatch ? ogVideoMatch[1] : null;
+            let ogVideo = ogVideoMatch ? ogVideoMatch[1] : null;
 
-              if (ogVideo) {
-                ogVideo = ogVideo.replace(/&amp;/g, '&').replace(/\\u0026/g, '&').replace(/\\/g, '');
-              }
-
-              const ogImageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i)
-                || html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:image["']/i);
-              const ogImage = ogImageMatch ? ogImageMatch[1] : null;
-
-              const ogTitleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
-              const ogTitle = ogTitleMatch ? ogTitleMatch[1] : null;
-
-              if (ogVideo && (ogVideo.startsWith('http://') || ogVideo.startsWith('https://')) && !ogVideo.includes('instagram.com/reel/') && !ogVideo.includes('instagram.com/p/')) {
-                recordTelemetry({
-                  requestId,
-                  provider: 'Instagram Mirrors',
-                  platform: 'Instagram',
-                  latencyMs: Date.now() - igStart,
-                  success: true,
-                  targetUrl: cleanUrl,
-                });
-                return {
-                  status: 'SUCCESS',
-                  title: ogTitle ? ogTitle.replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim() : igTitle,
-                  thumbnail: ogImage || igThumb,
-                  video_url: ogVideo,
-                };
-              }
+            if (ogVideo) {
+              ogVideo = ogVideo.replace(/&amp;/g, '&').replace(/\\u0026/g, '&').replace(/\\/g, '');
             }
-          } catch (err) {}
-        }
+
+            const ogImageMatch = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i)
+              || html.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:image["']/i);
+            const ogImage = ogImageMatch ? ogImageMatch[1] : null;
+
+            const ogTitleMatch = html.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i);
+            const ogTitle = ogTitleMatch ? ogTitleMatch[1] : null;
+
+            if (ogVideo && (ogVideo.startsWith('http://') || ogVideo.startsWith('https://')) && !ogVideo.includes('instagram.com/reel/') && !ogVideo.includes('instagram.com/p/')) {
+              const latencyMs = Date.now() - igStart;
+              console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Instagram Mirrors" success=true latencyMs=${latencyMs}`);
+              recordTelemetry({
+                requestId,
+                provider: 'Instagram Mirrors',
+                platform: 'Instagram',
+                latencyMs,
+                success: true,
+                targetUrl: cleanUrl,
+              });
+              return {
+                status: 'SUCCESS',
+                title: ogTitle ? ogTitle.replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim() : igTitle,
+                thumbnail: ogImage || igThumb,
+                video_url: ogVideo,
+              };
+            }
+          }
+        } catch (err) {}
       }
     }
+    const latencyMs = Date.now() - igStart;
+    console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Instagram Mirrors" success=false latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'Instagram Mirrors',
       platform: 'Instagram',
-      latencyMs: Date.now() - igStart,
+      latencyMs,
       success: false,
       errorMessage: 'Could not extract direct MP4 link from Instagram post',
       targetUrl: cleanUrl,
     });
   } catch (igErr: any) {
+    const latencyMs = Date.now() - igStart;
+    console.warn(`[FETCH_PROVIDER_ERROR] requestId=${requestId} provider="Instagram Mirrors" error="${igErr?.message || igErr}" latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'Instagram Mirrors',
       platform: 'Instagram',
-      latencyMs: Date.now() - igStart,
+      latencyMs,
       success: false,
       errorMessage: igErr?.message || 'Instagram extraction failure',
       targetUrl: cleanUrl,
@@ -512,103 +580,98 @@ async function runInstagramMirrors(cleanUrl: string, requestId?: string): Promis
   return null;
 }
 
-async function runFbPluginScraper(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runFbPluginScraper(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const fbStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="FB Plugin Scraper" targetUrl=${cleanUrl}`);
   try {
     const pluginVideoUrl = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(fbUrl)}&show_text=false`;
-    const pluginPostUrl = `https://www.facebook.com/plugins/post.php?href=${encodeURIComponent(fbUrl)}`;
     const mobileFbUrl = fbUrl.replace('www.facebook.com', 'm.facebook.com');
-    const mbasicFbUrl = fbUrl.replace('www.facebook.com', 'mbasic.facebook.com').replace('m.facebook.com', 'mbasic.facebook.com');
 
     const scrapeCandidates = [
       pluginVideoUrl,
-      pluginPostUrl,
       mobileFbUrl,
-      mbasicFbUrl,
       fbUrl,
-      rawUrl,
     ].filter((u, i, arr) => u && arr.indexOf(u) === i);
 
-    const userAgents = [
-      'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-    ];
-
     for (const candidateUrl of scrapeCandidates) {
-      for (const ua of userAgents) {
-        try {
-          const fbRes = await fetch(candidateUrl, {
-            headers: {
-              'User-Agent': ua,
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-              'Accept-Language': 'en-US,en;q=0.9',
-            },
-            redirect: 'follow',
-          });
+      if (signal?.aborted) break;
+      try {
+        const fbRes = await fetchWithTimeout(candidateUrl, {
+          headers: {
+            'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          redirect: 'follow',
+        }, 4000, signal);
 
-          if (fbRes.ok) {
-            const html = await fbRes.text();
-            const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1]
-              || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
-            const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)?.[1];
+        if (fbRes.ok) {
+          const html = await fbRes.text();
+          const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1]
+            || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1];
+          const ogImage = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)?.[1];
 
-            const hdMatch = html.match(/"playable_url_quality_hd":"([^"]+)"/)
-              || html.match(/"browser_native_hd_url":"([^"]+)"/)
-              || html.match(/"hd_src":"([^"]+)"/)
-              || html.match(/"hd_src_no_ratelimit":"([^"]+)"/);
-            const sdMatch = html.match(/"playable_url":"([^"]+)"/)
-              || html.match(/"browser_native_sd_url":"([^"]+)"/)
-              || html.match(/"sd_src":"([^"]+)"/)
-              || html.match(/"sd_src_no_ratelimit":"([^"]+)"/);
-            const ogVidMatch = html.match(/<meta[^>]*property=["']og:video(?::secure_url|:url|)?["'][^>]*content=["']([^"']+)["']/i)?.[1]
-              || html.match(/"video_src":"([^"]+)"/)?.[1]
-              || html.match(/"video_url":"([^"]+)"/)?.[1];
+          const hdMatch = html.match(/"playable_url_quality_hd":"([^"]+)"/)
+            || html.match(/"browser_native_hd_url":"([^"]+)"/)
+            || html.match(/"hd_src":"([^"]+)"/)
+            || html.match(/"hd_src_no_ratelimit":"([^"]+)"/);
+          const sdMatch = html.match(/"playable_url":"([^"]+)"/)
+            || html.match(/"browser_native_sd_url":"([^"]+)"/)
+            || html.match(/"sd_src":"([^"]+)"/)
+            || html.match(/"sd_src_no_ratelimit":"([^"]+)"/);
+          const ogVidMatch = html.match(/<meta[^>]*property=["']og:video(?::secure_url|:url|)?["'][^>]*content=["']([^"']+)["']/i)?.[1]
+            || html.match(/"video_src":"([^"]+)"/)?.[1]
+            || html.match(/"video_url":"([^"]+)"/)?.[1];
 
-            let directUrl: string | null = null;
-            if (hdMatch && hdMatch[1]) directUrl = hdMatch[1];
-            else if (sdMatch && sdMatch[1]) directUrl = sdMatch[1];
-            else if (ogVidMatch && typeof ogVidMatch === 'string' && ogVidMatch.startsWith('http')) directUrl = ogVidMatch;
+          let directUrl: string | null = null;
+          if (hdMatch && hdMatch[1]) directUrl = hdMatch[1];
+          else if (sdMatch && sdMatch[1]) directUrl = sdMatch[1];
+          else if (ogVidMatch && typeof ogVidMatch === 'string' && ogVidMatch.startsWith('http')) directUrl = ogVidMatch;
 
-            if (directUrl) {
-              directUrl = directUrl.replace(/\\/g, '').replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
-              if (!directUrl.includes('lookaside') && !directUrl.includes('.m3u8') && !directUrl.includes('.mpd')) {
-                recordTelemetry({
-                  requestId,
-                  provider: 'FB Plugin Scraper',
-                  platform: 'Facebook',
-                  latencyMs: Date.now() - fbStart,
-                  success: true,
-                  targetUrl: cleanUrl,
-                });
-                return {
-                  status: 'SUCCESS',
-                  title: ogTitle ? ogTitle.replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim() : 'Facebook Video',
-                  thumbnail: ogImage || '',
-                  video_url: directUrl,
-                  forceProxy: true,
-                };
-              }
+          if (directUrl) {
+            directUrl = directUrl.replace(/\\/g, '').replace(/\\u0026/g, '&').replace(/&amp;/g, '&');
+            if (!directUrl.includes('lookaside') && !directUrl.includes('.m3u8') && !directUrl.includes('.mpd')) {
+              const latencyMs = Date.now() - fbStart;
+              console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="FB Plugin Scraper" success=true latencyMs=${latencyMs}`);
+              recordTelemetry({
+                requestId,
+                provider: 'FB Plugin Scraper',
+                platform: 'Facebook',
+                latencyMs,
+                success: true,
+                targetUrl: cleanUrl,
+              });
+              return {
+                status: 'SUCCESS',
+                title: ogTitle ? ogTitle.replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim() : 'Facebook Video',
+                thumbnail: ogImage || '',
+                video_url: directUrl,
+                forceProxy: true,
+              };
             }
           }
-        } catch (e) {}
-      }
+        }
+      } catch (e) {}
     }
+    const latencyMs = Date.now() - fbStart;
+    console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="FB Plugin Scraper" success=false latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'FB Plugin Scraper',
       platform: 'Facebook',
-      latencyMs: Date.now() - fbStart,
+      latencyMs,
       success: false,
       errorMessage: 'FB Plugin Scraper failed to find playable URL',
       targetUrl: cleanUrl,
     });
   } catch (e: any) {
+    const latencyMs = Date.now() - fbStart;
+    console.warn(`[FETCH_PROVIDER_ERROR] requestId=${requestId} provider="FB Plugin Scraper" error="${e?.message || e}" latencyMs=${latencyMs}`);
     recordTelemetry({
       requestId,
       provider: 'FB Plugin Scraper',
       platform: 'Facebook',
-      latencyMs: Date.now() - fbStart,
+      latencyMs,
       success: false,
       errorMessage: e?.message || 'FB Plugin Scraper error',
       targetUrl: cleanUrl,
@@ -617,8 +680,9 @@ async function runFbPluginScraper(fbUrl: string, rawUrl: string, cleanUrl: strin
   return null;
 }
 
-async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const fbStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Cobalt / VKR API" targetUrl=${cleanUrl}`);
   const cobaltInstances = [
     'https://api.cobalt.tools/api/json',
     'https://cobalt.m3u8.cx/api/json',
@@ -626,9 +690,11 @@ async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, r
   ];
 
   for (const targetUrl of [fbUrl, rawUrl]) {
+    if (signal?.aborted) break;
     for (const cobaltUrl of cobaltInstances) {
+      if (signal?.aborted) break;
       try {
-        const cobaltRes = await fetch(cobaltUrl, {
+        const cobaltRes = await fetchWithTimeout(cobaltUrl, {
           method: 'POST',
           headers: {
             'Accept': 'application/json',
@@ -636,18 +702,20 @@ async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, r
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
           },
           body: JSON.stringify({ url: targetUrl }),
-        });
+        }, 4000, signal);
 
         if (cobaltRes.ok) {
           const cobaltData: any = await cobaltRes.json();
           const mediaUrl = cobaltData.url || cobaltData.picker?.[0]?.url;
 
           if (mediaUrl && !mediaUrl.includes('lookaside.fbsbx.com')) {
+            const latencyMs = Date.now() - fbStart;
+            console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt / VKR API" success=true latencyMs=${latencyMs}`);
             recordTelemetry({
               requestId,
               provider: 'Cobalt / VKR API',
               platform: 'Facebook',
-              latencyMs: Date.now() - fbStart,
+              latencyMs,
               success: true,
               targetUrl: cleanUrl,
             });
@@ -664,16 +732,18 @@ async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, r
     }
 
     try {
-      const vkrRes = await fetch(`https://api.vkrdown.com/fb/?url=${encodeURIComponent(targetUrl)}`);
+      const vkrRes = await fetchWithTimeout(`https://api.vkrdown.com/fb/?url=${encodeURIComponent(targetUrl)}`, {}, 4000, signal);
       if (vkrRes.ok) {
         const vkrData: any = await vkrRes.json();
         const mediaUrl = vkrData.data?.downloads?.[0]?.url || vkrData.data?.videoUrl || vkrData.url;
         if (mediaUrl && !mediaUrl.includes('lookaside.fbsbx.com')) {
+          const latencyMs = Date.now() - fbStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt / VKR API" success=true latencyMs=${latencyMs}`);
           recordTelemetry({
             requestId,
             provider: 'Cobalt / VKR API',
             platform: 'Facebook',
-            latencyMs: Date.now() - fbStart,
+            latencyMs,
             success: true,
             targetUrl: cleanUrl,
           });
@@ -689,11 +759,13 @@ async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, r
     } catch (e) {}
   }
 
+  const latencyMs = Date.now() - fbStart;
+  console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt / VKR API" success=false latencyMs=${latencyMs}`);
   recordTelemetry({
     requestId,
     provider: 'Cobalt / VKR API',
     platform: 'Facebook',
-    latencyMs: Date.now() - fbStart,
+    latencyMs,
     success: false,
     errorMessage: 'Cobalt / VKR API failed to extract Facebook media',
     targetUrl: cleanUrl,
@@ -701,14 +773,16 @@ async function runCobaltVkrFb(fbUrl: string, rawUrl: string, cleanUrl: string, r
   return null;
 }
 
-async function runOpenGraphScraper(cleanUrl: string, requestId?: string): Promise<ExtractedMediaResult | null> {
+async function runOpenGraphScraper(cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const fallbackStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="OpenGraph Scraper" targetUrl=${cleanUrl}`);
   try {
-    const pageRes = await fetch(cleanUrl, {
+    const pageRes = await fetchWithTimeout(cleanUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       },
-    });
+    }, 6000, signal);
+
     if (pageRes.ok) {
       const html = await pageRes.text();
       const ogTitle = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)?.[1]
@@ -718,11 +792,13 @@ async function runOpenGraphScraper(cleanUrl: string, requestId?: string): Promis
         || html.match(/<video[^>]*src=["']([^"']+)["']/i)?.[1];
 
       if (ogTitle || ogVideo) {
+        const latencyMs = Date.now() - fallbackStart;
+        console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="OpenGraph Scraper" success=true latencyMs=${latencyMs}`);
         recordTelemetry({
           requestId,
           provider: 'OpenGraph Scraper',
           platform: 'General',
-          latencyMs: Date.now() - fallbackStart,
+          latencyMs,
           success: true,
           targetUrl: cleanUrl,
         });
@@ -736,11 +812,13 @@ async function runOpenGraphScraper(cleanUrl: string, requestId?: string): Promis
     }
   } catch {}
 
+  const latencyMs = Date.now() - fallbackStart;
+  console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="OpenGraph Scraper" success=false latencyMs=${latencyMs}`);
   recordTelemetry({
     requestId,
     provider: 'OpenGraph Scraper',
     platform: 'General',
-    latencyMs: Date.now() - fallbackStart,
+    latencyMs,
     success: false,
     errorMessage: 'OpenGraph Scraper direct extraction failed',
     targetUrl: cleanUrl,
@@ -748,7 +826,9 @@ async function runOpenGraphScraper(cleanUrl: string, requestId?: string): Promis
   return null;
 }
 
-export async function extractMedia(rawUrl: string, requestId?: string): Promise<ExtractedMediaResult> {
+export async function extractMedia(rawUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult> {
+  const overallStart = Date.now();
+  console.log(`[FETCH_START] requestId=${requestId} url=${rawUrl}`);
   try {
     let cleanUrl = rawUrl.trim().replace(/^\/+/, '');
     cleanUrl = cleanUrl.split('?mibextid=')[0].split('?share_id=')[0];
@@ -777,6 +857,8 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
       .filter((p) => p.platform.toLowerCase() === platformKey.toLowerCase() && Boolean(p.enabled))
       .sort((a, b) => Number(a.priority) - Number(b.priority));
 
+    console.log(`[FETCH_PROVIDER_SELECTED] requestId=${requestId} platform=${platformKey} enabledProvidersCount=${enabledProviders.length}`);
+
     if (enabledProviders.length === 0) {
       return {
         status: 'FAILED',
@@ -788,17 +870,28 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
     // Execute enabled providers in order of priority
     if (platformKey === 'TikTok') {
       for (const p of enabledProviders) {
+        if (signal?.aborted) break;
         if (p.providerKey === 'tikwm_api') {
-          const res = await runTikWmApi(cleanUrl, requestId);
-          if (res) return res;
+          const res = await runTikWmApi(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'cobalt_tiktok') {
-          const res = await runCobaltTikTok(cleanUrl, requestId);
-          if (res) return res;
+          const res = await runCobaltTikTok(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'opengraph') {
-          const res = await runOpenGraphScraper(cleanUrl, requestId);
-          if (res) return res;
+          const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         }
       }
+      console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled TikTok providers failed to extract media.' };
     }
 
@@ -817,7 +910,7 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
       let fallbackThumb = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '';
 
       try {
-        const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(ytUrl)}&format=json`);
+        const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=${encodeURIComponent(ytUrl)}&format=json`, {}, 3000, signal);
         if (oembedRes.ok) {
           const oembedData: any = await oembedRes.json();
           if (oembedData.title) fallbackTitle = oembedData.title;
@@ -826,20 +919,34 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
       } catch (e) {}
 
       for (const p of enabledProviders) {
+        if (signal?.aborted) break;
         if (p.providerKey === 'ytdl_core') {
-          const res = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId);
-          if (res) return res;
+          const res = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'loader_to') {
-          const res = await runLoaderTo(ytUrl, fallbackTitle, fallbackThumb, requestId);
-          if (res) return res;
+          const res = await runLoaderTo(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'cobalt_api') {
-          const res = await runCobaltApi(ytUrl, fallbackTitle, fallbackThumb, requestId);
-          if (res) return res;
+          const res = await runCobaltApi(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'opengraph') {
-          const res = await runOpenGraphScraper(ytUrl, requestId);
-          if (res) return res;
+          const res = await runOpenGraphScraper(ytUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         }
       }
+      console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled YouTube providers failed to extract media.' };
     }
 
@@ -847,52 +954,76 @@ export async function extractMedia(rawUrl: string, requestId?: string): Promise<
       let fbUrl = cleanUrl;
       if (fbUrl.includes('/share/') || fbUrl.includes('fb.watch') || fbUrl.includes('fb.gg')) {
         try {
-          fbUrl = await resolveFacebookUrl(fbUrl);
+          fbUrl = await resolveFacebookUrl(fbUrl, signal);
           fbUrl = fbUrl.split('?')[0];
         } catch (e) {}
       }
 
       for (const p of enabledProviders) {
+        if (signal?.aborted) break;
         if (p.providerKey === 'fb_plugin') {
-          const res = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId);
-          if (res) return res;
+          const res = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'cobalt_vkr_fb') {
-          const res = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId);
-          if (res) return res;
+          const res = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'opengraph') {
-          const res = await runOpenGraphScraper(fbUrl, requestId);
-          if (res) return res;
+          const res = await runOpenGraphScraper(fbUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         }
       }
+      console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'Facebook aggressively blocked this link or all enabled Facebook providers failed.' };
     }
 
     if (platformKey === 'Instagram') {
       for (const p of enabledProviders) {
+        if (signal?.aborted) break;
         if (p.providerKey === 'instagram_mirrors') {
-          const res = await runInstagramMirrors(cleanUrl, requestId);
-          if (res) return res;
+          const res = await runInstagramMirrors(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (p.providerKey === 'opengraph') {
-          const res = await runOpenGraphScraper(cleanUrl, requestId);
-          if (res) return res;
+          const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         }
       }
+      console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled Instagram providers failed.' };
     }
 
     if (platformKey === 'General') {
       for (const p of enabledProviders) {
+        if (signal?.aborted) break;
         if (p.providerKey === 'opengraph') {
-          const res = await runOpenGraphScraper(cleanUrl, requestId);
-          if (res) return res;
+          const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=General provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         }
       }
+      console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=General status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'Direct extraction failed.' };
     }
 
     return { status: 'FAILED', reason: 'Direct extraction failed.' };
   } catch (error: any) {
-    console.error('Local Extraction Failed:', error);
+    console.error(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} error="${error?.message || error}" elapsedMs=${Date.now() - overallStart}`);
     return { status: 'FAILED', reason: error?.message || 'Direct extraction failed.' };
   }
 }

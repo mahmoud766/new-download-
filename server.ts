@@ -9,7 +9,7 @@ import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import geminiRoutes from './server/geminiRoutes';
-import { extractMedia, getProviderSettingsFromDb } from './server/extractors';
+import { extractMedia, getProviderSettingsFromDb, fetchWithTimeout } from './server/extractors';
 import { prisma } from './lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 
@@ -24,11 +24,11 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
 
   // Primary: Loader.to / savenow conversion engine
   try {
-    const initRes = await fetch(`https://loader.to/ajax/download.php?format=${ltoFormat}&url=${encodeURIComponent(youtubeUrl)}`, {
+    const initRes = await fetchWithTimeout(`https://loader.to/ajax/download.php?format=${ltoFormat}&url=${encodeURIComponent(youtubeUrl)}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
       }
-    });
+    }, 6000);
     if (initRes.ok) {
       const initJson: any = await initRes.json();
       const direct = initJson?.download_url || initJson?.url;
@@ -36,21 +36,23 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
         return direct;
       }
       if (initJson && initJson.progress_url) {
-        // Poll progress_url up to 25 seconds
-        for (let attempt = 0; attempt < 25; attempt++) {
+        // Poll progress_url up to 8 attempts with timeout
+        for (let attempt = 0; attempt < 8; attempt++) {
           await new Promise(r => setTimeout(r, 1000));
-          const pRes = await fetch(initJson.progress_url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+          try {
+            const pRes = await fetchWithTimeout(initJson.progress_url, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+              }
+            }, 3000);
+            if (pRes.ok) {
+              const pJson: any = await pRes.json();
+              const dUrl = pJson?.download_url || pJson?.url;
+              if (dUrl && typeof dUrl === 'string' && dUrl.startsWith('http')) {
+                return dUrl;
+              }
             }
-          });
-          if (pRes.ok) {
-            const pJson: any = await pRes.json();
-            const dUrl = pJson?.download_url || pJson?.url;
-            if (dUrl && typeof dUrl === 'string' && dUrl.startsWith('http')) {
-              return dUrl;
-            }
-          }
+          } catch {}
         }
       }
     }
@@ -60,7 +62,7 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
 
   // Fallback: Cobalt API
   try {
-    const cobaltRes = await fetch('https://api.cobalt.tools/', {
+    const cobaltRes = await fetchWithTimeout('https://api.cobalt.tools/', {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -72,7 +74,7 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
         videoQuality: ltoFormat === '1080' ? '1080' : '720',
         downloadMode: ltoFormat === 'mp3' ? 'audio' : 'auto',
       })
-    });
+    }, 5000);
     if (cobaltRes.ok) {
       const cJson: any = await cobaltRes.json();
       if (cJson.url && typeof cJson.url === 'string' && cJson.url.startsWith('http')) return cJson.url;
@@ -643,13 +645,13 @@ async function startServer() {
     }
 
     const url = `https://api3.adsterratools.com/publisher${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
         'X-API-Key': token,
       },
-    });
+    }, 8000);
 
     if (!response.ok) {
       if (response.status === 401 || response.status === 403) {
@@ -2215,10 +2217,10 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     const target = probeTargets[providerId] || probeTargets['ytdl-core'];
 
     try {
-      const probeRes = await fetch(target.url, {
+      const probeRes = await fetchWithTimeout(target.url, {
         method: target.providerName === 'Cobalt API' ? 'POST' : 'GET',
         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-      });
+      }, 5000);
 
       const latencyMs = Date.now() - startTime;
       const isOk = probeRes.status < 500;
@@ -2782,22 +2784,49 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   // Real Multi-Platform Video Extraction Engine
   app.post('/api/fetch', async (req: Request, res: Response) => {
+    const fetchStartTime = Date.now();
+    const requestId = randomUUID();
+    const fetchAbortController = new AbortController();
+    let isResponded = false;
+
+    const safeRespond = (statusCode: number, data: any) => {
+      if (isResponded || res.headersSent) return;
+      isResponded = true;
+      const elapsedMs = Date.now() - fetchStartTime;
+      console.log(`[FETCH_RESPONSE_SENT] requestId=${requestId} statusCode=${statusCode} elapsedMs=${elapsedMs}`);
+      return res.status(statusCode).json(data);
+    };
+
+    // Hard global timeout boundary to guarantee server response within 28s on any hosting environment
+    const globalTimeoutId = setTimeout(() => {
+      fetchAbortController.abort();
+      safeRespond(504, {
+        success: false,
+        requestId,
+        error: 'استغرقت عملية فحص واستخراج الفيديو وقتاً طويلاً. يرجى إعادة المحاولة أو التحقق من صحة الرابط.',
+        code: 'EXTRACTION_TIMEOUT',
+        debug: {
+          extractionStatus: 'TIMEOUT',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }, 28000);
+
     try {
       const { url } = req.body;
       if (!url || typeof url !== 'string' || !url.trim().startsWith('http')) {
-        return res.status(400).json({ success: false, error: 'الرجاء إدخال رابط فيديو صحيح يبدأ بـ http أو https' });
+        return safeRespond(400, { success: false, error: 'الرجاء إدخال رابط فيديو صحيح يبدأ بـ http أو https' });
       }
 
       const cleanUrl = url.trim();
       const lowerUrl = cleanUrl.toLowerCase();
-      const requestId = randomUUID();
 
-      // Execute multi-tier extraction pipeline with requestId and dynamic DB provider settings
-      const extraction = await extractMedia(cleanUrl, requestId);
+      // Execute multi-tier extraction pipeline with requestId, dynamic DB provider settings, and signal propagation
+      const extraction = await extractMedia(cleanUrl, requestId, fetchAbortController.signal);
 
       if (extraction.status === 'FAILED' && (extraction.httpStatus === 503 || extraction.reason === 'PROVIDER_CONFIG_UNAVAILABLE' || extraction.reason === 'NO_ENABLED_PROVIDERS')) {
         const isDbUnavailable = extraction.reason === 'PROVIDER_CONFIG_UNAVAILABLE';
-        return res.status(503).json({
+        return safeRespond(503, {
           success: false,
           requestId,
           error: isDbUnavailable ? 'PROVIDER_CONFIG_UNAVAILABLE' : (extraction.reason || 'NO_ENABLED_PROVIDERS'),
@@ -2845,7 +2874,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
           console.error('[DownloadLog DB Error]', dbErr?.message || dbErr);
         });
 
-        return res.json({
+        return safeRespond(200, {
           success: true,
           requestId,
           data: {
@@ -2903,7 +2932,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       // --- 1. YouTube & YouTube Shorts Extraction Fallback ---
       if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
         try {
-          const info = await ytdl.getInfo(cleanUrl);
+          const infoPromise = ytdl.getInfo(cleanUrl);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('YTDL_FALLBACK_TIMEOUT')), 6000)
+          );
+          const info: any = await Promise.race([infoPromise, timeoutPromise]);
           const title = info.videoDetails.title || 'YouTube Video';
           const authorName = info.videoDetails.author.name || 'YouTube Creator';
           const thumbnail = info.videoDetails.thumbnails.slice(-1)[0]?.url || info.videoDetails.thumbnails[0]?.url || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&q=80';
@@ -2912,8 +2945,8 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
           const viewsStr = info.videoDetails.viewCount ? `${(parseInt(info.videoDetails.viewCount, 10) / 1000).toFixed(0)}K views` : 'Live';
 
           const validFormats = info.formats
-            .filter((f) => f.url)
-            .map((f, idx) => {
+            .filter((f: any) => f.url)
+            .map((f: any, idx: number) => {
               const qualityLabel = f.qualityLabel || (f.hasVideo ? '720p HD' : 'Audio');
               const container = f.container || (f.hasVideo ? 'mp4' : 'mp3');
               const isAudioOnly = !f.hasVideo && f.hasAudio;
@@ -2934,13 +2967,13 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
             });
 
           // Ensure we have at least one valid video format
-          const videoFormats = validFormats.filter((f) => f.format !== 'mp3');
-          const audioFormats = validFormats.filter((f) => f.format === 'mp3');
+          const videoFormats = validFormats.filter((f: any) => f.format !== 'mp3');
+          const audioFormats = validFormats.filter((f: any) => f.format === 'mp3');
 
           const finalFormats = [...videoFormats.slice(0, 3), ...audioFormats.slice(0, 1)];
 
           if (finalFormats.length > 0) {
-            return res.json({
+            return safeRespond(200, {
               success: true,
               data: {
                 id: `yt_${info.videoDetails.videoId || Date.now()}`,
@@ -2965,7 +2998,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
         // YouTube Fallback via oEmbed & Direct Resolver
         try {
-          const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`);
+          const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`, {}, 3000);
           if (oembedRes.ok) {
             const json = await oembedRes.json();
             const title = json.title || 'YouTube Video Stream';
@@ -2977,7 +3010,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
             const directConverted = await resolveYouTubeDirectDownloadUrl(cleanUrl, '1080');
             const targetStreamUrl = directConverted || `/api/download?url=${encodeURIComponent(cleanUrl)}&sourceUrl=${encodeURIComponent(cleanUrl)}&filename=${encodeURIComponent(titleClean)}.mp4`;
 
-            return res.json({
+            return safeRespond(200, {
               success: true,
               data: {
                 id: `yt_oembed_${Date.now()}`,
@@ -3031,9 +3064,9 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       if (lowerUrl.includes('reddit.com') || lowerUrl.includes('v.redd.it')) {
         try {
           const jsonUrl = cleanUrl.split('?')[0].replace(/\/$/, '') + '.json';
-          const rRes = await fetch(jsonUrl, {
+          const rRes = await fetchWithTimeout(jsonUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
-          });
+          }, 4000);
           if (rRes.ok) {
             const data = await rRes.json();
             const post = data[0]?.data?.children[0]?.data;
@@ -3045,7 +3078,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
               const titleClean = title.replace(/[^a-zA-Z0-9_\-\u0600-\u06FF ]/g, '_').substring(0, 50);
 
               if (directVideoUrl && (directVideoUrl.includes('.mp4') || directVideoUrl.includes('v.redd.it'))) {
-                return res.json({
+                return safeRespond(200, {
                   success: true,
                   data: {
                     id: `reddit_${post.id || Date.now()}`,
@@ -3087,7 +3120,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       // --- 3. TikTok Extraction (TikWM & oEmbed) ---
       if (lowerUrl.includes('tiktok.com')) {
         try {
-          const tikRes = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}`);
+          const tikRes = await fetchWithTimeout(`https://www.tikwm.com/api/?url=${encodeURIComponent(cleanUrl)}`, {}, 5000);
           if (tikRes.ok) {
             const json = await tikRes.json();
             if (json.code === 0 && json.data) {
@@ -3100,7 +3133,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
               const titleClean = title.replace(/[^a-zA-Z0-9_\-\u0600-\u06FF ]/g, '_').substring(0, 50);
 
               if (videoUrl) {
-                return res.json({
+                return safeRespond(200, {
                   success: true,
                   data: {
                     id: `tiktok_${d.id || Date.now()}`,
@@ -3157,13 +3190,13 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
       // --- 4. General OpenGraph Metadata Parser (Instagram, Facebook, Twitter, Vimeo, Snapchat, etc.) ---
       try {
-        const pageRes = await fetch(cleanUrl, {
+        const pageRes = await fetchWithTimeout(cleanUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           },
-        });
+        }, 5000);
 
         if (pageRes.ok) {
           const html = await pageRes.text();
@@ -3194,7 +3227,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
           if (cleanTitle && isValidVideoUrl) {
             const targetVideoUrl = ogVideo;
-            return res.json({
+            return safeRespond(200, {
               success: true,
               data: {
                 id: `media_${Date.now()}`,
@@ -3248,7 +3281,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         ? 'فشل استخراج هذا الفيديو من فيسبوك. قد يكون الفيديو خاصاً، محمي بالموقع الجغرافي، أو يتطلب تسجيل دخول.'
         : 'تعذر استخراج مقطع الفيديو من هذا الرابط. يرجى التأكد من أن الرابط عام وصحيح ويحتوي على فيديو قابل للمشاهدة.');
 
-      return res.status(400).json({
+      return safeRespond(400, {
         success: false,
         error: errorMessage,
         debug: {
@@ -3260,11 +3293,10 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
           tiersExecuted: isFb
             ? [
                 'Tier 1: HTML Regex & Plugin Embed Scraper (video.php, post.php, mobile FB)',
-                'Tier 2: yt-dlp Mobile/Desktop Header Spoofing',
-                'Tier 3: Public Cobalt & VKR API Fallbacks',
-                'Tier 4: OpenGraph Fallback',
+                'Tier 2: Direct Scraper & Cobalt / VKR API Fallbacks',
+                'Tier 3: OpenGraph Fallback',
               ]
-            : ['yt-dlp', 'OpenGraph'],
+            : ['ytdl-core / Cobalt / Loader.to', 'OpenGraph'],
           troubleshooting: [
             'Check if video privacy is set to Public',
             'Verify URL format (e.g. facebook.com/reel/ or facebook.com/watch/?v=)',
@@ -3274,7 +3306,9 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       });
     } catch (err: any) {
       console.error('/api/fetch route error:', err);
-      return res.status(500).json({ success: false, error: err.message || 'حدث خطأ في الخادم أثناء استخراج الفيديو' });
+      return safeRespond(500, { success: false, error: err.message || 'حدث خطأ في الخادم أثناء استخراج الفيديو' });
+    } finally {
+      clearTimeout(globalTimeoutId);
     }
   });
 
@@ -3452,7 +3486,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
           }
 
           try {
-            const resAttempt = await fetch(urlToFetch, { headers: forwardHeaders, redirect: 'follow' });
+            const resAttempt = await fetchWithTimeout(urlToFetch, { headers: forwardHeaders, redirect: 'follow' }, 15000);
             const cType = resAttempt.headers.get('content-type') || '';
 
             if (resAttempt.ok || resAttempt.status === 206) {
