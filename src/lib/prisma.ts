@@ -6,11 +6,10 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 export interface DatabaseDiagnosticInfo {
+  databaseType: 'mysql' | 'postgresql' | 'none';
   databaseUrlConfigured: boolean;
   hostSummary: string;
   port: string;
-  sslDetected: boolean;
-  pgbouncerDetected: boolean;
   prismaInitialized: boolean;
   nodeEnv: string;
 }
@@ -18,38 +17,40 @@ export interface DatabaseDiagnosticInfo {
 function formatDatabaseUrl(rawUrl?: string): string {
   const url = (rawUrl || '').trim();
   if (!url) {
-    console.warn('[Prisma Notice] DATABASE_URL environment variable is not configured. Database-dependent operations will use graceful fallback.');
+    console.warn('[Prisma Notice] DATABASE_URL environment variable is not configured.');
     return '';
   }
 
-  // Validate format and safely ensure SSL parameters for Supabase PostgreSQL
-  try {
-    const parsed = new URL(url);
-    if (!parsed.searchParams.has('sslmode')) {
-      parsed.searchParams.set('sslmode', 'require');
-    }
-    // If using Supabase port 6543 (transaction pooler), ensure pgbouncer=true
-    if (parsed.port === '6543' && !parsed.searchParams.has('pgbouncer')) {
-      parsed.searchParams.set('pgbouncer', 'true');
-    }
-    return parsed.toString();
-  } catch {
-    if (!url.includes('sslmode=')) {
-      return url + (url.includes('?') ? '&' : '?') + 'sslmode=require';
-    }
+  // If MySQL (Hostinger standard) -> pass directly
+  if (url.startsWith('mysql://') || url.startsWith('mysql:')) {
     return url;
   }
+
+  // If PostgreSQL URL is provided while Prisma client is generated for MySQL
+  if (url.startsWith('postgresql://') || url.startsWith('postgres://')) {
+    console.warn('[Prisma Notice] Active Prisma schema is MySQL, but DATABASE_URL starts with postgresql://. Set DATABASE_URL=mysql://USER:PASS@HOST:3306/DB_NAME in Hostinger environment.');
+    return '';
+  }
+
+  return url;
 }
 
 export function getDatabaseDiagnosticInfo(): DatabaseDiagnosticInfo {
   const rawUrl = (process.env.DATABASE_URL || '').trim();
   const configured = Boolean(rawUrl);
+  let databaseType: 'mysql' | 'postgresql' | 'none' = 'none';
   let hostSummary = 'NONE';
   let port = 'NOT_SET';
-  let sslDetected = false;
-  let pgbouncerDetected = false;
 
   if (configured) {
+    if (rawUrl.startsWith('mysql://') || rawUrl.startsWith('mysql:')) {
+      databaseType = 'mysql';
+      port = '3306';
+    } else if (rawUrl.startsWith('postgresql://') || rawUrl.startsWith('postgres://')) {
+      databaseType = 'postgresql';
+      port = '5432';
+    }
+
     try {
       const parsed = new URL(rawUrl);
       const host = parsed.hostname || '';
@@ -57,24 +58,21 @@ export function getDatabaseDiagnosticInfo(): DatabaseDiagnosticInfo {
         const parts = host.split('.');
         hostSummary = `***.${parts.slice(-2).join('.')}`;
       } else {
-        hostSummary = 'REDACTED';
+        hostSummary = 'REDACTED_HOST';
       }
-      port = parsed.port || '5432';
-      sslDetected = parsed.searchParams.get('sslmode') === 'require' || rawUrl.includes('sslmode=require');
-      pgbouncerDetected = parsed.searchParams.get('pgbouncer') === 'true' || rawUrl.includes('pgbouncer=true') || port === '6543';
+      if (parsed.port) {
+        port = parsed.port;
+      }
     } catch {
-      hostSummary = 'REDACTED_FORMAT';
-      sslDetected = rawUrl.includes('sslmode=require');
-      pgbouncerDetected = rawUrl.includes('pgbouncer=true') || rawUrl.includes(':6543');
+      hostSummary = 'REDACTED_HOST';
     }
   }
 
   return {
+    databaseType,
     databaseUrlConfigured: configured,
     hostSummary,
     port,
-    sslDetected,
-    pgbouncerDetected,
     prismaInitialized: Boolean(globalForPrisma.prisma || Boolean(process.env.DATABASE_URL)),
     nodeEnv: process.env.NODE_ENV || 'development',
   };
@@ -83,7 +81,11 @@ export function getDatabaseDiagnosticInfo(): DatabaseDiagnosticInfo {
 const resolvedDbUrl = formatDatabaseUrl(process.env.DATABASE_URL);
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  ...(resolvedDbUrl ? { datasources: { db: { url: resolvedDbUrl } } } : {}),
+  datasources: {
+    db: {
+      url: resolvedDbUrl || 'mysql://127.0.0.1:3306/omnifetch_pro',
+    },
+  },
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
 });
 
@@ -95,8 +97,13 @@ if (process.env.NODE_ENV !== 'production') {
  * Safe, non-blocking lightweight connectivity verification (SELECT 1)
  */
 export async function testDatabaseConnection(timeoutMs = 4000): Promise<{ connected: boolean; error?: string }> {
-  if (!process.env.DATABASE_URL) {
-    return { connected: false, error: 'DATABASE_URL environment variable is not configured' };
+  if (!resolvedDbUrl) {
+    return {
+      connected: false,
+      error: process.env.DATABASE_URL?.startsWith('postgresql://')
+        ? 'DATABASE_URL protocol mismatch (PostgreSQL URL provided for MySQL schema)'
+        : 'DATABASE_URL environment variable is not configured',
+    };
   }
   try {
     const checkPromise = prisma.$queryRawUnsafe('SELECT 1 as result');
@@ -114,6 +121,7 @@ export async function testDatabaseConnection(timeoutMs = 4000): Promise<{ connec
     };
   }
 }
+
 
 
 

@@ -151,7 +151,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           if (mounted) {
             setDbHealth({
               status: data.database === 'connected' ? 'connected' : 'unavailable',
-              message: data.databaseError || (data.database === 'connected' ? 'PostgreSQL Supabase متصل بنجاح' : 'Database connection unavailable'),
+              message: data.databaseError || (data.database === 'connected' ? 'MySQL Database متصل بنجاح' : 'Database connection unavailable'),
             });
           }
         } else {
@@ -457,7 +457,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Supabase PostgreSQL Database Connectivity Badge */}
+            {/* MySQL Database Connectivity Badge */}
             <div
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-semibold shadow-sm ${
                 dbHealth.status === 'connected'
@@ -466,7 +466,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
                   ? 'bg-slate-800 border-slate-700 text-slate-300'
                   : 'bg-rose-950/40 border-rose-500/50 text-rose-300'
               }`}
-              title={dbHealth.message || (dbHealth.status === 'connected' ? 'PostgreSQL متصل بنجاح' : 'Database connection unavailable')}
+              title={dbHealth.message || (dbHealth.status === 'connected' ? 'MySQL متصل بنجاح' : 'Database connection unavailable')}
             >
               <div
                 className={`w-2 h-2 rounded-full ${
@@ -479,7 +479,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
               />
               <span className="hidden sm:inline">
                 {dbHealth.status === 'connected'
-                  ? 'PostgreSQL: متصل'
+                  ? 'MySQL: متصل'
                   : dbHealth.status === 'checking'
                   ? 'فحص الاتصال...'
                   : 'Database connection unavailable'}

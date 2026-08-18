@@ -105,7 +105,7 @@ export const TrendingDownloadsSection: React.FC<Props> = ({ currentLang, onExtra
           <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{isRtl ? 'مزامنة حية مع Supabase PostgreSQL' : 'PostgreSQL Database Live'}</span>
+            <span>{isRtl ? 'مزامنة حية مع قاعدة البيانات' : 'Live Database Sync'}</span>
           </div>
         </div>
 

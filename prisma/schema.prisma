@@ -1,6 +1,6 @@
 // Prisma Schema for OmniFetch Pro Global Settings, Ad Placements, Platforms, Audit Logs & Analytics
 datasource db {
-  provider  = "postgresql"
+  provider  = "mysql"
   url       = env("DATABASE_URL")
 }
 
@@ -14,7 +14,7 @@ model GlobalSettings {
   siteName               String   @default("OmniFetch Pro")
   shortName              String   @default("PRO")
   tagline                String?  @default("أفضل وأسرع أداة مجانية لتحميل الفيديوهات بدون علامة مائية")
-  siteDescription        String?  @default("أفضل وأسرع أداة مجانية لتحميل فيديوهات تيك توك، يوتيوب شورتس، فيسبوك ريلز وإنستغرام بدقة HD وبدون علامات مائية")
+  siteDescription        String?  @default("أفضل وأسرع أداة مجانية لتحميل فيديوهات تيك توك، يوتيوب شورتس، فيسبوك ريلز وإنستغرام بدقة HD وبدون علامات مائية") @db.Text
   logoUrl                String?  @default("")
   faviconUrl             String?  @default("")
   contactEmail           String?  @default("support@omnifetchpro.com")
@@ -33,20 +33,20 @@ model GlobalSettings {
   allowMp3Conversion     Boolean  @default(true)
   watermarkFreeByDefault Boolean  @default(true)
   headerStyle            String?  @default("sticky")
-  customCss              String?  @default("")
-  customJs               String?  @default("")
-  socialLinksJson        String?  @default("{}")
-  adsConfigJson          String?  @default("[]")
-  platformsConfigJson    String?  @default("{}")
-  seoConfigJson          String?  @default("{}")
-  faqsConfigJson         String?  @default("[]")
-  blogsConfigJson        String?  @default("[]")
-  pagesConfigJson        String?  @default("[]")
-  smtpConfigJson         String?  @default("{}")
-  emailAlertsConfigJson  String?  @default("{}")
-  redirectsConfigJson    String?  @default("[]")
-  usersConfigJson        String?  @default("[]")
-  securityConfigJson     String?  @default("{}")
+  customCss              String?  @default("") @db.Text
+  customJs               String?  @default("") @db.Text
+  socialLinksJson        String?  @default("{}") @db.Text
+  adsConfigJson          String?  @default("[]") @db.LongText
+  platformsConfigJson    String?  @default("{}") @db.Text
+  seoConfigJson          String?  @default("{}") @db.Text
+  faqsConfigJson         String?  @default("[]") @db.LongText
+  blogsConfigJson        String?  @default("[]") @db.LongText
+  pagesConfigJson        String?  @default("[]") @db.LongText
+  smtpConfigJson         String?  @default("{}") @db.Text
+  emailAlertsConfigJson  String?  @default("{}") @db.Text
+  redirectsConfigJson    String?  @default("[]") @db.Text
+  usersConfigJson        String?  @default("[]") @db.Text
+  securityConfigJson     String?  @default("{}") @db.Text
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }
@@ -60,7 +60,7 @@ model AdPlacement {
   enabled      Boolean  @default(true)
   adClient     String?  @default("")
   adSlot       String?  @default("")
-  customHtml   String?  @default("")
+  customHtml   String?  @default("") @db.Text
   deviceTarget String?  @default("all") // "all", "mobile", "desktop"
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -84,7 +84,7 @@ model AuditLog {
   id         String   @id @default(cuid())
   userEmail  String   @default("admin@omnifetchpro.com")
   action     String   // e.g. "UPDATE_SETTINGS", "TOGGLE_AD", "UPDATE_PLATFORM"
-  details    String
+  details    String   @db.Text
   ipAddress  String?  @default("127.0.0.1")
   createdAt  DateTime @default(now())
 }
@@ -105,10 +105,10 @@ model SeoTranslations {
 model DownloadLog {
   id            String   @id @default(cuid())
   requestId     String?
-  url           String
+  url           String   @db.Text
   title         String
   platform      String
-  thumbnail     String?
+  thumbnail     String?  @db.Text
   quality       String?
   ipAddress     String?
   downloadCount Int      @default(1)
@@ -117,7 +117,7 @@ model DownloadLog {
 
   @@index([requestId])
   @@index([platform])
-  @@index([url])
+  @@index([url(length: 100)])
 }
 
 model UserAnalytics {
@@ -137,8 +137,8 @@ model ApiTelemetry {
   latencyMs     Int
   success       Boolean
   statusCode    Int?     @default(200)
-  errorMessage  String?
-  targetUrl     String?
+  errorMessage  String?  @db.Text
+  targetUrl     String?  @db.Text
   createdAt     DateTime @default(now())
 
   @@index([requestId])
@@ -169,7 +169,7 @@ model AdsterraDomain {
   adsterraDomainId String   @unique
   domainName       String
   status           String   @default("ACTIVE")
-  rawData          String?  @default("{}")
+  rawData          String?  @default("{}") @db.Text
   lastSyncedAt     DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -182,7 +182,7 @@ model AdsterraPlacement {
   name                String
   format              String   // e.g. "native_300x250", "leaderboard_728x90", "popunder", "social_bar", "smartlink"
   status              String   @default("ACTIVE")
-  rawData             String?  @default("{}")
+  rawData             String?  @default("{}") @db.Text
   lastSyncedAt        DateTime @default(now())
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -194,7 +194,7 @@ model AdsterraSmartlink {
   url                 String
   name                String
   status              String   @default("ACTIVE")
-  rawData             String?  @default("{}")
+  rawData             String?  @default("{}") @db.Text
   lastSyncedAt        DateTime @default(now())
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -219,8 +219,8 @@ model AdsterraSyncLog {
   domainsCount    Int      @default(0)
   placementsCount Int      @default(0)
   smartlinksCount Int      @default(0)
-  details         String?  @default("")
-  errorMessage    String?  @default("")
+  details         String?  @default("") @db.Text
+  errorMessage    String?  @default("") @db.Text
   createdAt       DateTime @default(now())
 }
 

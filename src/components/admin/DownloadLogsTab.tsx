@@ -111,7 +111,7 @@ export const DownloadLogsTab: React.FC<Props> = ({ currentLang, onShowToast }) =
         <div>
           <h2 className="text-xl font-black text-white flex items-center gap-2">
             <Download className="w-5 h-5 text-purple-400" />
-            <span>{isRtl ? 'سجل التنزيلات والتحميلات المباشرة (PostgreSQL Supabase)' : 'Live Download Logs & Analytics'}</span>
+            <span>{isRtl ? 'سجل التنزيلات والتحميلات المباشرة (MySQL Database)' : 'Live Download Logs & Analytics'}</span>
             <span className="flex h-2.5 w-2.5 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
@@ -119,8 +119,8 @@ export const DownloadLogsTab: React.FC<Props> = ({ currentLang, onShowToast }) =
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             {isRtl
-              ? 'متابعة لحظية وتزامن مباشر مع قاعدة بيانات PostgreSQL الخارجية لكل عمليات استخراج وتحميل الفيديو.'
-              : 'Real-time synchronization with external PostgreSQL Supabase database for all video extractions.'}
+              ? 'متابعة لحظية وتزامن مباشر مع قاعدة بيانات MySQL لكل عمليات استخراج وتحميل الفيديو.'
+              : 'Real-time synchronization with MySQL database for all video extractions.'}
           </p>
         </div>
 
@@ -171,12 +171,12 @@ export const DownloadLogsTab: React.FC<Props> = ({ currentLang, onShowToast }) =
         </div>
 
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-          <span className="text-xs text-emerald-400 font-bold uppercase tracking-wider">{isRtl ? 'حالة قاعدة البيانات' : 'PostgreSQL Status'}</span>
+          <span className="text-xs text-emerald-400 font-bold uppercase tracking-wider">{isRtl ? 'حالة قاعدة البيانات' : 'Database Status'}</span>
           <div className="text-xl font-black text-emerald-400 mt-1 flex items-center gap-1.5">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             <span>Connected</span>
           </div>
-          <p className="text-[11px] text-emerald-300/80 mt-1">{isRtl ? 'ربط خارجي مباشر (Supabase ORM)' : 'Supabase Unified Connection'}</p>
+          <p className="text-[11px] text-emerald-300/80 mt-1">{isRtl ? 'قاعدة بيانات متزامنة (Prisma ORM)' : 'Prisma MySQL Connection'}</p>
         </div>
       </div>
 
