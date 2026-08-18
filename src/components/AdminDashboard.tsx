@@ -137,6 +137,42 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
   const [faqs, setFaqs] = useState<FAQItem[]>(getFaqsConfig());
   const [blogs, setBlogs] = useState<BlogPost[]>(getBlogsConfig());
 
+  const [dbHealth, setDbHealth] = useState<{ status: 'connected' | 'unavailable' | 'checking'; message?: string }>({
+    status: 'checking',
+  });
+
+  useEffect(() => {
+    let mounted = true;
+    const checkDb = async () => {
+      try {
+        const res = await fetch('/api/health');
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted) {
+            setDbHealth({
+              status: data.database === 'connected' ? 'connected' : 'unavailable',
+              message: data.databaseError || (data.database === 'connected' ? 'PostgreSQL Supabase متصل بنجاح' : 'Database connection unavailable'),
+            });
+          }
+        } else {
+          if (mounted) {
+            setDbHealth({ status: 'unavailable', message: 'Database connection unavailable' });
+          }
+        }
+      } catch {
+        if (mounted) {
+          setDbHealth({ status: 'unavailable', message: 'Database connection unavailable' });
+        }
+      }
+    };
+    checkDb();
+    const interval = setInterval(checkDb, 20000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // Quick Logo & Favicon Modal form state
   const [tempLogoUrl, setTempLogoUrl] = useState(settings.logoUrl || '');
   const [tempFaviconUrl, setTempFaviconUrl] = useState(settings.faviconUrl || '');
@@ -421,15 +457,34 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Hostinger DB Web Installer Button */}
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('open_hostinger_installer'))}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all shadow-sm"
-              title="ربط/إعداد قاعدة بيانات Hostinger MySQL"
+            {/* Supabase PostgreSQL Database Connectivity Badge */}
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border text-xs font-semibold shadow-sm ${
+                dbHealth.status === 'connected'
+                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                  : dbHealth.status === 'checking'
+                  ? 'bg-slate-800 border-slate-700 text-slate-300'
+                  : 'bg-rose-950/40 border-rose-500/50 text-rose-300'
+              }`}
+              title={dbHealth.message || (dbHealth.status === 'connected' ? 'PostgreSQL متصل بنجاح' : 'Database connection unavailable')}
             >
-              <HardDrive className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">قاعدة بيانات Hostinger</span>
-            </button>
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  dbHealth.status === 'connected'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : dbHealth.status === 'checking'
+                    ? 'bg-slate-400 animate-pulse'
+                    : 'bg-rose-500'
+                }`}
+              />
+              <span className="hidden sm:inline">
+                {dbHealth.status === 'connected'
+                  ? 'PostgreSQL: متصل'
+                  : dbHealth.status === 'checking'
+                  ? 'فحص الاتصال...'
+                  : 'Database connection unavailable'}
+              </span>
+            </div>
 
             {/* Quick Maintenance Mode Toggle Button */}
             <button

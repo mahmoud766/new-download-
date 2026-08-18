@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import geminiRoutes from './server/geminiRoutes';
 import { extractMedia, getProviderSettingsFromDb, fetchWithTimeout } from './server/extractors';
-import { prisma } from './lib/prisma';
+import { prisma, getDatabaseDiagnosticInfo, testDatabaseConnection } from './lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 
 // Helper function to resolve YouTube direct downloadable file URLs (MP4 / MP3) via conversion engines
@@ -135,12 +135,17 @@ async function startServer() {
   let totalBytesProxied = 1542000000; // start with baseline ~1.5 GB
   let activeProxyStreams = 0;
 
-  // Health check API
-  app.get('/api/health', (req: Request, res: Response) => {
+  // Health check API with lightweight PostgreSQL connectivity verification
+  app.get('/api/health', async (req: Request, res: Response) => {
     const uptimeSec = process.uptime();
-    res.json({
-      status: 'ok',
+    const dbTest = await testDatabaseConnection(3000);
+
+    return res.json({
+      success: dbTest.connected,
+      status: dbTest.connected ? 'ok' : 'degraded',
       service: 'OmniFetch Pro API Engine',
+      database: dbTest.connected ? 'connected' : 'unavailable',
+      ...(dbTest.error ? { databaseError: dbTest.error } : {}),
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(uptimeSec),
       proxyHealth: {
@@ -3986,7 +3991,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[OmniFetch Pro] Server running on http://0.0.0.0:${PORT}`);
+    const dbDiag = getDatabaseDiagnosticInfo();
+    console.log('====================================================');
+    console.log('[OmniFetch Pro] Server running on http://0.0.0.0:' + PORT);
+    console.log(`  NODE_ENV:      ${dbDiag.nodeEnv}`);
+    console.log(`  PORT:          ${PORT}`);
+    console.log(`  DATABASE_URL:  ${dbDiag.databaseUrlConfigured ? 'PRESENT' : 'MISSING'}`);
+    console.log(`  DATABASE_HOST: ${dbDiag.hostSummary}`);
+    console.log(`  DATABASE_PORT: ${dbDiag.port}`);
+    console.log(`  DATABASE_SSL:  ${dbDiag.sslDetected ? 'sslmode=require (detected/normalized)' : 'not detected'}`);
+    console.log(`  PG_BOUNCER:    ${dbDiag.pgbouncerDetected ? 'pgbouncer=true (detected/normalized)' : 'not configured'}`);
+    console.log(`  PRISMA:        ${dbDiag.prismaInitialized ? 'INITIALIZED (PostgreSQL)' : 'NOT INITIALIZED'}`);
+    console.log('====================================================');
   });
 }
 
