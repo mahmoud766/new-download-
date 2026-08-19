@@ -143,12 +143,18 @@ async function startServer() {
     const dbTest = await testDatabaseConnection(4000);
 
     return res.json({
-      success: dbTest.connected,
-      status: dbTest.connected ? 'ok' : 'degraded',
+      success: dbTest.connected || dbTest.directDriver?.status === 'PASS',
+      status: dbTest.connected ? 'ok' : dbTest.directDriver?.status === 'PASS' ? 'degraded_prisma_engine_panic' : 'degraded',
       service: 'OmniFetch Pro API Engine',
-      database: dbTest.connected ? 'connected' : 'unavailable',
+      database: dbTest.connected ? 'connected' : dbTest.directDriver?.status === 'PASS' ? 'driver_reachable_prisma_panic' : 'unavailable',
       ...(dbTest.errorCode ? { databaseErrorCode: dbTest.errorCode } : {}),
       ...(dbTest.error ? { databaseError: dbTest.error, databaseErrorMessage: dbTest.error } : {}),
+      directDriver: dbTest.directDriver,
+      prisma: {
+        status: dbTest.connected ? 'PASS' : 'FAIL',
+        errorCode: dbTest.errorCode,
+        error: dbTest.error,
+      },
       diagnostics: {
         databaseUrlPresent: dbTest.diagnostics.databaseUrlPresent,
         protocol: dbTest.diagnostics.protocol,

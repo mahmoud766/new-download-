@@ -1,12 +1,10 @@
 // Prisma Schema for OmniFetch Pro Global Settings, Ad Placements, Platforms, Audit Logs & Analytics
 datasource db {
-  provider  = "mysql"
-  url       = env("DATABASE_URL")
+  provider = "mysql"
 }
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "linux-musl", "linux-musl-openssl-3.0.x", "rhel-openssl-1.0.x", "rhel-openssl-1.1.x", "rhel-openssl-3.0.x"]
+  provider = "prisma-client-js"
 }
 
 model GlobalSettings {
