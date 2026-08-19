@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import geminiRoutes from './server/geminiRoutes';
 import { extractMedia, getProviderSettingsFromDb, fetchWithTimeout } from './server/extractors';
-import { prisma, getDatabaseDiagnosticInfo, testDatabaseConnection } from './lib/prisma';
+import { prisma, getSafeDatabaseDiagnostics, testDatabaseConnection } from './src/lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 import { DEFAULT_FAQS, INITIAL_BLOG_POSTS } from './src/config/siteConfig';
 import { DEFAULT_PAGES, DEFAULT_SECURITY, DEFAULT_REDIRECTS, DEFAULT_USERS } from './src/lib/adminStorage';
@@ -137,17 +137,32 @@ async function startServer() {
   let totalBytesProxied = 1542000000; // start with baseline ~1.5 GB
   let activeProxyStreams = 0;
 
-  // Health check API with lightweight PostgreSQL connectivity verification
+  // Health check API with real-time Prisma MySQL connectivity verification & safe diagnostic metadata
   app.get('/api/health', async (req: Request, res: Response) => {
     const uptimeSec = process.uptime();
-    const dbTest = await testDatabaseConnection(3000);
+    const dbTest = await testDatabaseConnection(4000);
 
     return res.json({
       success: dbTest.connected,
       status: dbTest.connected ? 'ok' : 'degraded',
       service: 'OmniFetch Pro API Engine',
       database: dbTest.connected ? 'connected' : 'unavailable',
-      ...(dbTest.error ? { databaseError: dbTest.error } : {}),
+      ...(dbTest.errorCode ? { databaseErrorCode: dbTest.errorCode } : {}),
+      ...(dbTest.error ? { databaseError: dbTest.error, databaseErrorMessage: dbTest.error } : {}),
+      diagnostics: {
+        databaseUrlPresent: dbTest.diagnostics.databaseUrlPresent,
+        protocol: dbTest.diagnostics.protocol,
+        host: dbTest.diagnostics.host,
+        port: dbTest.diagnostics.port,
+        databaseName: dbTest.diagnostics.databaseName,
+        username: dbTest.diagnostics.username,
+        password: dbTest.diagnostics.password,
+        prismaProvider: dbTest.diagnostics.prismaProvider,
+        nodeVersion: dbTest.diagnostics.nodeVersion,
+        prismaVersion: dbTest.diagnostics.prismaVersion,
+        ...(dbTest.diagnostics.socketPath ? { socketPath: dbTest.diagnostics.socketPath } : {}),
+        ...(dbTest.queryLatencyMs !== undefined ? { queryLatencyMs: dbTest.queryLatencyMs } : {}),
+      },
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.floor(uptimeSec),
       proxyHealth: {
@@ -3934,16 +3949,18 @@ Sitemap: ${baseUrl}/sitemap.xml`;
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    const dbDiag = getDatabaseDiagnosticInfo();
+    const dbDiag = getSafeDatabaseDiagnostics();
     console.log('====================================================');
     console.log('[OmniFetch Pro] Server running on http://0.0.0.0:' + PORT);
-    console.log(`  NODE_ENV:      ${dbDiag.nodeEnv}`);
+    console.log(`  NODE_ENV:      ${process.env.NODE_ENV || 'development'}`);
     console.log(`  PORT:          ${PORT}`);
-    console.log(`  DATABASE_TYPE: ${dbDiag.databaseType.toUpperCase()}`);
-    console.log(`  DATABASE_URL:  ${dbDiag.databaseUrlConfigured ? 'CONFIGURED' : 'NOT CONFIGURED'}`);
-    console.log(`  DATABASE_HOST: ${dbDiag.hostSummary}`);
+    console.log(`  DATABASE_TYPE: ${dbDiag.protocol.toUpperCase()}`);
+    console.log(`  DATABASE_URL:  ${dbDiag.databaseUrlPresent ? 'PRESENT' : 'NOT SET'}`);
+    console.log(`  DATABASE_HOST: ${dbDiag.host}`);
     console.log(`  DATABASE_PORT: ${dbDiag.port}`);
-    console.log(`  PRISMA:        ${dbDiag.prismaInitialized ? 'INITIALIZED' : 'NOT INITIALIZED'}`);
+    console.log(`  DATABASE_NAME: ${dbDiag.databaseName}`);
+    console.log(`  DATABASE_USER: ${dbDiag.username}`);
+    console.log(`  PRISMA:        ${dbDiag.prismaProvider.toUpperCase()}`);
     console.log('====================================================');
   });
 }

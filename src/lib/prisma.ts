@@ -5,123 +5,184 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export interface DatabaseDiagnosticInfo {
-  databaseType: 'mysql' | 'postgresql' | 'none';
-  databaseUrlConfigured: boolean;
-  hostSummary: string;
+export interface SafeDatabaseDiagnostics {
+  databaseUrlPresent: boolean;
+  protocol: string;
+  host: string;
   port: string;
-  prismaInitialized: boolean;
-  nodeEnv: string;
+  databaseName: string;
+  username: string;
+  password: 'HIDDEN';
+  prismaProvider: 'mysql';
+  nodeVersion: string;
+  prismaVersion: string;
+  socketPath?: string;
 }
 
-function formatDatabaseUrl(rawUrl?: string): string {
-  const url = (rawUrl || '').trim();
-  if (!url) {
-    console.warn('[Prisma Notice] DATABASE_URL environment variable is not configured.');
-    return '';
-  }
-
-  // If MySQL (Hostinger standard) -> pass directly
-  if (url.startsWith('mysql://') || url.startsWith('mysql:')) {
-    return url;
-  }
-
-  // If PostgreSQL URL is provided while Prisma client is generated for MySQL
-  if (url.startsWith('postgresql://') || url.startsWith('postgres://')) {
-    console.warn('[Prisma Notice] Active Prisma schema is MySQL, but DATABASE_URL starts with postgresql://. Set DATABASE_URL=mysql://USER:PASS@HOST:3306/DB_NAME in Hostinger environment.');
-    return '';
-  }
-
-  return url;
+export interface ConnectionTestResult {
+  connected: boolean;
+  error?: string;
+  errorCode?: string;
+  diagnostics: SafeDatabaseDiagnostics;
+  queryLatencyMs?: number;
 }
 
-export function getDatabaseDiagnosticInfo(): DatabaseDiagnosticInfo {
+/**
+ * Safely inspect DATABASE_URL without ever logging or returning the password.
+ */
+export function getSafeDatabaseDiagnostics(): SafeDatabaseDiagnostics {
   const rawUrl = (process.env.DATABASE_URL || '').trim();
   const configured = Boolean(rawUrl);
-  let databaseType: 'mysql' | 'postgresql' | 'none' = 'none';
-  let hostSummary = 'NONE';
-  let port = 'NOT_SET';
+
+  let protocol = 'none';
+  let host = 'NOT_SET';
+  let port = '3306';
+  let databaseName = 'NOT_SET';
+  let username = 'NOT_SET';
+  let socketPath: string | undefined = undefined;
 
   if (configured) {
-    if (rawUrl.startsWith('mysql://') || rawUrl.startsWith('mysql:')) {
-      databaseType = 'mysql';
-      port = '3306';
-    } else if (rawUrl.startsWith('postgresql://') || rawUrl.startsWith('postgres://')) {
-      databaseType = 'postgresql';
-      port = '5432';
-    }
-
     try {
-      const parsed = new URL(rawUrl);
-      const host = parsed.hostname || '';
-      if (host.includes('.')) {
-        const parts = host.split('.');
-        hostSummary = `***.${parts.slice(-2).join('.')}`;
-      } else {
-        hostSummary = 'REDACTED_HOST';
+      // Check prefix
+      if (rawUrl.startsWith('mysql://')) protocol = 'mysql';
+      else if (rawUrl.startsWith('mysqls://')) protocol = 'mysqls';
+      else if (rawUrl.startsWith('postgresql://') || rawUrl.startsWith('postgres://')) protocol = 'postgresql';
+      else if (rawUrl.startsWith('sqlite:')) protocol = 'sqlite';
+      else {
+        const match = rawUrl.match(/^([a-zA-Z0-9_-]+):\/\//);
+        protocol = match ? match[1] : 'unknown';
       }
-      if (parsed.port) {
-        port = parsed.port;
+
+      // Parse connection details safely
+      const parsed = new URL(rawUrl.replace(/^mysqls?:\/\//i, 'http://'));
+      host = parsed.hostname || 'NOT_SET';
+      port = parsed.port || '3306';
+      username = parsed.username ? decodeURIComponent(parsed.username) : 'NOT_SET';
+
+      if (parsed.pathname && parsed.pathname.length > 1) {
+        databaseName = decodeURIComponent(parsed.pathname.substring(1));
+      }
+
+      // Check socket param if Hostinger unix socket is used
+      if (parsed.searchParams && parsed.searchParams.has('socket')) {
+        socketPath = parsed.searchParams.get('socket') || undefined;
       }
     } catch {
-      hostSummary = 'REDACTED_HOST';
+      host = 'MALFORMED_URL';
     }
   }
 
   return {
-    databaseType,
-    databaseUrlConfigured: configured,
-    hostSummary,
+    databaseUrlPresent: configured,
+    protocol,
+    host,
     port,
-    prismaInitialized: Boolean(globalForPrisma.prisma || Boolean(process.env.DATABASE_URL)),
-    nodeEnv: process.env.NODE_ENV || 'development',
+    databaseName,
+    username,
+    password: 'HIDDEN',
+    prismaProvider: 'mysql',
+    nodeVersion: process.version,
+    prismaVersion: '5.22.0',
+    ...(socketPath ? { socketPath } : {}),
   };
 }
 
-const resolvedDbUrl = formatDatabaseUrl(process.env.DATABASE_URL);
+/**
+ * Sanitizes any error message by stripping passwords, tokens, and raw connection strings.
+ */
+function sanitizeErrorMessage(msg: string): string {
+  if (!msg) return 'Database operation failed';
+  return msg
+    .replace(/:\/\/([^:@]+):([^@]+)@/g, '://$1:***@')
+    .replace(/password[:=]\s*["']?[^"'\s,]+["']?/gi, 'password=***')
+    .replace(/password\s+is\s+["']?[^"'\s,]+["']?/gi, 'password is ***');
+}
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  datasources: {
-    db: {
-      url: resolvedDbUrl || 'mysql://127.0.0.1:3306/omnifetch_pro',
-    },
-  },
-  log: resolvedDbUrl ? ['error'] : [],
-});
+/**
+ * Returns or initializes singleton Prisma Client
+ */
+function createPrismaClient(): PrismaClient {
+  const currentDbUrl = (process.env.DATABASE_URL || '').trim();
+  const isValidMysql = currentDbUrl.startsWith('mysql://') || currentDbUrl.startsWith('mysqls://');
+
+  return new PrismaClient({
+    datasources: isValidMysql
+      ? {
+          db: {
+            url: currentDbUrl,
+          },
+        }
+      : undefined,
+    log: process.env.NODE_ENV === 'development' && isValidMysql ? ['warn', 'error'] : [],
+  });
+}
+
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
 
 /**
- * Safe, non-blocking lightweight connectivity verification (SELECT 1)
+ * Real-time, lightweight connection tester using actual Prisma $connect and SELECT 1 query.
+ * Extracts the real Prisma Error Code (P1000, P1001, P1002, P1003, P1010, P1011, etc.)
  */
-export async function testDatabaseConnection(timeoutMs = 4000): Promise<{ connected: boolean; error?: string }> {
-  if (!resolvedDbUrl) {
+export async function testDatabaseConnection(timeoutMs = 5000): Promise<ConnectionTestResult> {
+  const diagnostics = getSafeDatabaseDiagnostics();
+
+  if (!diagnostics.databaseUrlPresent) {
     return {
       connected: false,
-      error: process.env.DATABASE_URL?.startsWith('postgresql://')
-        ? 'DATABASE_URL protocol mismatch (PostgreSQL URL provided for MySQL schema)'
-        : 'DATABASE_URL environment variable is not configured',
+      error: 'DATABASE_URL environment variable is not configured',
+      errorCode: 'MISSING_DATABASE_URL',
+      diagnostics,
     };
   }
-  try {
-    const checkPromise = prisma.$queryRawUnsafe('SELECT 1 as result');
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('DATABASE_QUERY_TIMEOUT')), timeoutMs)
-    );
-    await Promise.race([checkPromise, timeoutPromise]);
-    return { connected: true };
-  } catch (err: any) {
+
+  if (diagnostics.protocol !== 'mysql' && diagnostics.protocol !== 'mysqls') {
     return {
       connected: false,
-      error: err?.message?.includes('DATABASE_QUERY_TIMEOUT')
-        ? 'Database connection timed out'
-        : 'Database query failed or database unreachable',
+      error: `DATABASE_URL protocol mismatch: expected mysql://, received ${diagnostics.protocol}://`,
+      errorCode: 'INVALID_DATABASE_PROTOCOL',
+      diagnostics,
+    };
+  }
+
+  const startTime = Date.now();
+  try {
+    const connectAndQueryPromise = (async () => {
+      await prisma.$connect();
+      await prisma.$queryRawUnsafe('SELECT 1 as result');
+    })();
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => {
+        const timeoutErr: any = new Error(`Database connection timed out after ${timeoutMs}ms`);
+        timeoutErr.code = 'DATABASE_CONNECTION_TIMEOUT';
+        reject(timeoutErr);
+      }, timeoutMs);
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+
+    await Promise.race([connectAndQueryPromise, timeoutPromise]);
+    const queryLatencyMs = Date.now() - startTime;
+
+    return {
+      connected: true,
+      queryLatencyMs,
+      diagnostics,
+    };
+  } catch (err: any) {
+    const rawCode = err?.code || err?.name || 'PRISMA_QUERY_ERROR';
+    const rawMessage = err?.message || 'Database query failed or database unreachable';
+    const sanitizedError = sanitizeErrorMessage(rawMessage);
+
+    return {
+      connected: false,
+      error: sanitizedError,
+      errorCode: String(rawCode),
+      diagnostics,
+      queryLatencyMs: Date.now() - startTime,
     };
   }
 }
-
-
-
-
