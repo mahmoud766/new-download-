@@ -1786,29 +1786,28 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       });
       return res.json({ success: true, redirects });
     } catch (e: any) {
-      console.error('[DB Error] PostgreSQL redirects update failed:', e?.message || e);
       return res.status(500).json({
         success: false,
         error: 'DATABASE_UNAVAILABLE',
-        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+        message: 'Database error: ' + (e?.message || 'Database unavailable'),
       });
     }
   });
 
-  // Helper function to fetch or bootstrap Admin Users from Supabase PostgreSQL
+  // Helper function to fetch or bootstrap Admin Users from Database
   async function getOrBootstrapAdminUsers(): Promise<any[]> {
     let record = null;
     try {
       record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
-    } catch (e) {
-      console.error('[DB Error] Failed to query globalSettings in getOrBootstrapAdminUsers:', e);
+    } catch {
+      // Database not yet configured or offline, return memory defaults
     }
 
     let users: any[] = [];
     if (record && record.usersConfigJson) {
       try {
         users = JSON.parse(record.usersConfigJson);
-      } catch (e) {
+      } catch {
         users = [];
       }
     }
@@ -1856,8 +1855,8 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
           update: { usersConfigJson: JSON.stringify(updatedUsers) },
           create: { id: 'default', usersConfigJson: JSON.stringify(updatedUsers) },
         });
-      } catch (e) {
-        console.error('[DB Error] Failed to upsert default admin in getOrBootstrapAdminUsers:', e);
+      } catch {
+        // Silently preserve updatedUsers in-memory when database is offline
       }
 
       users = updatedUsers;
@@ -2056,11 +2055,10 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       await prisma.downloadLog.deleteMany({});
       return res.json({ success: true });
     } catch (e: any) {
-      console.error('[DB Error] PostgreSQL download-logs delete failed:', e?.message || e);
       return res.status(500).json({
         success: false,
         error: 'DATABASE_UNAVAILABLE',
-        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+        message: 'Database error: ' + (e?.message || 'Database unavailable'),
       });
     }
   });
@@ -2147,7 +2145,6 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         totalTelemetryCount: combinedLogs.length,
       });
     } catch (e: any) {
-      console.error('[DB Error] Telemetry query failed:', e?.message || e);
       return res.status(500).json({
         success: false,
         error: 'DATABASE_UNAVAILABLE',
@@ -2229,7 +2226,6 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       const providers = await getProviderSettingsFromDb();
       return res.json({ success: true, providers });
     } catch (e: any) {
-      console.error('[DB Error] ProviderSettings query failed:', e?.message || e);
       return res.status(500).json({
         success: false,
         error: 'DATABASE_UNAVAILABLE',
@@ -2276,7 +2272,6 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
       return res.json({ success: true, provider: updated });
     } catch (e: any) {
-      console.error('[DB Error] ProviderSetting update failed:', e?.message || e);
       return res.status(500).json({
         success: false,
         error: 'DATABASE_UNAVAILABLE',
@@ -2394,11 +2389,10 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         },
       });
     } catch (e: any) {
-      console.error('[DB Error] PostgreSQL analytics query failed:', e?.message || e);
       return res.status(500).json({
         success: false,
         error: 'DATABASE_UNAVAILABLE',
-        message: 'PostgreSQL database error: ' + (e?.message || 'Database unavailable'),
+        message: 'Database error: ' + (e?.message || 'Database unavailable'),
       });
     }
   });
@@ -2815,7 +2809,6 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
         const forceProxyFlag = Boolean(extraction.forceProxy || platformName === 'YouTube');
 
-        // Record correlated DownloadLog entry in Supabase PostgreSQL
         prisma.downloadLog.create({
           data: {
             requestId,
@@ -2827,9 +2820,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
             ipAddress: (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1',
             downloadCount: 1,
           },
-        }).catch((dbErr) => {
-          console.error('[DownloadLog DB Error]', dbErr?.message || dbErr);
-        });
+        }).catch(() => {});
 
         return safeRespond(200, {
           success: true,

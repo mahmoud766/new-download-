@@ -86,7 +86,7 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
       url: resolvedDbUrl || 'mysql://127.0.0.1:3306/omnifetch_pro',
     },
   },
-  log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  log: resolvedDbUrl ? ['error'] : [],
 });
 
 if (process.env.NODE_ENV !== 'production') {
