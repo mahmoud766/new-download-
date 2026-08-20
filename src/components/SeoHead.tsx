@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { SupportedLanguage, PlatformSlug } from '../types';
+import { SupportedLanguage, PlatformSlug, SiteSettings } from '../types';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { t } from '../i18n/translations';
 import { getGlobalSeoConfig, fetchGlobalSeoFromDb } from '../lib/adminStorage';
+import { getSiteSettings } from '../lib/storage';
 
 interface SeoProps {
   platform?: PlatformSlug;
@@ -10,10 +11,27 @@ interface SeoProps {
   pageTitle?: string;
   pageDescription?: string;
   customCanonicalUrl?: string;
+  siteSettings?: SiteSettings;
 }
 
-export function SeoHead({ platform = 'all', language, pageTitle, pageDescription, customCanonicalUrl }: SeoProps) {
+export function SeoHead({
+  platform = 'all',
+  language,
+  pageTitle,
+  pageDescription,
+  customCanonicalUrl,
+  siteSettings: initialSiteSettings,
+}: SeoProps) {
   const [globalSeo, setGlobalSeo] = useState(getGlobalSeoConfig());
+  const [currentSiteSettings, setCurrentSiteSettings] = useState<SiteSettings>(
+    initialSiteSettings || getSiteSettings()
+  );
+
+  useEffect(() => {
+    if (initialSiteSettings) {
+      setCurrentSiteSettings(initialSiteSettings);
+    }
+  }, [initialSiteSettings]);
 
   useEffect(() => {
     fetchGlobalSeoFromDb().then((seo) => {
@@ -24,16 +42,32 @@ export function SeoHead({ platform = 'all', language, pageTitle, pageDescription
       if (e.detail) setGlobalSeo(e.detail);
     };
 
+    const handleSettingsUpdated = (e: CustomEvent) => {
+      if (e.detail) setCurrentSiteSettings(e.detail);
+    };
+
     window.addEventListener('omnifetch_seo_updated', handleSeoUpdated as EventListener);
+    window.addEventListener('omnifetch_settings_updated', handleSettingsUpdated as EventListener);
     return () => {
       window.removeEventListener('omnifetch_seo_updated', handleSeoUpdated as EventListener);
+      window.removeEventListener('omnifetch_settings_updated', handleSettingsUpdated as EventListener);
     };
   }, []);
 
   const platformInfo = PLATFORMS_CONFIG[platform] || PLATFORMS_CONFIG.all;
+  const siteBrandName = currentSiteSettings.siteName || 'OmniFetch Pro';
 
-  const title = pageTitle || (platform === 'all' && globalSeo.metaTitle ? globalSeo.metaTitle : (platformInfo.titleTemplate[language] || t('siteTitle', language)));
-  const description = pageDescription || (platform === 'all' && globalSeo.metaDescription ? globalSeo.metaDescription : (platformInfo.subtitle[language] || t('siteSubtitle', language)));
+  const defaultTitle = currentSiteSettings.siteName
+    ? `${currentSiteSettings.siteName} - ${currentSiteSettings.siteDescription || currentSiteSettings.tagline || t('siteSubtitle', language)}`
+    : platformInfo.titleTemplate[language] || t('siteTitle', language);
+
+  const title = pageTitle || (platform === 'all' && globalSeo.metaTitle ? globalSeo.metaTitle : defaultTitle);
+  const description =
+    pageDescription ||
+    (platform === 'all' && globalSeo.metaDescription
+      ? globalSeo.metaDescription
+      : currentSiteSettings.siteDescription || platformInfo.subtitle[language] || t('siteSubtitle', language));
+
   
   // Enforce canonical domain https://omnifetchpro.com
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';

@@ -110,7 +110,7 @@ export async function fetchFirestoreCreations(userId: string) {
   }
 }
 
-// 6. Fetch Daily Visitors Traffic Trends from Firestore
+// 6. Fetch Daily Visitors Traffic Trends (Live Database Analytics with Firestore Sync)
 export interface DailyVisitorData {
   id?: string;
   date: string;
@@ -120,7 +120,25 @@ export interface DailyVisitorData {
   downloads: number;
 }
 
-export async function fetchDailyVisitorsFromFirestore(): Promise<DailyVisitorData[]> {
+export async function fetchDailyVisitorsFromFirestore(range: 'today' | '7d' | '30d' | 'all' = '7d'): Promise<DailyVisitorData[]> {
+  // 1. Fetch live real-time metrics computed directly from database
+  try {
+    const res = await fetch(`/api/analytics/daily-visitors?range=${range}`);
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && Array.isArray(body.data)) {
+        // Sync real live data to Firestore asynchronously for persistence
+        if (body.data.length > 0) {
+          syncDailyVisitorsToFirestore(body.data).catch(() => {});
+        }
+        return body.data;
+      }
+    }
+  } catch (apiErr) {
+    console.warn('Notice: falling back to Firestore for daily visitors:', apiErr);
+  }
+
+  // 2. Fallback to Firestore cache
   try {
     const colRef = collection(db, 'analytics_daily_visitors');
     const q = query(colRef, orderBy('date', 'asc'), limit(30));
@@ -133,25 +151,31 @@ export async function fetchDailyVisitorsFromFirestore(): Promise<DailyVisitorDat
       }));
     }
   } catch (err) {
-    console.error('Error fetching daily visitors from Firestore, falling back to server API:', err);
-  }
-
-  try {
-    const res = await fetch('/api/analytics/daily-visitors');
-    if (res.ok) {
-      const body = await res.json();
-      if (body.success && Array.isArray(body.data)) {
-        return body.data;
-      }
-    }
-  } catch (apiErr) {
-    console.error('Error fetching daily visitors from API:', apiErr);
+    console.error('Error fetching daily visitors from Firestore:', err);
   }
 
   return [];
 }
 
-// 7. Fetch Top Performing Pages Analytics from Firestore
+async function syncDailyVisitorsToFirestore(data: DailyVisitorData[]) {
+  try {
+    for (const item of data) {
+      if (!item.date) continue;
+      const cleanId = item.date.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const docRef = doc(db, 'analytics_daily_visitors', cleanId);
+      await setDoc(docRef, {
+        date: item.date,
+        label: item.label,
+        visitors: Number(item.visitors) || 0,
+        pageViews: Number(item.pageViews) || 0,
+        downloads: Number(item.downloads) || 0,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch {}
+}
+
+// 7. Fetch Top Performing Pages Analytics (Live Database Analytics with Firestore Sync)
 export interface TopPageData {
   id?: string;
   pagePath: string;
@@ -162,6 +186,23 @@ export interface TopPageData {
 }
 
 export async function fetchTopPagesFromFirestore(): Promise<TopPageData[]> {
+  // 1. Fetch live real-time metrics computed directly from database
+  try {
+    const res = await fetch('/api/analytics/top-pages');
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && Array.isArray(body.data)) {
+        if (body.data.length > 0) {
+          syncTopPagesToFirestore(body.data).catch(() => {});
+        }
+        return body.data;
+      }
+    }
+  } catch (apiErr) {
+    console.warn('Notice: falling back to Firestore for top pages:', apiErr);
+  }
+
+  // 2. Fallback to Firestore cache
   try {
     const colRef = collection(db, 'analytics_top_pages');
     const q = query(colRef, orderBy('views', 'desc'), limit(10));
@@ -174,25 +215,31 @@ export async function fetchTopPagesFromFirestore(): Promise<TopPageData[]> {
       }));
     }
   } catch (err) {
-    console.error('Error fetching top pages from Firestore, falling back to server API:', err);
-  }
-
-  try {
-    const res = await fetch('/api/analytics/top-pages');
-    if (res.ok) {
-      const body = await res.json();
-      if (body.success && Array.isArray(body.data)) {
-        return body.data;
-      }
-    }
-  } catch (apiErr) {
-    console.error('Error fetching top pages from API:', apiErr);
+    console.error('Error fetching top pages from Firestore:', err);
   }
 
   return [];
 }
 
-// 8. Fetch Platform Traffic Breakdown from Firestore
+async function syncTopPagesToFirestore(data: TopPageData[]) {
+  try {
+    for (const item of data) {
+      if (!item.pagePath) continue;
+      const cleanId = (item.pagePath === '/' ? 'home' : item.pagePath.replace('/', '')).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const docRef = doc(db, 'analytics_top_pages', cleanId);
+      await setDoc(docRef, {
+        pagePath: item.pagePath,
+        pageTitle: item.pageTitle,
+        views: Number(item.views) || 0,
+        downloads: Number(item.downloads) || 0,
+        avgDuration: item.avgDuration || '1m 30s',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch {}
+}
+
+// 8. Fetch Platform Traffic Breakdown (Live Database Analytics with Firestore Sync)
 export interface PlatformTrafficData {
   id?: string;
   platform: string;
@@ -202,9 +249,26 @@ export interface PlatformTrafficData {
 }
 
 export async function fetchPlatformTrafficFromFirestore(): Promise<PlatformTrafficData[]> {
+  // 1. Fetch live real-time metrics computed directly from database
+  try {
+    const res = await fetch('/api/analytics/platform-traffic');
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success && Array.isArray(body.data)) {
+        if (body.data.length > 0) {
+          syncPlatformTrafficToFirestore(body.data).catch(() => {});
+        }
+        return body.data;
+      }
+    }
+  } catch (apiErr) {
+    console.warn('Notice: falling back to Firestore for platform traffic:', apiErr);
+  }
+
+  // 2. Fallback to Firestore cache
   try {
     const colRef = collection(db, 'analytics_platform_traffic');
-    const q = query(colRef, orderBy('share', 'desc'), limit(10));
+    const q = query(colRef, orderBy('downloads', 'desc'), limit(10));
     const snap = await getDocs(q);
 
     if (!snap.empty) {
@@ -214,22 +278,62 @@ export async function fetchPlatformTrafficFromFirestore(): Promise<PlatformTraff
       }));
     }
   } catch (err) {
-    console.error('Error fetching platform traffic from Firestore, falling back to server API:', err);
+    console.error('Error fetching platform traffic from Firestore:', err);
   }
 
+  return [];
+}
+
+async function syncPlatformTrafficToFirestore(data: PlatformTrafficData[]) {
   try {
-    const res = await fetch('/api/analytics/platform-traffic');
+    for (const item of data) {
+      if (!item.platform) continue;
+      const cleanId = item.platform.toLowerCase().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const docRef = doc(db, 'analytics_platform_traffic', cleanId);
+      await setDoc(docRef, {
+        platform: item.platform,
+        share: Number(item.share) || 0,
+        downloads: Number(item.downloads) || 0,
+        color: item.color || '#9333ea',
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch {}
+}
+
+// Helper: Fetch Real Traffic Sources
+export async function fetchRealTrafficSources() {
+  try {
+    const res = await fetch('/api/analytics/traffic-sources');
     if (res.ok) {
       const body = await res.json();
       if (body.success && Array.isArray(body.data)) {
         return body.data;
       }
     }
-  } catch (apiErr) {
-    console.error('Error fetching platform traffic from API:', apiErr);
+  } catch (e) {
+    console.warn('Notice: fetching traffic sources:', e);
   }
-
   return [];
+}
+
+// Helper: Fetch Real Device & Browser Statistics
+export async function fetchRealDeviceStats() {
+  try {
+    const res = await fetch('/api/analytics/device-stats');
+    if (res.ok) {
+      const body = await res.json();
+      if (body.success) {
+        return {
+          devices: body.devices,
+          browsers: body.browsers,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Notice: fetching device stats:', e);
+  }
+  return null;
 }
 
 // 9. Real Trending Downloads Tracker

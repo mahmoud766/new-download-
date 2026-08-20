@@ -64,6 +64,13 @@ export const SiteSettingsTab: React.FC<Props> = ({
       .finally(() => setIsLoading(false));
   }, []);
 
+  // Synchronize when settings prop is updated
+  useEffect(() => {
+    if (settings) {
+      setFormData(settings);
+    }
+  }, [settings]);
+
   const handleChange = (field: keyof SiteSettings, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };

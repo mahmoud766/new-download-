@@ -44,7 +44,9 @@ import { SupportedLanguage, SiteSettings, AdPlacementConfig, FAQItem, BlogPost }
 import {
   getSiteSettings,
   saveSiteSettings,
+  saveSiteSettingsToDb,
   fetchSiteSettingsFromDb,
+  broadcastSettingsUpdated,
   getAdsConfig,
   fetchAdsConfigFromDb,
   getFaqsConfig,
@@ -322,25 +324,35 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
     }
   };
 
+  const handleUpdateSettings = (newSettings: SiteSettings) => {
+    setSettings(newSettings);
+    broadcastSettingsUpdated(newSettings);
+  };
+
   const handleSaveQuickBrand = async () => {
-    const updatedSettings = {
-      ...settings,
-      logoUrl: tempLogoUrl,
-      faviconUrl: tempFaviconUrl,
-      siteName: tempSiteName,
-      shortName: tempShortName,
-      headerStyle: tempHeaderStyle,
-      maintenanceMode: tempMaintenanceMode,
-    };
-    const updated = saveSiteSettings(updatedSettings);
-    setSettings(updated);
-    await saveFirestoreGlobalSettings(updatedSettings);
-    setShowQuickBrandModal(false);
-    onShowToast(
-      tempMaintenanceMode
-        ? 'تم حفظ الإعدادات وتفعيل وضع الصيانة المباشر وإعادة التنشيط الفوري (On-Demand Revalidated ⚡)!'
-        : 'تم حفظ الإعدادات وإعادة التنشيط الفوري (On-Demand Revalidated ⚡) بنجاح!'
-    );
+    try {
+      const updatedSettings = {
+        ...settings,
+        logoUrl: tempLogoUrl,
+        faviconUrl: tempFaviconUrl,
+        siteName: tempSiteName,
+        shortName: tempShortName,
+        headerStyle: tempHeaderStyle,
+        maintenanceMode: tempMaintenanceMode,
+      };
+      const updated = await saveSiteSettingsToDb(updatedSettings);
+      handleUpdateSettings(updated);
+      await saveFirestoreGlobalSettings(updatedSettings);
+      setShowQuickBrandModal(false);
+      onShowToast(
+        tempMaintenanceMode
+          ? 'تم حفظ الإعدادات وتفعيل وضع الصيانة المباشر وتحديث الموقع فوراً ⚡!'
+          : 'تم حفظ الإعدادات وتحديث الموقع فوراً ⚡ بنجاح!'
+      );
+    } catch (e: any) {
+      console.error('Error saving brand settings:', e);
+      onShowToast('فشل حفظ الإعدادات في قاعدة البيانات: ' + (e?.message || 'خطأ غير معروف'));
+    }
   };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -650,7 +662,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
               {(['site_settings', 'general', 'settings'].includes(activeTab)) && (
                 <SiteSettingsTab
                   settings={settings}
-                  onUpdateSettings={(s) => setSettings(s)}
+                  onUpdateSettings={handleUpdateSettings}
                   onShowToast={onShowToast}
                   currentLang={currentLang}
                 />
@@ -671,7 +683,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
               {(['google', 'google_suite', 'google_center'].includes(activeTab)) && (
                 <GoogleCenterTab
                   settings={settings}
-                  onUpdateSettings={(s) => setSettings(s)}
+                  onUpdateSettings={handleUpdateSettings}
                   onShowToast={onShowToast}
                   currentLang={currentLang}
                 />
@@ -727,7 +739,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
               {(['theme', 'theme_builder'].includes(activeTab)) && (
                 <ThemeBuilderTab
                   settings={settings}
-                  onUpdateSettings={(s) => setSettings(s)}
+                  onUpdateSettings={handleUpdateSettings}
                   onShowToast={onShowToast}
                   currentLang={currentLang}
                 />
@@ -745,7 +757,7 @@ export function AdminDashboard({ currentLang, onClose, onShowToast, initialTab }
               {!['analytics', 'overview', 'download_logs', 'logs', 'downloads', 'site_settings', 'general', 'settings', 'pages', 'cms', 'pages_cms', 'platforms', 'seo_pages', 'platform_pages', 'seo', 'seo_center', 'seo_manager', 'google', 'google_suite', 'google_center', 'ads', 'monetization', 'ad_manager', 'blog', 'blogs', 'blog_manager', 'faqs', 'faq', 'faq_manager', 'users_security', 'users', 'security', 'email_alerts', 'email', 'smtp', 'api_perf', 'performance', 'api', 'files', 'backups', 'file_manager', 'image_opt', 'image_optimizer', 'theme', 'theme_builder', 'ai_suite', 'ai', 'toolkit_logs', 'audit_logs'].includes(activeTab) && (
                 <SiteSettingsTab
                   settings={settings}
-                  onUpdateSettings={(s) => setSettings(s)}
+                  onUpdateSettings={handleUpdateSettings}
                   onShowToast={onShowToast}
                   currentLang={currentLang}
                 />

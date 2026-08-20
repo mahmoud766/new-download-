@@ -239,7 +239,8 @@ function createPrismaClient(): PrismaClient {
       database: creds.database || undefined,
       socketPath: creds.socketPath,
       connectionLimit: 10,
-      connectTimeout: 5000,
+      connectTimeout: 3000,
+      acquireTimeout: 3000,
     });
 
     return new PrismaClient({

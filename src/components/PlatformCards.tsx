@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { SupportedLanguage, PlatformSlug, PlatformConfig } from '../types';
+import { SupportedLanguage, PlatformSlug, PlatformConfig, SiteSettings } from '../types';
 import { PLATFORMS_CONFIG } from '../config/siteConfig';
 import { t } from '../i18n/translations';
 import { getSiteSettings } from '../lib/storage';
@@ -14,6 +14,7 @@ interface PlatformCardsProps {
 
 export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsProps) {
   const [platformMap, setPlatformMap] = useState<Record<string, PlatformConfig>>(() => getStoredPlatformsConfig());
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => getSiteSettings());
 
   useEffect(() => {
     fetchPlatformsConfigFromDb().then((map) => {
@@ -24,9 +25,17 @@ export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsPr
       if (e.detail) setPlatformMap(e.detail);
     };
 
+    const handleSettingsUpdated = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        setSiteSettings(e.detail);
+      }
+    };
+
     window.addEventListener('omnifetch_platforms_updated', handleUpdated as EventListener);
+    window.addEventListener('omnifetch_settings_updated' as any, handleSettingsUpdated);
     return () => {
       window.removeEventListener('omnifetch_platforms_updated', handleUpdated as EventListener);
+      window.removeEventListener('omnifetch_settings_updated' as any, handleSettingsUpdated);
     };
   }, []);
 
@@ -39,29 +48,32 @@ export function PlatformCards({ currentLang, onSelectPlatform }: PlatformCardsPr
     return true;
   });
 
-  const siteSettings = getSiteSettings();
-  const customIcons = siteSettings.platformIconsCustom || {};
+  const customIcons = siteSettings?.platformIconsCustom || {};
+  const customColors = siteSettings?.platformColorsCustom || {};
 
   const getPlatformIcon = (slug: string) => {
     if (customIcons[slug]) {
       return <img src={customIcons[slug]} alt={slug} className="w-6 h-6 object-contain rounded" />;
     }
 
+    const customColor = customColors[slug];
+    const colorStyle = customColor ? { color: customColor } : undefined;
+
     switch (slug) {
-      case 'tiktok': return <Video className="w-6 h-6 text-pink-400" />;
-      case 'facebook': return <Facebook className="w-6 h-6 text-blue-400" />;
-      case 'facebook-reels': return <Clapperboard className="w-6 h-6 text-indigo-400" />;
-      case 'instagram': return <Instagram className="w-6 h-6 text-rose-400" />;
-      case 'instagram-reels': return <Tv className="w-6 h-6 text-purple-400" />;
-      case 'youtube': return <Youtube className="w-6 h-6 text-red-400" />;
-      case 'youtube-shorts': return <Youtube className="w-6 h-6 text-rose-500" />;
-      case 'snapchat': return <Ghost className="w-6 h-6 text-yellow-400" />;
-      case 'twitter': return <Twitter className="w-6 h-6 text-sky-400" />;
-      case 'pinterest': return <Pin className="w-6 h-6 text-red-400" />;
-      case 'reddit': return <MessageSquare className="w-6 h-6 text-orange-400" />;
-      case 'threads': return <AtSign className="w-6 h-6 text-slate-300" />;
-      case 'linkedin': return <Linkedin className="w-6 h-6 text-blue-400" />;
-      default: return <Globe className="w-6 h-6 text-indigo-400" />;
+      case 'tiktok': return <Video className="w-6 h-6 text-pink-400" style={colorStyle} />;
+      case 'facebook': return <Facebook className="w-6 h-6 text-blue-400" style={colorStyle} />;
+      case 'facebook-reels': return <Clapperboard className="w-6 h-6 text-indigo-400" style={colorStyle} />;
+      case 'instagram': return <Instagram className="w-6 h-6 text-rose-400" style={colorStyle} />;
+      case 'instagram-reels': return <Tv className="w-6 h-6 text-purple-400" style={colorStyle} />;
+      case 'youtube': return <Youtube className="w-6 h-6 text-red-400" style={colorStyle} />;
+      case 'youtube-shorts': return <Youtube className="w-6 h-6 text-rose-500" style={colorStyle} />;
+      case 'snapchat': return <Ghost className="w-6 h-6 text-yellow-400" style={colorStyle} />;
+      case 'twitter': return <Twitter className="w-6 h-6 text-sky-400" style={colorStyle} />;
+      case 'pinterest': return <Pin className="w-6 h-6 text-red-400" style={colorStyle} />;
+      case 'reddit': return <MessageSquare className="w-6 h-6 text-orange-400" style={colorStyle} />;
+      case 'threads': return <AtSign className="w-6 h-6 text-slate-300" style={colorStyle} />;
+      case 'linkedin': return <Linkedin className="w-6 h-6 text-blue-400" style={colorStyle} />;
+      default: return <Globe className="w-6 h-6 text-indigo-400" style={colorStyle} />;
     }
   };
 

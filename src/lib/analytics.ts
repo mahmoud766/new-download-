@@ -39,6 +39,55 @@ export function trackGaEvent(eventName: string, params?: Record<string, any>): v
 }
 
 /**
+ * Get client device and browser information
+ */
+export function getClientEnvironmentInfo() {
+  if (typeof window === 'undefined') {
+    return {
+      deviceType: 'Desktop',
+      browser: 'Unknown',
+      referrer: '',
+      language: 'ar',
+      screenWidth: 1920,
+    };
+  }
+
+  const ua = navigator.userAgent || '';
+  let deviceType = 'Desktop';
+  if (/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+    deviceType = 'Mobile';
+  } else if (/iPad|Tablet/i.test(ua) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /Macintosh/.test(ua))) {
+    deviceType = 'Tablet';
+  }
+
+  let browser = 'Chrome';
+  if (ua.includes('Firefox/')) {
+    browser = 'Firefox';
+  } else if (ua.includes('Edg/')) {
+    browser = 'Edge';
+  } else if (ua.includes('Safari/') && !ua.includes('Chrome/')) {
+    browser = 'Safari';
+  } else if (ua.includes('OPR/') || ua.includes('Opera/')) {
+    browser = 'Opera';
+  }
+
+  let referrer = '';
+  try {
+    referrer = document.referrer ? new URL(document.referrer).hostname : 'Direct';
+  } catch {
+    referrer = document.referrer || 'Direct';
+  }
+
+  return {
+    deviceType,
+    browser,
+    referrer: referrer || 'Direct',
+    language: navigator.language || 'ar',
+    screenWidth: window.innerWidth || screen.width || 1200,
+  };
+}
+
+/**
  * Track SPA route changes for public website views.
  * Sends event to GA4 gtag if available AND posts live pageview telemetry to local server.
  */
@@ -49,6 +98,7 @@ export function trackPageView(pagePath: string, pageTitle?: string): void {
     }
     const resolvedTitle = pageTitle || (typeof document !== 'undefined' ? document.title : 'OmniFetch Pro');
     const vid = getOrCreateVisitorId();
+    const envInfo = getClientEnvironmentInfo();
 
     // 1. Google Analytics Client Tag
     if (typeof window !== 'undefined' && typeof window.gtag === 'function') {
@@ -58,7 +108,7 @@ export function trackPageView(pagePath: string, pageTitle?: string): void {
       });
     }
 
-    // 2. Real-time Local Server Telemetry
+    // 2. Real-time Local Server Telemetry with real user details
     if (typeof window !== 'undefined') {
       fetch('/api/telemetry/pageview', {
         method: 'POST',
@@ -67,6 +117,11 @@ export function trackPageView(pagePath: string, pageTitle?: string): void {
           visitorId: vid,
           pagePath,
           pageTitle: resolvedTitle,
+          referrer: envInfo.referrer,
+          deviceType: envInfo.deviceType,
+          browser: envInfo.browser,
+          screenWidth: envInfo.screenWidth,
+          language: envInfo.language,
         }),
       }).catch(() => {});
     }
@@ -78,7 +133,7 @@ export function trackPageView(pagePath: string, pageTitle?: string): void {
 let heartbeatInitialized = false;
 
 /**
- * Initialize 30-second live visitor heartbeat ping to maintain real active session metrics
+ * Initialize 20-second live visitor heartbeat ping to maintain real active session metrics
  */
 export function initAnalyticsHeartbeat(): void {
   if (typeof window === 'undefined' || heartbeatInitialized) return;
@@ -89,19 +144,22 @@ export function initAnalyticsHeartbeat(): void {
       const pagePath = window.location.pathname;
       if (pagePath.toLowerCase().includes('/admin')) return;
       const vid = getOrCreateVisitorId();
+      const envInfo = getClientEnvironmentInfo();
       fetch('/api/telemetry/heartbeat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           visitorId: vid,
           pagePath,
+          deviceType: envInfo.deviceType,
+          browser: envInfo.browser,
         }),
       }).catch(() => {});
     } catch {}
   };
 
   sendHeartbeat();
-  setInterval(sendHeartbeat, 30000);
+  setInterval(sendHeartbeat, 20000);
 }
 
 /**

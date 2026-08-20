@@ -1,9 +1,25 @@
-import { SupportedLanguage, PlatformSlug } from '../types';
+import React, { useState, useEffect } from 'react';
+import { SupportedLanguage, PlatformSlug, SiteSettings } from '../types';
 import { LANGUAGES, t } from '../i18n/translations';
-import { PLATFORMS_CONFIG } from '../config/siteConfig';
+import { PLATFORMS_CONFIG, DEFAULT_SITE_SETTINGS } from '../config/siteConfig';
+import { getSiteSettings, fetchSiteSettingsFromDb } from '../lib/storage';
 import { AdBanner } from './AdBanner';
 import { triggerPwaInstall } from './PwaPrompt';
-import { Download, Globe, Heart, ShieldCheck, Sparkles, Smartphone } from 'lucide-react';
+import {
+  Download,
+  Globe,
+  Heart,
+  ShieldCheck,
+  Sparkles,
+  Smartphone,
+  Twitter,
+  Facebook,
+  Instagram,
+  Youtube,
+  Send,
+  Github,
+  Linkedin,
+} from 'lucide-react';
 
 interface FooterProps {
   currentLang: SupportedLanguage;
@@ -12,6 +28,7 @@ interface FooterProps {
   onOpenLegal: (type: 'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact') => void;
   onOpenBlog: () => void;
   onOpenAdmin: () => void;
+  siteSettings?: SiteSettings;
 }
 
 export function Footer({
@@ -21,8 +38,34 @@ export function Footer({
   onOpenLegal,
   onOpenBlog,
   onOpenAdmin,
+  siteSettings: initialSettings,
 }: FooterProps) {
+  const [settings, setSettings] = useState<SiteSettings>(initialSettings || getSiteSettings() || DEFAULT_SITE_SETTINGS);
   const platforms = Object.values(PLATFORMS_CONFIG).filter((p) => p.slug !== 'all');
+
+  useEffect(() => {
+    if (initialSettings) {
+      setSettings(initialSettings);
+    }
+  }, [initialSettings]);
+
+  useEffect(() => {
+    fetchSiteSettingsFromDb().then((s) => {
+      if (s) setSettings(s);
+    });
+
+    const handleUpdate = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        setSettings(e.detail);
+      }
+    };
+    window.addEventListener('omnifetch_settings_updated' as any, handleUpdate);
+    return () => {
+      window.removeEventListener('omnifetch_settings_updated' as any, handleUpdate);
+    };
+  }, []);
+
+  const socials = settings?.socialLinks || {};
 
   return (
     <footer className="w-full bg-slate-950 border-t border-slate-800/80 pt-12 pb-8 text-slate-300 text-xs text-left">
@@ -30,20 +73,119 @@ export function Footer({
         {/* Footer Top Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Col 1: Brand Info */}
-          <div className="lg:col-span-2 space-y-3">
+          <div className="lg:col-span-2 space-y-4">
             <div
-              className="flex items-center gap-2 cursor-pointer w-fit"
+              className="flex items-center gap-3 cursor-pointer w-fit"
               onClick={() => onSelectPlatform('all')}
             >
-              <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-pink-500 text-white font-bold">
-                <Download className="w-4 h-4" />
+              {settings.logoUrl ? (
+                <img
+                  src={settings.logoUrl}
+                  alt={settings.siteName || 'OmniFetch Pro'}
+                  style={{ height: `${Math.min(settings.logoHeightPx || 36, 44)}px` }}
+                  className="object-contain max-h-11"
+                />
+              ) : (
+                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-pink-500 text-white font-bold shadow-lg shadow-indigo-500/20">
+                  <Download className="w-4 h-4" />
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xl font-black text-white tracking-tight">
+                  {settings.siteName || 'OmniFetch Pro'}
+                </span>
+                {settings.shortName && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {settings.shortName}
+                  </span>
+                )}
               </div>
-              <span className="text-xl font-black text-white tracking-tight">OmniFetch Pro</span>
             </div>
 
             <p className="text-slate-300 text-xs leading-relaxed max-w-sm">
-              {t('siteSubtitle', currentLang)}
+              {settings.siteDescription || settings.tagline || t('siteSubtitle', currentLang)}
             </p>
+
+            {/* Social Media Links */}
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
+              {socials.twitter && (
+                <a
+                  href={socials.twitter}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Twitter / X"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-sky-500/50 hover:bg-sky-500/10 transition"
+                >
+                  <Twitter className="w-4 h-4" />
+                </a>
+              )}
+              {socials.facebook && (
+                <a
+                  href={socials.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Facebook"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-blue-500/50 hover:bg-blue-500/10 transition"
+                >
+                  <Facebook className="w-4 h-4" />
+                </a>
+              )}
+              {socials.instagram && (
+                <a
+                  href={socials.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Instagram"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-pink-500/50 hover:bg-pink-500/10 transition"
+                >
+                  <Instagram className="w-4 h-4" />
+                </a>
+              )}
+              {socials.youtube && (
+                <a
+                  href={socials.youtube}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="YouTube"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-red-500/50 hover:bg-red-500/10 transition"
+                >
+                  <Youtube className="w-4 h-4" />
+                </a>
+              )}
+              {socials.telegram && (
+                <a
+                  href={socials.telegram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Telegram"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-sky-400/50 hover:bg-sky-400/10 transition"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </a>
+              )}
+              {socials.github && (
+                <a
+                  href={socials.github}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="GitHub"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-purple-500/50 hover:bg-purple-500/10 transition"
+                >
+                  <Github className="w-4 h-4" />
+                </a>
+              )}
+              {socials.linkedin && (
+                <a
+                  href={socials.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="LinkedIn"
+                  className="w-8 h-8 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400 hover:text-white hover:border-blue-600/50 hover:bg-blue-600/10 transition"
+                >
+                  <Linkedin className="w-4 h-4" />
+                </a>
+              )}
+            </div>
 
             {/* Language Switcher */}
             <div className="pt-2 flex flex-wrap gap-1.5">
@@ -223,7 +365,9 @@ export function Footer({
 
         {/* Bottom Copyright */}
         <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-300">
-          <div>{t('footerRights', currentLang)}</div>
+          <div>
+            {settings.copyrightText || settings.footerText || t('footerRights', currentLang)}
+          </div>
 
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1 text-slate-300">

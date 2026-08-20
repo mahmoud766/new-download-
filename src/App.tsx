@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { WifiOff, ShieldAlert } from 'lucide-react';
 import { SupportedLanguage, PlatformSlug, MediaResult, SiteSettings } from './types';
 import { isRTL, detectUserLanguage } from './i18n/translations';
-import { getDownloadHistory, fetchSiteSettingsFromDb, fetchAdsConfigFromDb, initRealtimeSyncLoop } from './lib/storage';
+import { getDownloadHistory, getSiteSettings, fetchSiteSettingsFromDb, fetchAdsConfigFromDb, initRealtimeSyncLoop } from './lib/storage';
 import { DEFAULT_SITE_SETTINGS, PLATFORMS_CONFIG } from './config/siteConfig';
 import { trackPageView, initAnalyticsHeartbeat } from './lib/analytics';
 
@@ -179,7 +179,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [historyCount, setHistoryCount] = useState(0);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => getSiteSettings());
 
   // Global Keyboard Shortcuts (Ctrl+Shift+A, Ctrl+Shift+D, Cmd+Shift+D, Ctrl+K)
   useEffect(() => {
@@ -248,10 +248,12 @@ export default function App() {
     fetchAdsConfigFromDb().catch(() => {});
 
     const handleSettingsUpdated = (e: any) => {
-      if (e?.detail) {
-        setSiteSettings(e.detail);
+      if (e?.detail && typeof e.detail === 'object') {
+        setSiteSettings({ ...e.detail });
       } else {
-        fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
+        fetchSiteSettingsFromDb().then((s) => {
+          if (s) setSiteSettings({ ...s });
+        });
       }
     };
 
@@ -297,7 +299,7 @@ export default function App() {
     }
   }, [theme]);
 
-  // Inject Theme Builder settings (Favicon, Custom CSS, Font Family)
+  // Inject Theme Builder settings (Favicon, Custom CSS, Font Family, Custom JS, Colors, Radius)
   useEffect(() => {
     // 1. Update Favicon if custom URL provided
     if (siteSettings.faviconUrl) {
@@ -310,7 +312,21 @@ export default function App() {
       link.href = siteSettings.faviconUrl;
     }
 
-    // 2. Inject Dynamic CSS (Custom CSS + Font Family)
+    // 2. Load Google Font dynamically if specified
+    if (siteSettings.fontFamily) {
+      const cleanFontName = siteSettings.fontFamily.trim();
+      const fontQuery = cleanFontName.replace(/\s+/g, '+');
+      let fontLink = document.getElementById('omnifetch-google-font') as HTMLLinkElement;
+      if (!fontLink) {
+        fontLink = document.createElement('link');
+        fontLink.id = 'omnifetch-google-font';
+        fontLink.rel = 'stylesheet';
+        document.head.appendChild(fontLink);
+      }
+      fontLink.href = `https://fonts.googleapis.com/css2?family=${fontQuery}:wght@300;400;500;600;700;800;900&display=swap`;
+    }
+
+    // 3. Inject Dynamic CSS (Custom CSS + Font Family + Theme Variables + Card & Button Styles)
     let styleTag = document.getElementById('omnifetch-custom-theme-styles');
     if (!styleTag) {
       styleTag = document.createElement('style');
@@ -320,18 +336,40 @@ export default function App() {
 
     const primaryColor = siteSettings.primaryColor || '#9333ea';
     const secondaryColor = siteSettings.secondaryColor || '#3b82f6';
+    
+    // Button radius mapping
+    let btnRadiusCss = '0.75rem';
+    if (siteSettings.buttonRadius === 'rounded-none') btnRadiusCss = '0px';
+    else if (siteSettings.buttonRadius === 'rounded-lg') btnRadiusCss = '0.5rem';
+    else if (siteSettings.buttonRadius === 'rounded-xl') btnRadiusCss = '0.75rem';
+    else if (siteSettings.buttonRadius === 'rounded-2xl') btnRadiusCss = '1rem';
+    else if (siteSettings.buttonRadius === 'rounded-full') btnRadiusCss = '9999px';
+
     const colorCSS = `
       :root {
         --color-primary: ${primaryColor};
         --color-secondary: ${secondaryColor};
         --primary-color: ${primaryColor};
         --secondary-color: ${secondaryColor};
+        --theme-btn-radius: ${btnRadiusCss};
       }
     `;
-    const fontFamilyCSS = siteSettings.fontFamily ? `body, button, input, select, textarea { font-family: '${siteSettings.fontFamily}', sans-serif !important; }` : '';
+    const fontFamilyCSS = siteSettings.fontFamily ? `body, button, input, select, textarea { font-family: '${siteSettings.fontFamily}', -apple-system, BlinkMacSystemFont, sans-serif !important; }` : '';
     const customCssCode = siteSettings.customCss || '';
 
     styleTag.textContent = `${colorCSS}\n${fontFamilyCSS}\n${customCssCode}`;
+
+    // 4. Inject Custom JS safely if provided
+    if (siteSettings.customJs && siteSettings.customJs.trim()) {
+      let scriptTag = document.getElementById('omnifetch-custom-theme-js') as HTMLScriptElement;
+      if (!scriptTag) {
+        scriptTag = document.createElement('script');
+        scriptTag.id = 'omnifetch-custom-theme-js';
+        scriptTag.type = 'text/javascript';
+        document.body.appendChild(scriptTag);
+      }
+      scriptTag.textContent = siteSettings.customJs;
+    }
   }, [activeView, siteSettings]);
 
   useEffect(() => {
@@ -420,7 +458,7 @@ export default function App() {
       theme === 'light' ? 'bg-slate-900 text-slate-100' : 'bg-slate-950 text-slate-100'
     }`}>
       {/* Dynamic SEO Meta & Schema Injector */}
-      <SeoHead platform={currentPlatform} language={currentLang} {...getSeoProps()} />
+      <SeoHead platform={currentPlatform} language={currentLang} siteSettings={siteSettings} {...getSeoProps()} />
 
       <div>
         {/* Navigation Bar */}
@@ -437,6 +475,7 @@ export default function App() {
           onOpenAiStudio={() => setAiStudioOpen(true)}
           onOpenLegal={handleOpenLegal}
           historyCount={historyCount}
+          siteSettings={siteSettings}
         />
 
         {/* Site-Wide Maintenance Mode Banner */}
@@ -634,6 +673,7 @@ export default function App() {
         onOpenLegal={handleOpenLegal}
         onOpenBlog={() => setActiveView('blog')}
         onOpenAdmin={handleOpenAdmin}
+        siteSettings={siteSettings}
       />
 
       {/* MODALS & OVERLAYS (SUSPENSE LAZY) */}
@@ -693,6 +733,9 @@ export default function App() {
             initialTab={adminInitialTab}
             onClose={() => {
               setActiveView('home');
+              fetchSiteSettingsFromDb().then((s) => {
+                if (s) setSiteSettings(s);
+              });
               window.history.pushState({}, '', '/');
             }}
             onShowToast={(msg) => setToastMessage(msg)}

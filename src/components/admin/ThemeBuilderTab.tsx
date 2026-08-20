@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Save,
@@ -34,7 +34,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { SiteSettings, SupportedLanguage } from '../../types';
-import { saveSiteSettings } from '../../lib/storage';
+import { saveSiteSettingsToDb, saveSiteSettings, fetchSiteSettingsFromDb } from '../../lib/storage';
 import { PLATFORMS_CONFIG } from '../../config/siteConfig';
 
 interface Props {
@@ -127,29 +127,70 @@ export const ThemeBuilderTab: React.FC<Props> = ({
   // Custom Code State
   const [customCss, setCustomCss] = useState(settings.customCss || '');
   const [customJs, setCustomJs] = useState(settings.customJs || '');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveTheme = () => {
-    const updated = saveSiteSettings({
-      ...settings,
-      siteName,
-      shortName,
-      logoUrl,
-      faviconUrl,
-      logoHeightPx,
-      headerStyle,
-      headerBlur,
-      primaryColor,
-      secondaryColor,
-      fontFamily,
-      buttonRadius,
-      cardStyle,
-      platformIconsCustom,
-      platformColorsCustom,
-      customCss,
-      customJs,
+  // Sync state if settings prop changes or reloaded from database
+  useEffect(() => {
+    if (settings) {
+      if (settings.siteName !== undefined) setSiteName(settings.siteName);
+      if (settings.shortName !== undefined) setShortName(settings.shortName);
+      if (settings.logoUrl !== undefined) setLogoUrl(settings.logoUrl);
+      if (settings.faviconUrl !== undefined) setFaviconUrl(settings.faviconUrl);
+      if (settings.logoHeightPx !== undefined) setLogoHeightPx(settings.logoHeightPx);
+      if (settings.headerStyle !== undefined) setHeaderStyle(settings.headerStyle as any);
+      if (settings.headerBlur !== undefined) setHeaderBlur(settings.headerBlur as any);
+      if (settings.primaryColor !== undefined) setPrimaryColor(settings.primaryColor);
+      if (settings.secondaryColor !== undefined) setSecondaryColor(settings.secondaryColor);
+      if (settings.fontFamily !== undefined) setFontFamily(settings.fontFamily);
+      if (settings.buttonRadius !== undefined) setButtonRadius(settings.buttonRadius as any);
+      if (settings.cardStyle !== undefined) setCardStyle(settings.cardStyle as any);
+      if (settings.platformIconsCustom !== undefined) setPlatformIconsCustom(settings.platformIconsCustom);
+      if (settings.platformColorsCustom !== undefined) setPlatformColorsCustom(settings.platformColorsCustom);
+      if (settings.customCss !== undefined) setCustomCss(settings.customCss);
+      if (settings.customJs !== undefined) setCustomJs(settings.customJs);
+    }
+  }, [settings]);
+
+  // Load freshest settings on mount
+  useEffect(() => {
+    fetchSiteSettingsFromDb().then((fresh) => {
+      if (fresh) {
+        onUpdateSettings(fresh);
+      }
     });
-    onUpdateSettings(updated);
-    onShowToast('تم حفظ وإطلاق إعدادات الثيم والهوية البصرية بنجاح على جميع صفحات الموقع!');
+  }, []);
+
+  const handleSaveTheme = async () => {
+    setIsSaving(true);
+    try {
+      const payload: Partial<SiteSettings> = {
+        ...settings,
+        siteName,
+        shortName,
+        logoUrl,
+        faviconUrl,
+        logoHeightPx,
+        headerStyle,
+        headerBlur,
+        primaryColor,
+        secondaryColor,
+        fontFamily,
+        buttonRadius,
+        cardStyle,
+        platformIconsCustom,
+        platformColorsCustom,
+        customCss,
+        customJs,
+      };
+      const updated = await saveSiteSettingsToDb(payload);
+      onUpdateSettings(updated);
+      onShowToast('تم حفظ وإطلاق إعدادات الثيم والهوية البصرية بنجاح على جميع صفحات الموقع! ⚡');
+    } catch (e: any) {
+      console.error('Error saving theme settings:', e);
+      onShowToast('فشل حفظ إعدادات الثيم في قاعدة البيانات: ' + (e?.message || 'خطأ غير معروف'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleApplyPreset = (preset: typeof PRESET_THEMES[0]) => {
@@ -228,10 +269,15 @@ export const ThemeBuilderTab: React.FC<Props> = ({
         <div className="flex items-center gap-3">
           <button
             onClick={handleSaveTheme}
-            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs shadow-xl shadow-purple-600/30 transition-all hover:scale-105 active:scale-95"
+            disabled={isSaving}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs shadow-xl shadow-purple-600/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
           >
-            <Save className="w-4 h-4" />
-            <span>حفظ وتطبيق الثيم على الموقع</span>
+            {isSaving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4" />
+            )}
+            <span>{isSaving ? 'جارٍ الحفظ في قاعدة البيانات...' : 'حفظ وتطبيق الثيم على الموقع'}</span>
           </button>
         </div>
       </div>

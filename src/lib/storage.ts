@@ -14,8 +14,25 @@ import {
 
 const HISTORY_KEY = 'omnifetch_download_history_v1';
 
+const SETTINGS_STORAGE_KEY = 'omnifetch_site_settings_v2';
+
+function loadInitialSettings(): SiteSettings {
+  try {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && typeof parsed === 'object') {
+          return { ...DEFAULT_SITE_SETTINGS, ...parsed };
+        }
+      }
+    }
+  } catch {}
+  return DEFAULT_SITE_SETTINGS;
+}
+
 // Internal memory caches
-let cachedSettings: SiteSettings = DEFAULT_SITE_SETTINGS;
+let cachedSettings: SiteSettings = loadInitialSettings();
 let cachedAdsConfig: AdPlacementConfig[] = DEFAULT_ADS_CONFIG;
 let cachedFaqs: FAQItem[] = DEFAULT_FAQS;
 let cachedBlogs: BlogPost[] = INITIAL_BLOG_POSTS;
@@ -69,6 +86,16 @@ export function clearDownloadHistory(): void {
 }
 
 // --- Site Settings ---
+export function broadcastSettingsUpdated(settings: SiteSettings): void {
+  cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...cachedSettings, ...settings };
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cachedSettings));
+    } catch {}
+    window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: cachedSettings }));
+  }
+}
+
 export function getSiteSettings(): SiteSettings {
   return cachedSettings;
 }
@@ -79,44 +106,54 @@ export async function fetchSiteSettingsFromDb(): Promise<SiteSettings> {
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.settings) {
-        cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...data.settings };
+        cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...cachedSettings, ...data.settings };
         if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(cachedSettings));
+          } catch {}
           window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: cachedSettings }));
         }
         return cachedSettings;
       }
     }
   } catch (e) {
-    console.error('Error fetching site settings from DB:', e);
+    // Graceful fallback to default in-memory settings without throwing error
   }
   return cachedSettings;
 }
 
 export async function saveSiteSettingsToDb(settings: Partial<SiteSettings>): Promise<SiteSettings> {
+  const payload = { ...settings };
+  if (payload.customCss && typeof payload.customCss === 'string' && !payload.customCss.startsWith('base64:')) {
+    payload.customCss = 'base64:' + encodeUtf8ToBase64(payload.customCss);
+  }
+  if (payload.customJs && typeof payload.customJs === 'string' && !payload.customJs.startsWith('base64:')) {
+    payload.customJs = 'base64:' + encodeUtf8ToBase64(payload.customJs);
+  }
+
   const res = await fetch('/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(settings),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     throw new Error(`Server returned status ${res.status}`);
   }
   const data = await res.json();
   if (!data.success || !data.settings) {
-    throw new Error(data.error || 'Failed to save settings to database');
+    throw new Error(data.error || data.message || 'Failed to save settings to database');
   }
-  cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...data.settings };
+  cachedSettings = { ...DEFAULT_SITE_SETTINGS, ...cachedSettings, ...data.settings };
   if (data.syncVersion) currentSyncVersion = data.syncVersion;
 
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('omnifetch_settings_updated', { detail: cachedSettings }));
-  }
+  broadcastSettingsUpdated(cachedSettings);
   return cachedSettings;
 }
 
 export function saveSiteSettings(settings: Partial<SiteSettings>): SiteSettings {
   cachedSettings = { ...cachedSettings, ...settings };
-  saveSiteSettingsToDb(settings).catch((e) => console.error('Background save error:', e));
+  broadcastSettingsUpdated(cachedSettings);
+  saveSiteSettingsToDb(settings).catch((e) => console.warn('Background save notice:', e));
   return cachedSettings;
 }
 
@@ -191,7 +228,7 @@ export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
       }
     }
   } catch (e) {
-    console.error('Error fetching ads from DB:', e);
+    // Graceful fallback to default in-memory ads without throwing error
   }
   return cachedAdsConfig;
 }
@@ -321,7 +358,7 @@ export async function fetchFaqsConfigFromDb(): Promise<FAQItem[]> {
       }
     }
   } catch (e) {
-    console.error('Error fetching FAQs from DB:', e);
+    // Graceful fallback to cached/default FAQs
   }
   return cachedFaqs;
 }
@@ -372,7 +409,7 @@ export async function fetchBlogsConfigFromDb(): Promise<BlogPost[]> {
       }
     }
   } catch (e) {
-    console.error('Error fetching Blogs from DB:', e);
+    // Graceful fallback to cached/default blogs
   }
   return cachedBlogs;
 }

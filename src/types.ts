@@ -150,6 +150,8 @@ export interface SiteSettings {
   logoUrl?: string;
   faviconUrl?: string;
   siteDescription?: string;
+  copyrightText?: string;
+  footerText?: string;
   contactEmail: string;
   contactPhone?: string;
   contactAddress?: string;
@@ -159,6 +161,9 @@ export interface SiteSettings {
     instagram?: string;
     youtube?: string;
     telegram?: string;
+    github?: string;
+    linkedin?: string;
+    [key: string]: string | undefined;
   };
   customCss?: string;
   customJs?: string;
