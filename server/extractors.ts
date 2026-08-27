@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import ytdl from '@distube/ytdl-core';
 import { recordTelemetry } from './telemetry';
-import { prisma } from '../src/lib/prisma';
+import { prisma, withDbTimeout } from '../src/lib/prisma';
 
 export interface ExtractedMediaResult {
   status: 'SUCCESS' | 'FAILED';
@@ -83,18 +83,20 @@ const INITIAL_SEED_PROVIDERS = [
  */
 export async function getProviderSettingsFromDb(): Promise<any[]> {
   try {
-    const dbProviders = await prisma.providerSetting.findMany({
-      orderBy: { priority: 'asc' },
-    });
+    const dbProviders = await withDbTimeout(
+      prisma.providerSetting.findMany({
+        orderBy: { priority: 'asc' },
+      }),
+      INITIAL_SEED_PROVIDERS,
+      1500
+    );
 
     if (dbProviders && dbProviders.length > 0) {
       return dbProviders;
     }
 
-    // Table is empty in database -> operational fallback without mutating database
     return INITIAL_SEED_PROVIDERS;
   } catch (err: any) {
-    console.warn('[Provider DB Warning] Database query failed for ProviderSetting lookup, utilizing operational provider config for extraction resilience:', err?.message || err);
     return INITIAL_SEED_PROVIDERS;
   }
 }

@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import geminiRoutes from './server/geminiRoutes';
 import { extractMedia, getProviderSettingsFromDb, fetchWithTimeout } from './server/extractors';
-import { prisma, getSafeDatabaseDiagnostics, testDatabaseConnection } from './src/lib/prisma';
+import { prisma, getSafeDatabaseDiagnostics, testDatabaseConnection, withDbTimeout } from './src/lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 import { DEFAULT_FAQS, INITIAL_BLOG_POSTS, PLATFORMS_CONFIG } from './src/config/siteConfig';
 import { DEFAULT_PAGES, DEFAULT_SECURITY, DEFAULT_REDIRECTS, DEFAULT_USERS } from './src/lib/adminStorage';
@@ -224,10 +224,14 @@ async function startServer() {
     res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600');
     res.setHeader('Access-Control-Allow-Origin', '*');
     try {
-      const record = await prisma.globalSettings.findUnique({
-        where: { id: 'default' },
-        select: { adsenseClientId: true },
-      });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({
+          where: { id: 'default' },
+          select: { adsenseClientId: true },
+        }),
+        null,
+        1500
+      );
       if (record?.adsenseClientId) {
         const rawPub = record.adsenseClientId.replace('ca-pub-', '').replace('pub-', '').trim();
         if (rawPub && rawPub !== '1234567890000000') {
@@ -336,9 +340,13 @@ async function startServer() {
 
   app.get('/api/settings', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({
-        where: { id: 'default' },
-      });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({
+          where: { id: 'default' },
+        }),
+        null,
+        1500
+      );
 
       if (!record) {
         return res.json({ success: true, settings: DEFAULT_SETTINGS, syncVersion: globalSyncVersion, isFallback: true });
@@ -528,7 +536,11 @@ async function startServer() {
   // 2. Ad Placement Configurations API (Prisma PostgreSQL + Verified Persistence)
   app.get('/api/ads', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       let dbAds: any[] = [];
       if (record && record.adsConfigJson) {
         try { dbAds = JSON.parse(record.adsConfigJson); } catch {}
@@ -1264,7 +1276,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 3. Download Platform Configurations API (Prisma MySQL Engine)
   app.get('/api/platforms', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.platformsConfigJson) {
         return res.json({ success: true, platforms: PLATFORMS_CONFIG, syncVersion: globalSyncVersion });
       }
@@ -1301,7 +1317,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 4. Global SEO Configuration API (Prisma MySQL Engine)
   app.get('/api/seo', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.seoConfigJson) {
         return res.json({ success: true, seo: null, syncVersion: globalSyncVersion });
       }
@@ -1372,7 +1392,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 6. CMS Pages API (Prisma MySQL Engine)
   app.get('/api/cms/pages', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.pagesConfigJson) {
         return res.json({ success: true, pages: DEFAULT_PAGES, syncVersion: globalSyncVersion });
       }
@@ -1409,7 +1433,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 6b. FAQs API (Prisma MySQL Engine)
   app.get('/api/faqs', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.faqsConfigJson) {
         return res.json({ success: true, faqs: DEFAULT_FAQS, syncVersion: globalSyncVersion });
       }
@@ -1452,7 +1480,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 6c. Blogs API (Prisma MySQL Engine)
   app.get('/api/blogs', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.blogsConfigJson) {
         return res.json({ success: true, blogs: INITIAL_BLOG_POSTS, syncVersion: globalSyncVersion });
       }
@@ -1496,7 +1528,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 7. SMTP & Email Alerts API (Prisma PostgreSQL Only)
   app.get('/api/smtp', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.smtpConfigJson) {
         return res.json({ success: true, smtp: null, syncVersion: globalSyncVersion });
       }
@@ -1626,7 +1662,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   app.get('/api/email-alerts', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.emailAlertsConfigJson) {
         return res.json({ success: true, alerts: null, syncVersion: globalSyncVersion });
       }
@@ -1806,7 +1846,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 8. Redirects, Users, & Security Configuration API (Prisma PostgreSQL Only)
   app.get('/api/redirects', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.redirectsConfigJson) {
         return res.json({ success: true, redirects: DEFAULT_REDIRECTS });
       }
@@ -1842,7 +1886,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   async function getOrBootstrapAdminUsers(): Promise<any[]> {
     let record = null;
     try {
-      record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
     } catch {
       // Database not yet configured or offline, return memory defaults
     }
@@ -1990,7 +2038,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   app.get('/api/security', async (req: Request, res: Response) => {
     try {
-      const record = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const record = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1500
+      );
       if (!record || !record.securityConfigJson) {
         return res.json({ success: true, security: DEFAULT_SECURITY });
       }
@@ -2025,10 +2077,14 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 9. Trending Videos (Most Downloaded) API
   app.get('/api/trending', async (req: Request, res: Response) => {
     try {
-      const items = await prisma.downloadLog.findMany({
-        orderBy: { downloadCount: 'desc' },
-        take: 12,
-      });
+      const items = await withDbTimeout(
+        prisma.downloadLog.findMany({
+          orderBy: { downloadCount: 'desc' },
+          take: 12,
+        }),
+        [],
+        1500
+      );
       return res.json({ success: true, items: items || [] });
     } catch {
       return res.json({ success: true, items: [] });
@@ -2084,10 +2140,14 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 10. Download Logs Endpoint for Admin Dashboard
   app.get('/api/download-logs', async (req: Request, res: Response) => {
     try {
-      const logs = await prisma.downloadLog.findMany({
-        orderBy: { updatedAt: 'desc' },
-        take: 100,
-      });
+      const logs = await withDbTimeout(
+        prisma.downloadLog.findMany({
+          orderBy: { updatedAt: 'desc' },
+          take: 100,
+        }),
+        [],
+        1500
+      );
       return res.json({ success: true, logs: logs || [] });
     } catch {
       return res.json({ success: true, logs: [] });
@@ -2110,11 +2170,15 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
   // 12. Real Telemetry & Observability API Endpoints (Supabase PostgreSQL ApiTelemetry)
   app.get('/api/admin/telemetry', async (req: Request, res: Response) => {
     try {
-      // Query recent telemetry from Supabase PostgreSQL
-      const dbLogs = await prisma.apiTelemetry.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 250,
-      });
+      // Query recent telemetry from database with timeout
+      const dbLogs = await withDbTimeout(
+        prisma.apiTelemetry.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 250,
+        }),
+        [],
+        1500
+      );
 
       const inMemoryLogs = getInMemoryEvents();
 

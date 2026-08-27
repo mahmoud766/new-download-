@@ -272,6 +272,34 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 /**
+ * Execute a database query with a strict timeout boundary.
+ * If the database connection is slow, locked, or unreachable, it resolves immediately
+ * with the fallback value to prevent request timeouts (408) and upstream proxy drops.
+ */
+export async function withDbTimeout<T>(
+  queryPromise: Promise<T>,
+  fallbackValue: T,
+  timeoutMs = 2500
+): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      resolve(fallbackValue);
+    }, timeoutMs);
+    if (timer && typeof timer.unref === 'function') timer.unref();
+  });
+
+  try {
+    const result = await Promise.race([queryPromise, timeoutPromise]);
+    if (timer) clearTimeout(timer);
+    return result;
+  } catch (err) {
+    if (timer) clearTimeout(timer);
+    return fallbackValue;
+  }
+}
+
+/**
  * Real-time connection tester that runs both Prisma (with MariaDB Adapter) and Direct MariaDB driver
  */
 export async function testDatabaseConnection(timeoutMs = 5000): Promise<ConnectionTestResult> {
