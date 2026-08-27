@@ -187,24 +187,20 @@ export async function fetchGlobalSeoFromDb(): Promise<GlobalSeoConfig> {
       }
     }
   } catch (e) {
-    // Graceful fallback to default/cached in-memory SEO
+    console.error('Error fetching SEO from DB:', e);
   }
   return cachedSeo;
 }
 
 export async function saveGlobalSeoConfigToDb(config: GlobalSeoConfig): Promise<GlobalSeoConfig> {
-  try {
-    const res = await fetch('/api/seo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ seo: config }),
-    });
-    if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-    const data = await res.json();
-    if (!data.success) throw new Error('Failed to save SEO config');
-  } catch (e) {
-    console.warn('[adminStorage] saveGlobalSeoConfigToDb notice:', e);
-  }
+  const res = await fetch('/api/seo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seo: config }),
+  });
+  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error('Failed to save SEO config');
 
   cachedSeo = config;
   applySeoToDocument(config);
@@ -217,7 +213,7 @@ export async function saveGlobalSeoConfigToDb(config: GlobalSeoConfig): Promise<
 export function saveGlobalSeoConfig(config: GlobalSeoConfig): void {
   cachedSeo = config;
   applySeoToDocument(config);
-  saveGlobalSeoConfigToDb(config).catch(() => {});
+  saveGlobalSeoConfigToDb(config).catch((e) => console.error('Background save SEO error:', e));
 }
 
 // --- Platforms Config ---
@@ -239,24 +235,20 @@ export async function fetchPlatformsConfigFromDb(): Promise<Record<string, Platf
       }
     }
   } catch (e) {
-    // Graceful fallback to default/cached in-memory platforms
+    console.error('Error fetching platforms from DB:', e);
   }
   return cachedPlatforms;
 }
 
 export async function saveStoredPlatformsConfigToDb(platforms: Record<string, PlatformConfig>): Promise<Record<string, PlatformConfig>> {
-  try {
-    const res = await fetch('/api/platforms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platforms }),
-    });
-    if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-    const data = await res.json();
-    if (!data.success) throw new Error('Failed to save platforms config');
-  } catch (e) {
-    console.warn('[adminStorage] saveStoredPlatformsConfigToDb notice:', e);
-  }
+  const res = await fetch('/api/platforms', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platforms }),
+  });
+  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error('Failed to save platforms config');
 
   cachedPlatforms = platforms;
   if (typeof window !== 'undefined') {
@@ -267,7 +259,7 @@ export async function saveStoredPlatformsConfigToDb(platforms: Record<string, Pl
 
 export function saveStoredPlatformsConfig(platforms: Record<string, PlatformConfig>): void {
   cachedPlatforms = platforms;
-  saveStoredPlatformsConfigToDb(platforms).catch(() => {});
+  saveStoredPlatformsConfigToDb(platforms).catch((e) => console.error('Background save platforms error:', e));
 }
 
 // Internal Caches
@@ -295,27 +287,16 @@ export async function fetchRedirectRulesFromDb(): Promise<RedirectRule[]> {
   } catch (e) {}
   return cachedRedirects;
 }
-export async function saveRedirectRulesToDb(rules: RedirectRule[]): Promise<RedirectRule[]> {
-  const res = await fetch('/api/redirects', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ redirects: rules }),
-  });
-  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message || 'Failed to save redirects');
-  cachedRedirects = rules;
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('omnifetch_redirects_updated', { detail: cachedRedirects }));
-  }
-  return cachedRedirects;
-}
 export function saveRedirectRules(rules: RedirectRule[]): void {
   cachedRedirects = rules;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_redirects_updated', { detail: cachedRedirects }));
   }
-  saveRedirectRulesToDb(rules).catch(() => {});
+  fetch('/api/redirects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ redirects: rules }),
+  }).catch(() => {});
 }
 
 export function getManagedPages(): ManagedPage[] { return cachedPages; }
@@ -334,27 +315,16 @@ export async function fetchManagedPagesFromDb(): Promise<ManagedPage[]> {
   } catch (e) {}
   return cachedPages;
 }
-export async function saveManagedPagesToDb(pages: ManagedPage[]): Promise<ManagedPage[]> {
-  const res = await fetch('/api/cms/pages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pages }),
-  });
-  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message || 'Failed to save pages');
-  cachedPages = pages;
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('omnifetch_pages_updated', { detail: pages }));
-  }
-  return cachedPages;
-}
 export function saveManagedPages(pages: ManagedPage[]): void {
   cachedPages = pages;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_pages_updated', { detail: pages }));
   }
-  saveManagedPagesToDb(pages).catch(() => {});
+  fetch('/api/cms/pages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pages }),
+  }).catch(() => {});
 }
 
 export function getAdminUsers(): AdminUser[] { return cachedUsers; }
@@ -373,27 +343,16 @@ export async function fetchAdminUsersFromDb(): Promise<AdminUser[]> {
   } catch (e) {}
   return cachedUsers;
 }
-export async function saveAdminUsersToDb(users: AdminUser[]): Promise<AdminUser[]> {
-  const res = await fetch('/api/users', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ users }),
-  });
-  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message || 'Failed to save admin users');
-  cachedUsers = users;
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('omnifetch_users_updated', { detail: cachedUsers }));
-  }
-  return cachedUsers;
-}
 export function saveAdminUsers(users: AdminUser[]): void {
   cachedUsers = users;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_users_updated', { detail: cachedUsers }));
   }
-  saveAdminUsersToDb(users).catch(() => {});
+  fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ users }),
+  }).catch(() => {});
 }
 
 export function getApiHealthList(): ApiHealthStatus[] { return DEFAULT_APIS; }
@@ -421,27 +380,16 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig> {
   } catch (e) {}
   return cachedSecurity;
 }
-export async function saveSecurityConfigToDb(sec: SecurityConfig): Promise<SecurityConfig> {
-  const res = await fetch('/api/security', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ security: sec }),
-  });
-  if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.message || 'Failed to save security config');
-  cachedSecurity = sec;
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('omnifetch_security_updated', { detail: cachedSecurity }));
-  }
-  return cachedSecurity;
-}
 export function saveSecurityConfig(sec: SecurityConfig): void {
   cachedSecurity = sec;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('omnifetch_security_updated', { detail: cachedSecurity }));
   }
-  saveSecurityConfigToDb(sec).catch(() => {});
+  fetch('/api/security', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ security: sec }),
+  }).catch(() => {});
 }
 
 export function getRobotsTxt(): string { return DEFAULT_ROBOTS_TXT; }
@@ -464,7 +412,7 @@ export async function fetchSmtpConfigFromDb(): Promise<SmtpConfig> {
       }
     }
   } catch (e) {
-    // Graceful fallback
+    console.error('[adminStorage] fetchSmtpConfigFromDb failed:', e);
   }
   return cachedSmtp;
 }
@@ -491,7 +439,7 @@ export async function saveSmtpConfig(config: SmtpConfig): Promise<{ success: boo
     }
     return { success: false, error: `HTTP ${res.status} error` };
   } catch (e: any) {
-    console.warn('[adminStorage] saveSmtpConfig notice:', e);
+    console.error('[adminStorage] saveSmtpConfig failed:', e);
     return { success: false, error: e?.message || 'Network error' };
   }
 }
@@ -516,7 +464,7 @@ export async function fetchEmailAlertsFromDb(): Promise<EmailAlertSettings> {
       }
     }
   } catch (e) {
-    // Graceful fallback
+    console.error('[adminStorage] fetchEmailAlertsFromDb failed:', e);
   }
   return cachedEmailAlerts;
 }
@@ -546,7 +494,7 @@ export async function saveEmailAlertSettings(settings: EmailAlertSettings): Prom
     }
     return { success: false, error: `HTTP ${res.status} error` };
   } catch (e: any) {
-    console.warn('[adminStorage] saveEmailAlertSettings notice:', e);
+    console.error('[adminStorage] saveEmailAlertSettings failed:', e);
     return { success: false, error: e?.message || 'Network error' };
   }
 }

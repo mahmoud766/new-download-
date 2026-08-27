@@ -25,7 +25,6 @@ import {
 import { fetchDailyVisitorsFromFirestore, DailyVisitorData } from '../../lib/firebase';
 
 interface Props {
-  timeRange?: 'today' | '7d' | '30d' | 'all';
   onShowToast?: (msg: string) => void;
 }
 
@@ -36,7 +35,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <div className="bg-slate-900/95 border border-slate-700/80 backdrop-blur-md rounded-xl p-3 shadow-2xl text-xs space-y-1.5 text-slate-100 font-sans">
         <p className="font-black text-purple-300 pb-1 border-b border-slate-800 flex items-center gap-1.5">
           <Calendar className="w-3.5 h-3.5 text-purple-400" />
-          <span>الفترة: {label}</span>
+          <span>التاريخ: {label}</span>
         </p>
         {payload.map((entry: any, index: number) => {
           const nameMap: Record<string, string> = {
@@ -62,31 +61,26 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export const VisitorsTrendChart: React.FC<Props> = ({ timeRange = '7d', onShowToast }) => {
+export const VisitorsTrendChart: React.FC<Props> = ({ onShowToast }) => {
   const [data, setData] = useState<DailyVisitorData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRange, setSelectedRange] = useState<'today' | '7d' | '30d' | 'all'>(timeRange);
   const [activeMetric, setActiveMetric] = useState<'all' | 'visitors' | 'pageViews' | 'downloads'>('visitors');
 
-  useEffect(() => {
-    setSelectedRange(timeRange);
-  }, [timeRange]);
-
-  const loadData = async (rangeToLoad = selectedRange) => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const result = await fetchDailyVisitorsFromFirestore(rangeToLoad);
+      const result = await fetchDailyVisitorsFromFirestore();
       setData(result);
     } catch (err) {
-      console.error('Error loading traffic trends:', err);
+      console.error('Error loading Firestore traffic trends:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData(selectedRange);
-  }, [selectedRange]);
+    loadData();
+  }, []);
 
   // Compute stats
   const totalVisitors = data.reduce((acc, curr) => acc + (curr.visitors || 0), 0);

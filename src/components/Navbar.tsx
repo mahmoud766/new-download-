@@ -39,7 +39,6 @@ interface NavbarProps {
   onOpenLegal?: (type: 'privacy' | 'terms' | 'dmca' | 'disclaimer' | 'cookies' | 'about' | 'contact') => void;
   onOpenBatchModal?: () => void;
   historyCount: number;
-  siteSettings?: SiteSettings;
 }
 
 export function Navbar({
@@ -56,21 +55,14 @@ export function Navbar({
   onOpenLegal,
   onOpenBatchModal,
   historyCount,
-  siteSettings: initialSettings,
 }: NavbarProps) {
   const [platformDropdownOpen, setPlatformDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const activeLangObj = LANGUAGES.find((l) => l.code === currentLang) || LANGUAGES[1];
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(initialSettings || DEFAULT_SITE_SETTINGS);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
   const [platformMap, setPlatformMap] = useState<Record<string, PlatformConfig>>(() => getStoredPlatformsConfig());
-
-  useEffect(() => {
-    if (initialSettings) {
-      setSiteSettings(initialSettings);
-    }
-  }, [initialSettings]);
 
   useEffect(() => {
     // Fetch site name and settings dynamically from Prisma database
@@ -154,7 +146,7 @@ export function Navbar({
                 src={siteSettings.logoUrl}
                 alt={siteSettings.siteName || 'Logo'}
                 style={{ height: `${siteSettings.logoHeightPx || 40}px` }}
-                className="object-contain max-h-24 group-hover:scale-105 transition-transform"
+                className="object-contain max-h-12 group-hover:scale-105 transition-transform"
               />
             ) : (
               <div className="relative flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 p-0.5 shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
@@ -168,14 +160,12 @@ export function Navbar({
                 <span className="text-xl sm:text-2xl font-black tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
                   {siteSettings.siteName || 'OmniFetch'}
                 </span>
-                {siteSettings.shortName && (
-                  <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    {siteSettings.shortName}
-                  </span>
-                )}
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {siteSettings.shortName || 'PRO'}
+                </span>
               </div>
               <p className="hidden sm:block text-[11px] text-slate-300 font-medium">
-                {siteSettings.tagline || 'Universal Video Downloader'}
+                Universal Video Downloader
               </p>
             </div>
           </a>
