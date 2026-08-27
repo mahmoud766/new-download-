@@ -137,8 +137,8 @@ export function BlogSection({ currentLang, onBack }: BlogProps) {
         />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostingSchema) }} />
 
-        {/* Blog Top Ad Slot */}
-        <AdBanner slot="BLOG_TOP" />
+        {/* Blog Top Ad Slot - Immediate High Priority Above-The-Fold */}
+        <AdBanner slot="BLOG_TOP" priority="high" />
 
         <button
           onClick={handleBackToList}

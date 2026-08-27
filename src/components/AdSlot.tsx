@@ -1,9 +1,18 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { AdPlacementConfig } from '../types';
 import { getAdsConfig } from '../lib/storage';
 import { generateAdsterraAdCode } from '../config/siteConfig';
 
 export const DEFAULT_PUBLISHER_ID = 'ca-pub-6708942894533593';
+
+// Known above-the-fold ad placements that should start loading immediately on page open
+export const ABOVE_THE_FOLD_SLOTS = new Set([
+  'HOME_TOP',
+  'header_banner',
+  'pre_result',
+  'PLATFORM_TOP',
+  'BLOG_TOP',
+]);
 
 // Ensure Google AdSense script is injected ONCE globally
 function ensureAdSenseScriptLoaded(publisherId: string = DEFAULT_PUBLISHER_ID) {
@@ -20,12 +29,28 @@ function ensureAdSenseScriptLoaded(publisherId: string = DEFAULT_PUBLISHER_ID) {
 }
 
 export interface AdSlotProps {
-  slot: string; // e.g. HOME_AFTER_HERO, HOME_AFTER_TRENDING, PLATFORM_TOP, header_banner, etc.
+  slot: string; // e.g. HOME_TOP, HOME_AFTER_HERO, PLATFORM_TOP, header_banner, etc.
   className?: string;
   debug?: boolean;
+  priority?: 'high' | 'normal' | 'low';
+  aboveTheFold?: boolean;
 }
 
-export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
+export function AdSlot({
+  slot,
+  className = '',
+  debug = false,
+  priority,
+  aboveTheFold,
+}: AdSlotProps) {
+  // Determine if this ad slot is above the fold or requested as high priority
+  const isHighPriority = useMemo(() => {
+    if (priority === 'high' || aboveTheFold === true) return true;
+    if (priority === 'low' || aboveTheFold === false) return false;
+    return ABOVE_THE_FOLD_SLOTS.has(slot);
+  }, [slot, priority, aboveTheFold]);
+
+  // Synchronous config retrieval from local memory/localStorage cache
   const [adConfig, setAdConfig] = useState<AdPlacementConfig | null>(() => {
     try {
       const ads = getAdsConfig();
@@ -46,7 +71,8 @@ export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
     return false;
   });
 
-  const [isIntersecting, setIsIntersecting] = useState<boolean>(false);
+  // For high-priority / above-the-fold slots, start as intersecting immediately without waiting
+  const [isIntersecting, setIsIntersecting] = useState<boolean>(() => isHighPriority);
   const [adStatus, setAdStatus] = useState<'IDLE' | 'LOADING' | 'LOADED' | 'NO_FILL' | 'DISABLED'>('IDLE');
   const containerRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
@@ -81,31 +107,33 @@ export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
     return () => window.removeEventListener('omnifetch_toggle_ad_debug', checkDebug);
   }, [debug]);
 
-  // Lazy Loading Intersection Observer
+  // Lazy Loading Intersection Observer for below-the-fold ads with generous 400px margin
   useEffect(() => {
-    if (!slotRef.current) return;
-    if (!adConfig || adConfig.lazyLoad === false) {
+    if (isHighPriority || adConfig?.lazyLoad === false) {
       setIsIntersecting(true);
       return;
     }
 
+    if (!slotRef.current) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
+        for (const entry of entries) {
           if (entry.isIntersecting) {
             setIsIntersecting(true);
             observer.disconnect();
+            break;
           }
-        });
+        }
       },
-      { rootMargin: '200px' }
+      { rootMargin: '400px' }
     );
 
     observer.observe(slotRef.current);
     return () => observer.disconnect();
-  }, [adConfig]);
+  }, [adConfig, isHighPriority]);
 
-  // Render & Execute Ad Unit Logic
+  // Render & Execute Ad Unit Logic as early as possible
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -116,7 +144,7 @@ export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
       return;
     }
 
-    if (!isIntersecting && adConfig.lazyLoad !== false) {
+    if (!isIntersecting && !isHighPriority && adConfig.lazyLoad !== false) {
       return;
     }
 
@@ -128,91 +156,96 @@ export function AdSlot({ slot, className = '', debug = false }: AdSlotProps) {
     const slotId = adConfig.slotId || '';
     const rawCode = (adConfig.code || '').trim();
 
-    // Strategy A: Google AdSense Rendering
-    if (provider === 'adsense' || rawCode.includes('adsbygoogle')) {
-      ensureAdSenseScriptLoaded(pubId);
+    try {
+      // Strategy A: Google AdSense Rendering
+      if (provider === 'adsense' || rawCode.includes('adsbygoogle')) {
+        ensureAdSenseScriptLoaded(pubId);
 
-      if (rawCode.includes('adsbygoogle')) {
-        container.innerHTML = rawCode;
-        const scriptElements = Array.from(container.querySelectorAll('script')) as HTMLScriptElement[];
-        scriptElements.forEach((oldScript) => {
-          if (!oldScript.src && (oldScript.innerHTML.includes('adsbygoogle') || oldScript.innerHTML.includes('push'))) {
-            oldScript.remove();
-            return;
+        if (rawCode.includes('adsbygoogle')) {
+          container.innerHTML = rawCode;
+          const scriptElements = Array.from(container.querySelectorAll('script')) as HTMLScriptElement[];
+          scriptElements.forEach((oldScript) => {
+            if (!oldScript.src && (oldScript.innerHTML.includes('adsbygoogle') || oldScript.innerHTML.includes('push'))) {
+              oldScript.remove();
+              return;
+            }
+            const newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach((attr) => newScript.setAttribute(attr.name, attr.value));
+            if (oldScript.innerHTML) newScript.innerHTML = oldScript.innerHTML;
+            oldScript.parentNode?.replaceChild(newScript, oldScript);
+          });
+        } else if (slotId || pubId) {
+          // Structured AdSense unit creation
+          const ins = document.createElement('ins');
+          ins.className = 'adsbygoogle';
+          ins.style.display = 'block';
+          ins.style.width = '100%';
+          ins.style.minWidth = '250px';
+          ins.setAttribute('data-ad-client', pubId);
+          if (slotId) ins.setAttribute('data-ad-slot', slotId);
+          ins.setAttribute('data-ad-format', adConfig.format || 'auto');
+          if (adConfig.responsive !== false) ins.setAttribute('data-full-width-responsive', 'true');
+          container.appendChild(ins);
+        }
+
+        const insEl = container.querySelector<HTMLElement>('ins.adsbygoogle');
+        if (insEl && !insEl.hasAttribute('data-pushed')) {
+          insEl.setAttribute('data-pushed', 'true');
+          try {
+            ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+            setAdStatus('LOADED');
+          } catch (e) {
+            console.warn('[AdSlot] AdSense push notice:', e);
+            setAdStatus('LOADED');
           }
-          const newScript = document.createElement('script');
-          Array.from(oldScript.attributes).forEach((attr) => newScript.setAttribute(attr.name, attr.value));
-          if (oldScript.innerHTML) newScript.innerHTML = oldScript.innerHTML;
-          oldScript.parentNode?.replaceChild(newScript, oldScript);
-        });
-      } else if (slotId || pubId) {
-        // Structured AdSense unit creation
-        const ins = document.createElement('ins');
-        ins.className = 'adsbygoogle';
-        ins.style.display = 'block';
-        ins.style.width = '100%';
-        ins.style.minWidth = '250px';
-        ins.setAttribute('data-ad-client', pubId);
-        if (slotId) ins.setAttribute('data-ad-slot', slotId);
-        ins.setAttribute('data-ad-format', adConfig.format || 'auto');
-        if (adConfig.responsive !== false) ins.setAttribute('data-full-width-responsive', 'true');
-        container.appendChild(ins);
-      }
-
-      const insEl = container.querySelector<HTMLElement>('ins.adsbygoogle');
-      if (insEl && !insEl.hasAttribute('data-pushed')) {
-        insEl.setAttribute('data-pushed', 'true');
-        try {
-          ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-          setAdStatus('LOADED');
-        } catch (e) {
-          console.warn('[AdSlot] AdSense push notice:', e);
+        } else {
           setAdStatus('LOADED');
         }
-      } else {
-        setAdStatus('LOADED');
-      }
-      return;
-    }
-
-    // Strategy B: Adsterra / Custom Script / Isolated Iframe Rendering
-    if (
-      provider === 'adsterra' ||
-      provider === 'custom_html' ||
-      rawCode.includes('<script') ||
-      rawCode.includes('<iframe') ||
-      rawCode.includes('invoke.js')
-    ) {
-      let finalCode = rawCode;
-      if (!finalCode && provider === 'adsterra') {
-        const zoneKey = slotId || 'a1b2c3d4e5f67890';
-        finalCode = generateAdsterraAdCode(zoneKey, adConfig.format || 'auto', adConfig.heightPx || 90);
-      }
-
-      if (!finalCode) {
-        setAdStatus('NO_FILL');
         return;
       }
 
-      const iframe = document.createElement('iframe');
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = 'none';
-      iframe.style.overflow = 'hidden';
-      iframe.style.backgroundColor = 'transparent';
-      iframe.setAttribute('scrolling', 'no');
-      iframe.setAttribute('frameBorder', '0');
+      // Strategy B: Adsterra / Custom Script / High-Performance Sandboxed Iframe Rendering
+      if (
+        provider === 'adsterra' ||
+        provider === 'custom_html' ||
+        rawCode.includes('<script') ||
+        rawCode.includes('<iframe') ||
+        rawCode.includes('invoke.js')
+      ) {
+        let finalCode = rawCode;
+        if (!finalCode && provider === 'adsterra') {
+          const zoneKey = slotId || 'c837392869612a4f865153e34abd0bf0';
+          finalCode = generateAdsterraAdCode(zoneKey, adConfig.format || 'auto', adConfig.heightPx || 90);
+        }
 
-      // Standard Ad Sandbox: Allow scripts, same-origin, forms, popups, and user-initiated navigation
-      // 'allow-top-navigation-by-user-activation' and 'allow-popups' allow legitimate user clicks on ads to open destination links without letting malicious unprompted auto-redirects happen.
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
-      iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+        if (!finalCode) {
+          setAdStatus('NO_FILL');
+          return;
+        }
 
-      iframe.srcdoc = `<!DOCTYPE html>
+        const iframe = document.createElement('iframe');
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.overflow = 'hidden';
+        iframe.style.backgroundColor = 'transparent';
+        iframe.setAttribute('scrolling', 'no');
+        iframe.setAttribute('frameBorder', '0');
+        iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
+
+        // Sandbox: Allow scripts, same-origin, forms, and user-initiated navigation clicks
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
+        iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+
+        iframe.srcdoc = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://www.highperformanceformat.com" crossorigin="anonymous">
+<link rel="dns-prefetch" href="https://www.highperformanceformat.com">
+<link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin="anonymous">
+<link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
 <style>
   html, body {
     margin: 0;
@@ -234,25 +267,26 @@ ${finalCode}
 </body>
 </html>`;
 
-      container.appendChild(iframe);
-      setAdStatus('LOADED');
-      return;
-    }
+        container.appendChild(iframe);
+        setAdStatus('LOADED');
+        return;
+      }
 
-    // Strategy C: Custom Raw HTML or Banner Image Link (Wrapped in Sandboxed Iframe for Safety)
-    if (rawCode) {
-      const iframe = document.createElement('iframe');
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = 'none';
-      iframe.style.overflow = 'hidden';
-      iframe.style.backgroundColor = 'transparent';
-      iframe.setAttribute('scrolling', 'no');
-      iframe.setAttribute('frameBorder', '0');
-      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
-      iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+      // Strategy C: Custom Raw HTML or Banner Image Link
+      if (rawCode) {
+        const iframe = document.createElement('iframe');
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.overflow = 'hidden';
+        iframe.style.backgroundColor = 'transparent';
+        iframe.setAttribute('scrolling', 'no');
+        iframe.setAttribute('frameBorder', '0');
+        iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
+        iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
 
-      iframe.srcdoc = `<!DOCTYPE html>
+        iframe.srcdoc = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -266,16 +300,20 @@ ${rawCode}
 </body>
 </html>`;
 
-      container.appendChild(iframe);
-      setAdStatus('LOADED');
-    } else {
+        container.appendChild(iframe);
+        setAdStatus('LOADED');
+      } else {
+        setAdStatus('NO_FILL');
+      }
+    } catch (err) {
+      console.warn('[AdSlot] Non-fatal ad rendering notice:', err);
       setAdStatus('NO_FILL');
     }
 
     return () => {
       if (container) container.innerHTML = '';
     };
-  }, [adConfig, isIntersecting]);
+  }, [adConfig, isIntersecting, isHighPriority]);
 
   if (!adConfig || !adConfig.enabled) {
     if (!isDebugActive) return null;
@@ -306,7 +344,7 @@ ${rawCode}
       role="region"
       aria-label="Advertisement Banner"
       data-placement-id={slot}
-      className={`w-full my-4 flex-col items-center justify-center transition-all ${deviceClass} ${className}`}
+      className={`w-full my-3 flex-col items-center justify-center transition-all ${deviceClass} ${className}`}
     >
       {/* Label Compliance */}
       {adConfig?.enabled && (
@@ -315,12 +353,15 @@ ${rawCode}
         </div>
       )}
 
-      {/* Ad Container Box */}
+      {/* Ad Container Box with explicit dimensions for Zero Cumulative Layout Shift (CLS) */}
       {adConfig?.enabled && (
         <div
           ref={containerRef}
-          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-2 flex items-center justify-center shadow-inner overflow-hidden shrink-0 min-h-[90px]"
-          style={{ minHeight: targetMinHeight }}
+          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-2 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
+          style={{
+            minHeight: targetMinHeight,
+            containIntrinsicSize: `auto ${targetMinHeight}`,
+          }}
         />
       )}
 
@@ -334,6 +375,11 @@ ${rawCode}
               </span>
               <span className="font-extrabold text-white">[{slot}]</span>
               <span className="text-slate-300">({adConfig?.name || 'Unconfigured Slot'})</span>
+              {isHighPriority && (
+                <span className="px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 text-[9px] font-bold">
+                  ABOVE THE FOLD
+                </span>
+              )}
             </div>
             <span
               className={`px-2 py-0.5 rounded font-bold text-[10px] ${

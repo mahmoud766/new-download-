@@ -464,9 +464,9 @@ export default function App() {
         <main>
           {activeView === 'home' && (
             <>
-              {/* Home Top Ad Slot */}
+              {/* Home Top Ad Slot - Immediate High Priority Above-The-Fold */}
               <div className="max-w-7xl mx-auto px-4 pt-4">
-                <AdBanner slot="HOME_TOP" />
+                <AdBanner slot="HOME_TOP" priority="high" />
               </div>
 
               {/* Hero Downloader Zone */}
@@ -494,14 +494,14 @@ export default function App() {
                 <AdBanner slot="HOME_AFTER_HERO" />
               </div>
 
-              {/* Header Leaderboard Ad Slot */}
+              {/* Header Leaderboard Ad Slot - Immediate High Priority */}
               <div className="max-w-7xl mx-auto px-4">
-                <AdBanner slot="header_banner" />
+                <AdBanner slot="header_banner" priority="high" />
               </div>
 
               {/* Mid-Result Pre-Download Ad Slot */}
               <div className="max-w-7xl mx-auto px-4">
-                <AdBanner slot="pre_result" />
+                <AdBanner slot="pre_result" priority="high" />
               </div>
 
               {/* Fetched Result Presentation Card */}

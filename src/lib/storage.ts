@@ -13,10 +13,26 @@ import {
 } from './adminStorage';
 
 const HISTORY_KEY = 'omnifetch_download_history_v1';
+const ADS_CACHE_KEY = 'omnifetch_ads_config_cache_v1';
+
+function getInitialAdsConfig(): AdPlacementConfig[] {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(ADS_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+  return DEFAULT_ADS_CONFIG;
+}
 
 // Internal memory caches
 let cachedSettings: SiteSettings = DEFAULT_SITE_SETTINGS;
-let cachedAdsConfig: AdPlacementConfig[] = DEFAULT_ADS_CONFIG;
+let cachedAdsConfig: AdPlacementConfig[] = getInitialAdsConfig();
 let cachedFaqs: FAQItem[] = DEFAULT_FAQS;
 let cachedBlogs: BlogPost[] = INITIAL_BLOG_POSTS;
 let currentSyncVersion = 0;
@@ -185,6 +201,9 @@ export async function fetchAdsConfigFromDb(): Promise<AdPlacementConfig[]> {
         });
         cachedAdsConfig = decodedAds;
         if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(ADS_CACHE_KEY, JSON.stringify(cachedAdsConfig));
+          } catch {}
           window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
         }
         return cachedAdsConfig;
@@ -243,6 +262,9 @@ export async function saveAdsConfigToDb(ads: AdPlacementConfig[]): Promise<AdPla
   cachedAdsConfig = returnedAds;
   if (data.syncVersion) currentSyncVersion = data.syncVersion;
   if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(ADS_CACHE_KEY, JSON.stringify(cachedAdsConfig));
+    } catch {}
     window.dispatchEvent(new CustomEvent('omnifetch_ads_updated', { detail: cachedAdsConfig }));
   }
   return cachedAdsConfig;

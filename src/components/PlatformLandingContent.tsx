@@ -96,8 +96,8 @@ export function PlatformLandingContent({
   return (
     <section className="py-12 sm:py-16 bg-slate-900/60 border-t border-slate-800/80">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 space-y-12">
-        {/* Platform Page Top Ad Slot */}
-        <AdBanner slot="PLATFORM_TOP" />
+        {/* Platform Page Top Ad Slot - Immediate High Priority Above-The-Fold */}
+        <AdBanner slot="PLATFORM_TOP" priority="high" />
 
         {/* Dynamic Service Header */}
         <div className="text-center space-y-4">
