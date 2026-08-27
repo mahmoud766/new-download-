@@ -14,6 +14,7 @@ import { prisma, getSafeDatabaseDiagnostics, testDatabaseConnection } from './sr
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 import { DEFAULT_FAQS, INITIAL_BLOG_POSTS, PLATFORMS_CONFIG } from './src/config/siteConfig';
 import { DEFAULT_PAGES, DEFAULT_SECURITY, DEFAULT_REDIRECTS, DEFAULT_USERS } from './src/lib/adminStorage';
+import { apiResponseInterceptor, apiErrorHandler, createApiTimeoutMiddleware } from './src/lib/api-middleware';
 
 // Helper function to resolve YouTube direct downloadable file URLs (MP4 / MP3) via conversion engines
 async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: string = '720'): Promise<string | null> {
@@ -147,6 +148,10 @@ async function startServer() {
 
     next();
   });
+
+  // Centralized API Response Interceptor & Timeout Guard (Guarantees JSON on 403, 408, and all API errors)
+  app.use('/api', apiResponseInterceptor);
+  app.use('/api', createApiTimeoutMiddleware(40000));
 
   // Mount Gemini routes
   app.use('/api', geminiRoutes);
@@ -3972,23 +3977,8 @@ Sitemap: ${baseUrl}/sitemap.xml`;
     });
   }
 
-  // Global Express API Error Handler: Guarantee all /api/* routes return JSON, never HTML
-  app.use((err: any, req: Request, res: Response, next: express.NextFunction) => {
-    if (res.headersSent) {
-      return next(err);
-    }
-    if (req.path.startsWith('/api/')) {
-      console.error('[Global API Error Handler]', req.method, req.path, err?.message || err);
-      const statusCode = typeof err?.status === 'number' && err.status >= 400 && err.status < 600 ? err.status : 500;
-      return res.status(statusCode).json({
-        success: false,
-        error: err?.code || (statusCode === 403 ? 'FORBIDDEN' : statusCode === 408 ? 'REQUEST_TIMEOUT' : 'INTERNAL_SERVER_ERROR'),
-        message: err?.message || 'An internal API error occurred',
-        status: statusCode,
-      });
-    }
-    next(err);
-  });
+  // Centralized API Error Handler: Guarantee all /api/* routes return JSON, never HTML
+  app.use(apiErrorHandler);
 
   app.listen(PORT, '0.0.0.0', () => {
     const dbDiag = getSafeDatabaseDiagnostics();
