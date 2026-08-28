@@ -12,6 +12,7 @@ import geminiRoutes from './server/geminiRoutes';
 import { extractMedia, getProviderSettingsFromDb, fetchWithTimeout } from './server/extractors';
 import { prisma, getSafeDatabaseDiagnostics, testDatabaseConnection, withDbTimeout } from './src/lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
+import { acquireFetchSlot, releaseFetchSlot, getFetchConcurrencyStatus, fetchMetrics } from './server/concurrency';
 import { DEFAULT_FAQS, INITIAL_BLOG_POSTS, PLATFORMS_CONFIG } from './src/config/siteConfig';
 import { DEFAULT_PAGES, DEFAULT_SECURITY, DEFAULT_REDIRECTS, DEFAULT_USERS } from './src/lib/adminStorage';
 import { apiResponseInterceptor, apiErrorHandler, createApiTimeoutMiddleware } from './src/lib/api-middleware';
@@ -304,9 +305,90 @@ async function startServer() {
   // Global Realtime Sync Engine State
   let globalSyncVersion = 1;
 
+  // In-Memory High-Concurrency Cache for Zero-Latency API Responses
+  interface MemoryCacheItem<T> {
+    data: T;
+    timestamp: number;
+  }
+
+  const CONFIG_CACHE: {
+    settings: MemoryCacheItem<any> | null;
+    ads: MemoryCacheItem<any> | null;
+    platforms: MemoryCacheItem<any> | null;
+    seo: MemoryCacheItem<any> | null;
+    cmsPages: MemoryCacheItem<any> | null;
+    faqs: MemoryCacheItem<any> | null;
+    blogs: MemoryCacheItem<any> | null;
+  } = {
+    settings: null,
+    ads: null,
+    platforms: null,
+    seo: null,
+    cmsPages: null,
+    faqs: null,
+    blogs: null,
+  };
+
+  const CONFIG_CACHE_TTL_MS = 60000; // 60s background refresh TTL; invalidated instantly on any POST / update
+
   // Realtime Sync Version Check Endpoint
   app.get('/api/sync/version', (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.json({ success: true, version: globalSyncVersion });
+  });
+
+  // Dedicated Database Diagnostics API Endpoint
+  app.get('/api/database/diagnostics', async (req: Request, res: Response) => {
+    try {
+      const dbTest = await testDatabaseConnection(4000);
+      return res.json({
+        success: true,
+        status: dbTest.connected ? 'connected' : 'unavailable',
+        diagnostics: dbTest.diagnostics,
+        directDriver: dbTest.directDriver,
+        prisma: dbTest.prismaAdapter,
+        queryLatencyMs: dbTest.queryLatencyMs,
+        errorCode: dbTest.errorCode,
+        errorMessage: dbTest.error,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      return res.json({
+        success: false,
+        status: 'error',
+        diagnostics: getSafeDatabaseDiagnostics(),
+        errorMessage: e?.message || 'Database test failed',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  // Dedicated Database Test Connection POST Endpoint
+  app.post('/api/database/test-connection', async (req: Request, res: Response) => {
+    try {
+      const dbTest = await testDatabaseConnection(5000);
+      return res.json({
+        success: dbTest.connected || dbTest.directDriver?.status === 'PASS',
+        connected: dbTest.connected,
+        status: dbTest.connected ? 'PASS' : 'FAIL',
+        diagnostics: dbTest.diagnostics,
+        directDriver: dbTest.directDriver,
+        prisma: dbTest.prismaAdapter,
+        queryLatencyMs: dbTest.queryLatencyMs,
+        errorCode: dbTest.errorCode,
+        errorMessage: dbTest.error,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (e: any) {
+      return res.json({
+        success: false,
+        connected: false,
+        status: 'FAIL',
+        diagnostics: getSafeDatabaseDiagnostics(),
+        errorMessage: e?.message || 'Database test failed',
+        timestamp: new Date().toISOString(),
+      });
+    }
   });
 
   // --- Strict PostgreSQL Supabase Database Endpoints (NO IN-MEMORY FALLBACKS) ---
@@ -339,6 +421,11 @@ async function startServer() {
   };
 
   app.get('/api/settings', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.settings && (Date.now() - CONFIG_CACHE.settings.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, settings: CONFIG_CACHE.settings.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({
@@ -349,6 +436,7 @@ async function startServer() {
       );
 
       if (!record) {
+        CONFIG_CACHE.settings = { data: DEFAULT_SETTINGS, timestamp: Date.now() };
         return res.json({ success: true, settings: DEFAULT_SETTINGS, syncVersion: globalSyncVersion, isFallback: true });
       }
 
@@ -383,8 +471,12 @@ async function startServer() {
         socialLinks: parsedSocials,
       };
 
+      CONFIG_CACHE.settings = { data: settings, timestamp: Date.now() };
       return res.json({ success: true, settings, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.settings) {
+        return res.json({ success: true, settings: CONFIG_CACHE.settings.data, syncVersion: globalSyncVersion });
+      }
       return res.json({
         success: true,
         settings: DEFAULT_SETTINGS,
@@ -397,6 +489,7 @@ async function startServer() {
   app.post('/api/settings', async (req: Request, res: Response) => {
     const data = req.body?.data || req.body?.settings || req.body || {};
     globalSyncVersion += 1;
+    CONFIG_CACHE.settings = null;
 
     try {
       const socialLinksJson = data.socialLinks ? JSON.stringify(data.socialLinks) : '{}';
@@ -535,6 +628,11 @@ async function startServer() {
 
   // 2. Ad Placement Configurations API (Prisma PostgreSQL + Verified Persistence)
   app.get('/api/ads', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.ads && (Date.now() - CONFIG_CACHE.ads.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, ads: CONFIG_CACHE.ads.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
@@ -607,8 +705,12 @@ async function startServer() {
         };
       });
 
+      CONFIG_CACHE.ads = { data: mergedAds, timestamp: Date.now() };
       return res.json({ success: true, ads: mergedAds, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.ads) {
+        return res.json({ success: true, ads: CONFIG_CACHE.ads.data, syncVersion: globalSyncVersion });
+      }
       const fallbackSlots = [
         { id: 'ad-home-top', slot: 'HOME_TOP', name: 'Homepage - Top Header Banner (Leaderboard 728x90)', format: 'leaderboard_728x90', heightPx: 90, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
         { id: 'ad-header', slot: 'header_banner', name: 'Header Top Leaderboard (728x90 / Responsive)', format: 'leaderboard_728x90', heightPx: 90, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
@@ -625,6 +727,7 @@ async function startServer() {
   });
 
   app.post('/api/ads', async (req: Request, res: Response) => {
+    CONFIG_CACHE.ads = null;
     const { ads } = req.body || {};
 
     // 1. Strict Schema & Array Validation
@@ -1275,6 +1378,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   // 3. Download Platform Configurations API (Prisma MySQL Engine)
   app.get('/api/platforms', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.platforms && (Date.now() - CONFIG_CACHE.platforms.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, platforms: CONFIG_CACHE.platforms.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
@@ -1282,11 +1390,17 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         1500
       );
       if (!record || !record.platformsConfigJson) {
+        CONFIG_CACHE.platforms = { data: PLATFORMS_CONFIG, timestamp: Date.now() };
         return res.json({ success: true, platforms: PLATFORMS_CONFIG, syncVersion: globalSyncVersion });
       }
       const platforms = JSON.parse(record.platformsConfigJson);
-      return res.json({ success: true, platforms: platforms || PLATFORMS_CONFIG, syncVersion: globalSyncVersion });
+      const finalPlatforms = platforms || PLATFORMS_CONFIG;
+      CONFIG_CACHE.platforms = { data: finalPlatforms, timestamp: Date.now() };
+      return res.json({ success: true, platforms: finalPlatforms, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.platforms) {
+        return res.json({ success: true, platforms: CONFIG_CACHE.platforms.data, syncVersion: globalSyncVersion });
+      }
       return res.json({ success: true, platforms: PLATFORMS_CONFIG, syncVersion: globalSyncVersion });
     }
   });
@@ -1298,6 +1412,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }
 
     globalSyncVersion += 1;
+    CONFIG_CACHE.platforms = null;
     try {
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
@@ -1316,6 +1431,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   // 4. Global SEO Configuration API (Prisma MySQL Engine)
   app.get('/api/seo', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.seo && (Date.now() - CONFIG_CACHE.seo.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, seo: CONFIG_CACHE.seo.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
@@ -1326,8 +1446,12 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         return res.json({ success: true, seo: null, syncVersion: globalSyncVersion });
       }
       const seo = JSON.parse(record.seoConfigJson);
+      CONFIG_CACHE.seo = { data: seo, timestamp: Date.now() };
       return res.json({ success: true, seo, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.seo) {
+        return res.json({ success: true, seo: CONFIG_CACHE.seo.data, syncVersion: globalSyncVersion });
+      }
       return res.json({ success: true, seo: null, syncVersion: globalSyncVersion });
     }
   });
@@ -1339,6 +1463,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }
 
     globalSyncVersion += 1;
+    CONFIG_CACHE.seo = null;
     try {
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
@@ -1391,6 +1516,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   // 6. CMS Pages API (Prisma MySQL Engine)
   app.get('/api/cms/pages', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.cmsPages && (Date.now() - CONFIG_CACHE.cmsPages.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, pages: CONFIG_CACHE.cmsPages.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
@@ -1398,11 +1528,16 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         1500
       );
       if (!record || !record.pagesConfigJson) {
+        CONFIG_CACHE.cmsPages = { data: DEFAULT_PAGES, timestamp: Date.now() };
         return res.json({ success: true, pages: DEFAULT_PAGES, syncVersion: globalSyncVersion });
       }
       const pages = JSON.parse(record.pagesConfigJson);
+      CONFIG_CACHE.cmsPages = { data: pages || DEFAULT_PAGES, timestamp: Date.now() };
       return res.json({ success: true, pages, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.cmsPages) {
+        return res.json({ success: true, pages: CONFIG_CACHE.cmsPages.data, syncVersion: globalSyncVersion });
+      }
       return res.json({ success: true, pages: DEFAULT_PAGES, syncVersion: globalSyncVersion });
     }
   });
@@ -1414,6 +1549,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }
 
     globalSyncVersion += 1;
+    CONFIG_CACHE.cmsPages = null;
     try {
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
@@ -1432,6 +1568,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   // 6b. FAQs API (Prisma MySQL Engine)
   app.get('/api/faqs', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.faqs && (Date.now() - CONFIG_CACHE.faqs.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, faqs: CONFIG_CACHE.faqs.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
@@ -1439,6 +1580,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         1500
       );
       if (!record || !record.faqsConfigJson) {
+        CONFIG_CACHE.faqs = { data: DEFAULT_FAQS, timestamp: Date.now() };
         return res.json({ success: true, faqs: DEFAULT_FAQS, syncVersion: globalSyncVersion });
       }
       let faqs: any[] = [];
@@ -1448,8 +1590,12 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       } catch {
         faqs = DEFAULT_FAQS;
       }
+      CONFIG_CACHE.faqs = { data: faqs, timestamp: Date.now() };
       return res.json({ success: true, faqs, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.faqs) {
+        return res.json({ success: true, faqs: CONFIG_CACHE.faqs.data, syncVersion: globalSyncVersion });
+      }
       return res.json({ success: true, faqs: DEFAULT_FAQS, syncVersion: globalSyncVersion });
     }
   });
@@ -1461,6 +1607,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }
 
     globalSyncVersion += 1;
+    CONFIG_CACHE.faqs = null;
     try {
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
@@ -1479,6 +1626,11 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
   // 6c. Blogs API (Prisma MySQL Engine)
   app.get('/api/blogs', async (req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
+    if (CONFIG_CACHE.blogs && (Date.now() - CONFIG_CACHE.blogs.timestamp < CONFIG_CACHE_TTL_MS)) {
+      return res.json({ success: true, blogs: CONFIG_CACHE.blogs.data, syncVersion: globalSyncVersion });
+    }
+
     try {
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
@@ -1486,6 +1638,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
         1500
       );
       if (!record || !record.blogsConfigJson) {
+        CONFIG_CACHE.blogs = { data: INITIAL_BLOG_POSTS, timestamp: Date.now() };
         return res.json({ success: true, blogs: INITIAL_BLOG_POSTS, syncVersion: globalSyncVersion });
       }
       let blogs: any[] = [];
@@ -1495,8 +1648,12 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       } catch {
         blogs = INITIAL_BLOG_POSTS;
       }
+      CONFIG_CACHE.blogs = { data: blogs, timestamp: Date.now() };
       return res.json({ success: true, blogs, syncVersion: globalSyncVersion });
     } catch {
+      if (CONFIG_CACHE.blogs) {
+        return res.json({ success: true, blogs: CONFIG_CACHE.blogs.data, syncVersion: globalSyncVersion });
+      }
       return res.json({ success: true, blogs: INITIAL_BLOG_POSTS, syncVersion: globalSyncVersion });
     }
   });
@@ -1508,6 +1665,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }
 
     globalSyncVersion += 1;
+    CONFIG_CACHE.blogs = null;
     try {
       await prisma.globalSettings.upsert({
         where: { id: 'default' },
@@ -2249,6 +2407,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       return res.json({
         success: true,
         stats: providerStats,
+        concurrency: getFetchConcurrencyStatus(),
         recentLogs: combinedLogs.slice(0, 100),
         totalTelemetryCount: combinedLogs.length,
       });
@@ -2841,24 +3000,39 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
 
 
 
-  // Real Multi-Platform Video Extraction Engine
+  // Real Multi-Platform Video Extraction Engine (Concurrency Protected)
   app.post('/api/fetch', async (req: Request, res: Response) => {
     const fetchStartTime = Date.now();
     const requestId = randomUUID();
     const fetchAbortController = new AbortController();
     let isResponded = false;
+    let slotAcquired = false;
+
+    // Disconnect listener: if client drops socket, abort controller to free downstream sockets and queue immediately
+    const onClientClose = () => {
+      if (!res.writableEnded && !isResponded) {
+        fetchAbortController.abort();
+      }
+    };
+    req.on('close', onClientClose);
 
     const safeRespond = (statusCode: number, data: any) => {
       if (isResponded || res.headersSent) return;
       isResponded = true;
       const elapsedMs = Date.now() - fetchStartTime;
       console.log(`[FETCH_RESPONSE_SENT] requestId=${requestId} statusCode=${statusCode} elapsedMs=${elapsedMs}`);
+      if (statusCode === 200) {
+        fetchMetrics.fetchCompleted++;
+      } else if (statusCode >= 400 && statusCode !== 429) {
+        fetchMetrics.fetchFailures++;
+      }
       return res.status(statusCode).json(data);
     };
 
     // Hard global timeout boundary to guarantee server response within 28s on any hosting environment
     const globalTimeoutId = setTimeout(() => {
       fetchAbortController.abort();
+      fetchMetrics.fetchProviderTimeouts++;
       safeRespond(504, {
         success: false,
         requestId,
@@ -2872,10 +3046,27 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     }, 28000);
 
     try {
-      const { url } = req.body;
+      // 1. Basic URL validation before queueing
+      const { url } = req.body || {};
       if (!url || typeof url !== 'string' || !url.trim().startsWith('http')) {
         return safeRespond(400, { success: false, error: 'الرجاء إدخال رابط فيديو صحيح يبدأ بـ http أو https' });
       }
+
+      // 2. Concurrency Protection & Bounded FIFO Queue
+      const slotResult = await acquireFetchSlot(requestId, fetchAbortController.signal);
+      if (!slotResult.acquired) {
+        if (slotResult.code === 'CLIENT_ABORTED') {
+          return;
+        }
+        return safeRespond(slotResult.statusCode || 429, {
+          success: false,
+          requestId,
+          error: slotResult.error,
+          code: slotResult.code,
+        });
+      }
+
+      slotAcquired = true;
 
       const cleanUrl = url.trim();
       const lowerUrl = cleanUrl.toLowerCase();
@@ -3362,9 +3553,14 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       });
     } catch (err: any) {
       console.error('/api/fetch route error:', err);
+      fetchMetrics.fetchFailures++;
       return safeRespond(500, { success: false, error: err.message || 'حدث خطأ في الخادم أثناء استخراج الفيديو' });
     } finally {
       clearTimeout(globalTimeoutId);
+      req.removeListener('close', onClientClose);
+      if (slotAcquired) {
+        releaseFetchSlot();
+      }
     }
   });
 

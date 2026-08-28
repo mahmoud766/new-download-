@@ -442,10 +442,19 @@ export function initRealtimeSyncLoop(): void {
   if (realtimeSyncInitialized || typeof window === 'undefined') return;
   realtimeSyncInitialized = true;
 
-  // Initial load across all modules
-  const fetchAll = () => {
+  const isAdminRoute = () => {
+    if (typeof window === 'undefined') return false;
+    const p = window.location.pathname.toLowerCase();
+    return p.includes('/admin') || p.includes('/admin-download') || p.includes('/admin-login');
+  };
+
+  // Selective data fetcher
+  const syncPublicModules = () => {
     fetchSiteSettingsFromDb();
     fetchAdsConfigFromDb();
+  };
+
+  const syncAdminModules = () => {
     fetchFaqsConfigFromDb();
     fetchBlogsConfigFromDb();
     fetchPlatformsConfigFromDb();
@@ -458,10 +467,20 @@ export function initRealtimeSyncLoop(): void {
     fetchEmailAlertsFromDb();
   };
 
-  fetchAll();
+  // Initial load
+  syncPublicModules();
+  if (isAdminRoute()) {
+    syncAdminModules();
+  }
 
-  // Poll sync version every 3 seconds for zero-refresh real-time updates
+  // Poll sync version: 5s on admin dashboard, 45s for regular visitors (adaptive backoff)
+  let lastCheck = Date.now();
   setInterval(async () => {
+    const isAdm = isAdminRoute();
+    const minInterval = isAdm ? 5000 : 45000;
+    if (Date.now() - lastCheck < minInterval) return;
+    lastCheck = Date.now();
+
     try {
       const res = await fetch('/api/sync/version');
       if (res.ok) {
@@ -471,10 +490,13 @@ export function initRealtimeSyncLoop(): void {
             currentSyncVersion = data.version;
           } else if (data.version > currentSyncVersion) {
             currentSyncVersion = data.version;
-            fetchAll();
+            syncPublicModules();
+            if (isAdm) {
+              syncAdminModules();
+            }
           }
         }
       }
     } catch {}
-  }, 3000);
+  }, 5000);
 }
