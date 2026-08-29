@@ -55,11 +55,11 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
       if (isNaN(lastSeen)) return true;
 
       let intervalMs = 24 * 60 * 60 * 1000; // default 24h
-      if (freq === 'minutes_15') intervalMs = 15 * 60 * 1000;
-      else if (freq === 'minutes_30') intervalMs = 30 * 60 * 1000;
-      else if (freq === 'hours_1') intervalMs = 60 * 60 * 1000;
-      else if (freq === 'hours_6') intervalMs = 6 * 60 * 60 * 1000;
-      else if (freq === 'hours_24') intervalMs = 24 * 60 * 60 * 1000;
+      if (freq === 'minutes_15' || freq === '15m') intervalMs = 15 * 60 * 1000;
+      else if (freq === 'minutes_30' || freq === '30m') intervalMs = 30 * 60 * 1000;
+      else if (freq === 'hours_1' || freq === '1h') intervalMs = 60 * 60 * 1000;
+      else if (freq === 'hours_6' || freq === '6h') intervalMs = 6 * 60 * 60 * 1000;
+      else if (freq === 'hours_24' || freq === '24h') intervalMs = 24 * 60 * 60 * 1000;
 
       return now - lastSeen >= intervalMs;
     } catch {
@@ -136,6 +136,9 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
       // Device checks
       const isMobile = typeof window !== 'undefined' && window.innerWidth <= 767;
       if (!forcePreview) {
+        if (typeof window !== 'undefined' && (window.location.pathname.includes('/admin') || window.location.hash.includes('admin'))) {
+          return;
+        }
         if (!config.enabled) return;
         if (isMobile && config.mobileEnabled === false) return;
         if (!isMobile && config.desktopEnabled === false) return;

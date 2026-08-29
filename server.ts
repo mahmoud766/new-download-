@@ -574,20 +574,15 @@ async function startServer() {
       }
       return buildAdsterraCode(zoneKey, formatName);
     }
-    if (code.trim().length < 10) {
-      if (formatName === 'interstitial') {
-        return code;
-      }
-      return buildAdsterraCode(zoneKey, formatName);
-    }
 
-    const lower = code.toLowerCase();
-    // Security Rule 1: Reject dangerous JavaScript constructs and redirect payloads
+    const trimmed = code.trim();
+    const lower = trimmed.toLowerCase();
+
+    // Security Rule 1: Reject dangerous XSS/hijack constructs that force window/page navigation away
     const dangerousConstructs = [
-      'window.top', 'top.location', 'parent.location', 'window.open',
-      'location.replace', 'location.href', 'location.assign',
-      'document.write', 'eval(', 'new function', 'popunder', 'popup',
-      'javascript:', 'data:text/html', 'window.navigate'
+      'window.top.location', 'top.location.href', 'parent.location.href',
+      'location.replace(', 'window.location.replace(', 'location.href =',
+      'window.location =', 'document.location =', 'javascript:', 'data:text/html'
     ];
     for (const dangerous of dangerousConstructs) {
       if (lower.includes(dangerous)) {
@@ -597,47 +592,7 @@ async function startServer() {
       }
     }
 
-    // Security Rule 2: Validate external script source domains
-    const scriptSrcMatches = Array.from(code.matchAll(/src\s*=\s*["']([^"']+)["']/gi));
-    for (const m of scriptSrcMatches) {
-      const srcUrl = m[1];
-      try {
-        const parsedUrl = new URL(srcUrl.startsWith('//') ? `https:${srcUrl}` : srcUrl);
-        const host = parsedUrl.hostname.toLowerCase();
-        const isAllowedDomain =
-          host.endsWith('highperformanceformat.com') ||
-          host.endsWith('effectivecpmnetwork.com') ||
-          host.endsWith('googlesyndication.com') ||
-          host.endsWith('doubleclick.net') ||
-          host.endsWith('google.com');
-        if (!isAllowedDomain) {
-          console.warn(`[Ad Security Sanitizer] Rejected script from unauthorized domain: "${host}"`);
-          if (formatName === 'interstitial') return '';
-          return buildAdsterraCode(zoneKey, formatName);
-        }
-      } catch (e) {
-        console.warn(`[Ad Security Sanitizer] Invalid script URL in ad code: "${srcUrl}"`);
-        if (formatName === 'interstitial') return '';
-        return buildAdsterraCode(zoneKey, formatName);
-      }
-    }
-    
-    const keyMatches = Array.from(code.matchAll(/highperformanceformat\.com\/([^\/]+)\/invoke\.js/gi));
-    for (const m of keyMatches) {
-      const extractedKey = m[1];
-      if (!/^[a-f0-9]{32}$/i.test(extractedKey)) {
-        if (formatName === 'interstitial') return '';
-        return buildAdsterraCode(zoneKey, formatName);
-      }
-    }
-
-    const atOptionKeyMatch = code.match(/'key'\s*:\s*'([^']+)'/i) || code.match(/"key"\s*:\s*"([^"]+)"/i);
-    if (atOptionKeyMatch && !/^[a-f0-9]{32}$/i.test(atOptionKeyMatch[1])) {
-      if (formatName === 'interstitial') return '';
-      return buildAdsterraCode(zoneKey, formatName);
-    }
-
-    return code;
+    return trimmed;
   }
 
   // 2. Ad Placement Configurations API (Prisma PostgreSQL + Verified Persistence)
@@ -825,20 +780,30 @@ async function startServer() {
     try {
       const jsonString = JSON.stringify(sanitizedAds);
 
-      // 2. Write to Database Master (PostgreSQL)
-      await prisma.globalSettings.upsert({
-        where: { id: 'default' },
-        update: { adsConfigJson: jsonString },
-        create: { id: 'default', adsConfigJson: jsonString },
-      });
+      // 2. Write to Database Master (PostgreSQL / MariaDB)
+      await withDbTimeout(
+        prisma.globalSettings.upsert({
+          where: { id: 'default' },
+          update: { adsConfigJson: jsonString },
+          create: { id: 'default', adsConfigJson: jsonString },
+        }),
+        null,
+        1500
+      );
 
-      const verifiedRecord = await prisma.globalSettings.findUnique({ where: { id: 'default' } });
+      const verifiedRecord = await withDbTimeout(
+        prisma.globalSettings.findUnique({ where: { id: 'default' } }),
+        null,
+        1000
+      );
       if (verifiedRecord && verifiedRecord.adsConfigJson) {
         verifiedAds = JSON.parse(verifiedRecord.adsConfigJson);
       }
     } catch (e: any) {
-      console.warn('[Ads API] PostgreSQL database update notice:', e?.message || e);
+      console.warn('[Ads API] Database update notice:', e?.message || e);
     }
+
+    CONFIG_CACHE.ads = { data: verifiedAds, timestamp: Date.now() };
 
     return res.json({
       success: true,

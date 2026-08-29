@@ -475,6 +475,63 @@ async function runCobaltApi(ytUrl: string, fallbackTitle: string, fallbackThumb:
   return null;
 }
 
+async function runCobaltInstagram(igUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
+  const cobaltStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Cobalt API (Instagram)" targetUrl=${igUrl}`);
+  const cobaltEndpoints = [
+    'https://api.cobalt.tools/api/json',
+    'https://cobalt.m3u8.cx/api/json',
+    'https://co.wuk.sh/api/json',
+  ];
+
+  for (const cobaltUrl of cobaltEndpoints) {
+    if (signal?.aborted) break;
+    try {
+      const cobaltRes = await fetchWithTimeout(cobaltUrl, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        body: JSON.stringify({
+          url: igUrl,
+          videoQuality: '1080',
+          filenamePattern: 'classic',
+        }),
+      }, 5000, signal);
+
+      if (cobaltRes.ok) {
+        const cobaltData: any = await cobaltRes.json();
+        const finalUrl = cobaltData.url || cobaltData.stream || (cobaltData.picker && cobaltData.picker[0]?.url);
+        if (finalUrl && typeof finalUrl === 'string' && finalUrl.startsWith('http')) {
+          const latencyMs = Date.now() - cobaltStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt API (Instagram)" success=true latencyMs=${latencyMs}`);
+          recordTelemetry({
+            requestId,
+            provider: 'Cobalt API',
+            platform: 'Instagram',
+            latencyMs,
+            success: true,
+            targetUrl: igUrl,
+          });
+          return {
+            status: 'SUCCESS',
+            title: 'Instagram Video',
+            thumbnail: cobaltData.picker?.[0]?.thumb || '',
+            video_url: finalUrl,
+            forceProxy: true,
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
+  const latencyMs = Date.now() - cobaltStart;
+  console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Cobalt API (Instagram)" success=false latencyMs=${latencyMs}`);
+  return null;
+}
+
 async function runInstagramMirrors(cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const igStart = Date.now();
   console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="Instagram Mirrors" targetUrl=${cleanUrl}`);
@@ -500,6 +557,8 @@ async function runInstagramMirrors(cleanUrl: string, requestId?: string, signal?
         `https://ddinstagram.com/reel/${shortcode}/`,
         `https://vxinstagram.com/reel/${shortcode}/`,
         `https://instafix.app/reel/${shortcode}/`,
+        `https://kkinstagram.com/reel/${shortcode}/`,
+        `https://ddinstagram.com/p/${shortcode}/`,
       ];
 
       for (const mirrorUrl of mirrorEndpoints) {
@@ -555,6 +614,35 @@ async function runInstagramMirrors(cleanUrl: string, requestId?: string, signal?
         } catch (err) {}
       }
     }
+
+    // VKR Downloader fallback for Instagram
+    try {
+      const vkrRes = await fetchWithTimeout(`https://api.vkrdown.com/ig/?url=${encodeURIComponent(cleanUrl)}`, {}, 4000, signal);
+      if (vkrRes.ok) {
+        const vkrData: any = await vkrRes.json();
+        const mediaUrl = vkrData.data?.downloads?.[0]?.url || vkrData.data?.videoUrl || vkrData.url;
+        if (mediaUrl && typeof mediaUrl === 'string' && mediaUrl.startsWith('http')) {
+          const latencyMs = Date.now() - igStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Instagram Mirrors (VKR)" success=true latencyMs=${latencyMs}`);
+          recordTelemetry({
+            requestId,
+            provider: 'Instagram Mirrors',
+            platform: 'Instagram',
+            latencyMs,
+            success: true,
+            targetUrl: cleanUrl,
+          });
+          return {
+            status: 'SUCCESS',
+            title: vkrData.data?.title || igTitle,
+            thumbnail: vkrData.data?.thumbnail || igThumb,
+            video_url: mediaUrl,
+            forceProxy: true,
+          };
+        }
+      }
+    } catch (e) {}
+
     const latencyMs = Date.now() - igStart;
     console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="Instagram Mirrors" success=false latencyMs=${latencyMs}`);
     recordTelemetry({
@@ -855,13 +943,18 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
     else if (lowerUrl.includes('facebook.com') || lowerUrl.includes('fb.watch') || lowerUrl.includes('fb.gg')) platformKey = 'Facebook';
 
     // Get active enabled providers for target platform sorted strictly by priority (1 is highest priority)
-    const enabledProviders = dbProviders
-      .filter((p) => p.platform.toLowerCase() === platformKey.toLowerCase() && Boolean(p.enabled))
+    let enabledProviders = dbProviders
+      .filter((p) => {
+        const plat = (p.platform || '').toLowerCase();
+        const targetPlat = platformKey.toLowerCase();
+        return (plat === targetPlat || plat === 'multi-platform' || (targetPlat === 'general' && plat === 'general')) && Boolean(p.enabled);
+      })
       .sort((a, b) => Number(a.priority) - Number(b.priority));
 
-    console.log(`[FETCH_PROVIDER_SELECTED] requestId=${requestId} platform=${platformKey} enabledProvidersCount=${enabledProviders.length}`);
-
-    if (enabledProviders.length === 0) {
+    // If platform has records in DB but ALL were explicitly disabled by admin, return 503
+    const hasExplicitPlatformRecords = dbProviders.some((p) => (p.platform || '').toLowerCase() === platformKey.toLowerCase());
+    if (hasExplicitPlatformRecords && enabledProviders.length === 0) {
+      console.log(`[FETCH_PROVIDER_SELECTED] requestId=${requestId} platform=${platformKey} ALL_PROVIDERS_DISABLED`);
       return {
         status: 'FAILED',
         reason: 'NO_ENABLED_PROVIDERS',
@@ -869,23 +962,37 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       };
     }
 
+    // If no specific providers found in custom DB settings, fallback to initial default seed providers
+    if (enabledProviders.length === 0) {
+      enabledProviders = INITIAL_SEED_PROVIDERS
+        .filter((p) => {
+          const plat = (p.platform || '').toLowerCase();
+          const targetPlat = platformKey.toLowerCase();
+          return (plat === targetPlat || plat === 'multi-platform') && Boolean(p.enabled);
+        })
+        .sort((a, b) => Number(a.priority) - Number(b.priority));
+    }
+
+    console.log(`[FETCH_PROVIDER_SELECTED] requestId=${requestId} platform=${platformKey} enabledProvidersCount=${enabledProviders.length}`);
+
     // Execute enabled providers in order of priority
     if (platformKey === 'TikTok') {
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
-        if (p.providerKey === 'tikwm_api') {
+        const key = (p.providerKey || '').toLowerCase();
+        if (key.includes('tikwm')) {
           const res = await runTikWmApi(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'cobalt_tiktok') {
+        } else if (key.includes('cobalt')) {
           const res = await runCobaltTikTok(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'opengraph') {
+        } else if (key.includes('opengraph')) {
           const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -893,6 +1000,14 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
           }
         }
       }
+
+      // Built-in fallback tiers
+      const tikwmRes = await runTikWmApi(cleanUrl, requestId, signal);
+      if (tikwmRes) return tikwmRes;
+
+      const cobaltRes = await runCobaltTikTok(cleanUrl, requestId, signal);
+      if (cobaltRes) return cobaltRes;
+
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled TikTok providers failed to extract media.' };
     }
@@ -922,25 +1037,26 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
 
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
-        if (p.providerKey === 'ytdl_core') {
+        const key = (p.providerKey || '').toLowerCase();
+        if (key.includes('ytdl') || key.includes('ytdl_core')) {
           const res = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'loader_to') {
+        } else if (key.includes('loader')) {
           const res = await runLoaderTo(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'cobalt_api') {
+        } else if (key.includes('cobalt')) {
           const res = await runCobaltApi(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'opengraph') {
+        } else if (key.includes('opengraph')) {
           const res = await runOpenGraphScraper(ytUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -948,6 +1064,17 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
           }
         }
       }
+
+      // Built-in fallback tiers
+      const ytdlRes = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
+      if (ytdlRes) return ytdlRes;
+
+      const cobaltRes = await runCobaltApi(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
+      if (cobaltRes) return cobaltRes;
+
+      const loaderRes = await runLoaderTo(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
+      if (loaderRes) return loaderRes;
+
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled YouTube providers failed to extract media.' };
     }
@@ -963,19 +1090,20 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
 
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
-        if (p.providerKey === 'fb_plugin') {
+        const key = (p.providerKey || '').toLowerCase();
+        if (key.includes('fb_plugin') || key.includes('facebook') || key.includes('scraper')) {
           const res = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'cobalt_vkr_fb') {
+        } else if (key.includes('cobalt') || key.includes('vkr')) {
           const res = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'opengraph') {
+        } else if (key.includes('opengraph')) {
           const res = await runOpenGraphScraper(fbUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -983,6 +1111,17 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
           }
         }
       }
+
+      // Built-in resilient fallback tiers for Facebook
+      const pluginRes = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId, signal);
+      if (pluginRes) return pluginRes;
+
+      const cobaltFbRes = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId, signal);
+      if (cobaltFbRes) return cobaltFbRes;
+
+      const ogFbRes = await runOpenGraphScraper(fbUrl, requestId, signal);
+      if (ogFbRes) return ogFbRes;
+
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'Facebook aggressively blocked this link or all enabled Facebook providers failed.' };
     }
@@ -990,13 +1129,20 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
     if (platformKey === 'Instagram') {
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
-        if (p.providerKey === 'instagram_mirrors') {
+        const key = (p.providerKey || '').toLowerCase();
+        if (key.includes('mirror') || key.includes('instagram') || key.includes('snapinsta') || key.includes('fastdl') || key.includes('saveig')) {
           const res = await runInstagramMirrors(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
-        } else if (p.providerKey === 'opengraph') {
+        } else if (key.includes('cobalt')) {
+          const res = await runCobaltInstagram(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
+        } else if (key.includes('opengraph')) {
           const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -1004,6 +1150,17 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
           }
         }
       }
+
+      // Built-in resilient fallback tiers for Instagram
+      const mirrorRes = await runInstagramMirrors(cleanUrl, requestId, signal);
+      if (mirrorRes) return mirrorRes;
+
+      const cobaltIgRes = await runCobaltInstagram(cleanUrl, requestId, signal);
+      if (cobaltIgRes) return cobaltIgRes;
+
+      const ogIgRes = await runOpenGraphScraper(cleanUrl, requestId, signal);
+      if (ogIgRes) return ogIgRes;
+
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled Instagram providers failed.' };
     }
@@ -1011,7 +1168,8 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
     if (platformKey === 'General') {
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
-        if (p.providerKey === 'opengraph') {
+        const key = (p.providerKey || '').toLowerCase();
+        if (key.includes('opengraph') || key.includes('scraper')) {
           const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=General provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -1019,6 +1177,9 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
           }
         }
       }
+      const generalRes = await runOpenGraphScraper(cleanUrl, requestId, signal);
+      if (generalRes) return generalRes;
+
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=General status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'Direct extraction failed.' };
     }
