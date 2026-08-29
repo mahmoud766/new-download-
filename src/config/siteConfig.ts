@@ -1768,4 +1768,23 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     desktopEnabled: true,
     mobileEnabled: true,
   },
+  // Full-Screen Interstitial Placement (Default: OFF)
+  {
+    id: 'ad-interstitial',
+    slot: 'interstitial',
+    name: 'Full-Screen Interstitial',
+    enabled: false,
+    code: '',
+    heightPx: 480,
+    provider: 'custom_html',
+    format: 'interstitial',
+    responsive: true,
+    desktopEnabled: true,
+    mobileEnabled: true,
+    trigger: 'page_load',
+    frequencyControl: 'session',
+    displayDelayMs: 500,
+    closeDelaySec: 3,
+    closeButtonEnabled: true,
+  },
 ];

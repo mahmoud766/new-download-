@@ -35,6 +35,7 @@ const QuickActionsModal = lazy(() => import('./components/QuickActionsModal').th
 const DebugLogsModal = lazy(() => import('./components/DebugLogsModal').then((m) => ({ default: m.DebugLogsModal })));
 const SecretAdminAccessGateModal = lazy(() => import('./components/SecretAdminAccessGateModal').then((m) => ({ default: m.SecretAdminAccessGateModal })));
 const ExtraToolsSection = lazy(() => import('./components/ExtraToolsSection').then((m) => ({ default: m.ExtraToolsSection })));
+const InterstitialAdModal = lazy(() => import('./components/InterstitialAdModal').then((m) => ({ default: m.InterstitialAdModal })));
 
 export default function App() {
   const [currentLang, setCurrentLang] = useState<SupportedLanguage>(() => detectUserLanguage());
@@ -723,6 +724,9 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />
+
+        {/* Full-Screen Interstitial Ad Modal (Page Load Placement) */}
+        <InterstitialAdModal currentLang={currentLang} />
       </Suspense>
 
       {/* GDPR & AdSense Cookie Consent Banner */}

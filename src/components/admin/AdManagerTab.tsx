@@ -29,7 +29,10 @@ import {
   Play,
   Monitor,
   Smartphone,
-  CheckSquare
+  CheckSquare,
+  Maximize2,
+  Clock,
+  Sliders
 } from 'lucide-react';
 import { AdPlacementConfig, SupportedLanguage } from '../../types';
 import { DEFAULT_ADS_CONFIG } from '../../config/siteConfig';
@@ -238,6 +241,20 @@ export const AdManagerTab: React.FC<Props> = ({
     const updated = adList.map((slot) => (slot.id === id ? { ...slot, enabled: !slot.enabled } : slot));
     setAdList(updated);
     onShowToast('تم تغيير حالة تفعيل المساحة الإعلانية.');
+  };
+
+  // Update Slot Field
+  const handleUpdateSlotField = (id: string, field: keyof AdPlacementConfig, value: any) => {
+    const updated = adList.map((slot) => (slot.id === id || slot.slot === id ? { ...slot, [field]: value } : slot));
+    setAdList(updated);
+  };
+
+  // Preview Interstitial safely
+  const handlePreviewInterstitial = (slot: AdPlacementConfig) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('omnifetch_preview_interstitial', { detail: slot }));
+      onShowToast('جاري تشغيل المعاينة الحية لإعلان الشاشة الكاملة (Preview Mode)...');
+    }
   };
 
   // Change Code
@@ -613,8 +630,249 @@ export const AdManagerTab: React.FC<Props> = ({
       {/* Placements Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {adList.map((slot) => {
+          const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
           const isAdsterra = slot.code && (slot.code.includes('highperformanceformat') || slot.code.includes('atOptions'));
           const isAdSense = slot.code && slot.code.includes('adsbygoogle');
+
+          if (isInterstitial) {
+            return (
+              <div
+                key={slot.id}
+                className={`col-span-1 md:col-span-2 p-6 rounded-2xl border transition-all space-y-5 relative ${
+                  slot.enabled
+                    ? 'bg-slate-900 border-amber-500/50 shadow-xl shadow-amber-500/10 ring-1 ring-amber-500/20'
+                    : 'bg-slate-900/60 border-slate-800'
+                }`}
+              >
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`p-3 rounded-2xl ${
+                        slot.enabled ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <Maximize2 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-black text-base text-white">
+                          {slot.name || 'إعلان شاشة كاملة عند فتح الموقع (Full-Screen Interstitial)'}
+                        </h3>
+                        <span
+                          className={`px-2.5 py-0.5 text-[10px] font-extrabold uppercase rounded-full border ${
+                            slot.enabled
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                        >
+                          {slot.enabled ? 'مفعل (Active)' : 'معطل افتراضياً (Disabled)'}
+                        </span>
+                      </div>
+                      <span className="text-xs text-slate-400 font-mono">
+                        مساحة إعلانية منبثقة ملء الشاشة تظهر للزائر عند زيارة الموقع مع زر إغلاق آمن ومؤقت زمني
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Live Preview Button */}
+                    <button
+                      onClick={() => handlePreviewInterstitial(slot)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/50 font-bold text-xs transition shadow-md"
+                      title="معاينة حية فورية للإعلان كما يراه الزائر"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>معاينة حية فورية (Live Preview)</span>
+                    </button>
+
+                    {/* Enable / Disable Power Button */}
+                    <button
+                      onClick={() => handleToggleSlot(slot.id)}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border font-bold text-xs transition shadow-md ${
+                        slot.enabled
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 hover:bg-emerald-400'
+                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
+                      }`}
+                      title={slot.enabled ? 'تعطيل المساحة' : 'تفعيل المساحة'}
+                    >
+                      <Power className="w-3.5 h-3.5" />
+                      <span>{slot.enabled ? 'مفعل (ON)' : 'معطل (OFF)'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Settings Configuration Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                  {/* Trigger Option */}
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>حدث التشغيل (Trigger):</span>
+                    </label>
+                    <div className="font-mono text-slate-200 bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 text-xs">
+                      عند فتح الموقع (On Page Load)
+                    </div>
+                  </div>
+
+                  {/* Display Delay Option */}
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>مهلة الظهور بعد التحميل:</span>
+                    </label>
+                    <select
+                      value={slot.displayDelayMs !== undefined ? slot.displayDelayMs : 500}
+                      onChange={(e) => handleUpdateSlotField(slot.id, 'displayDelayMs', Number(e.target.value))}
+                      className="w-full bg-slate-900 text-slate-200 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                    >
+                      <option value={0}>0 ثانية (فوري مباشرة)</option>
+                      <option value={500}>500 مللي ثانية (افتراضي سلس)</option>
+                      <option value={1000}>1 ثانية</option>
+                      <option value={2000}>2 ثانية</option>
+                      <option value={3000}>3 ثواني</option>
+                      <option value={5000}>5 ثواني</option>
+                    </select>
+                  </div>
+
+                  {/* Frequency Control Option */}
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                      <span>معدل التكرار (Frequency):</span>
+                    </label>
+                    <select
+                      value={slot.frequencyControl || 'session'}
+                      onChange={(e) => handleUpdateSlotField(slot.id, 'frequencyControl', e.target.value)}
+                      className="w-full bg-slate-900 text-slate-200 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                    >
+                      <option value="session">مرة واحدة لكل جلسة (Session Storage)</option>
+                      <option value="minutes_15">مرة كل 15 دقيقة</option>
+                      <option value="minutes_30">مرة كل 30 دقيقة</option>
+                      <option value="hours_1">مرة كل ساعة</option>
+                      <option value="hours_6">مرة كل 6 ساعات</option>
+                      <option value="hours_24">مرة واحدة يومياً (24 ساعة)</option>
+                      <option value="always">مع كل فتح أو تحديث للصفحة</option>
+                    </select>
+                  </div>
+
+                  {/* Close Countdown Option */}
+                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
+                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>عداد الإغلاق (Close Countdown):</span>
+                    </label>
+                    <select
+                      value={slot.closeDelaySec !== undefined ? slot.closeDelaySec : 3}
+                      onChange={(e) => handleUpdateSlotField(slot.id, 'closeDelaySec', Number(e.target.value))}
+                      className="w-full bg-slate-900 text-slate-200 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                    >
+                      <option value={0}>إغلاق فوري بدون عداد (0 ثانية)</option>
+                      <option value={1}>1 ثانية</option>
+                      <option value={2}>2 ثانية</option>
+                      <option value={3}>3 ثواني (موصى به للمعلنين)</option>
+                      <option value={5}>5 ثواني</option>
+                      <option value={10}>10 ثواني</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Device Targeting Controls */}
+                <div className="flex flex-wrap items-center gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs">
+                  <span className="text-slate-400 font-bold">الأجهزة المستهدفة:</span>
+                  
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateSlotField(slot.id, 'mobileEnabled', slot.mobileEnabled === false ? true : false)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold transition ${
+                      slot.mobileEnabled !== false
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-slate-900 text-slate-500 border-slate-800'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>الهواتف الذكية (Mobile): {slot.mobileEnabled !== false ? 'مفعل ✓' : 'معطل ✕'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateSlotField(slot.id, 'desktopEnabled', slot.desktopEnabled === false ? true : false)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold transition ${
+                      slot.desktopEnabled !== false
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                        : 'bg-slate-900 text-slate-500 border-slate-800'
+                    }`}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                    <span>أجهزة الكمبيوتر (Desktop): {slot.desktopEnabled !== false ? 'مفعل ✓' : 'معطل ✕'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateSlotField(slot.id, 'closeButtonEnabled', slot.closeButtonEnabled === false ? true : false)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold transition ${
+                      slot.closeButtonEnabled !== false
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-slate-900 text-slate-500 border-slate-800'
+                    }`}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>زر الإغلاق المباشر: {slot.closeButtonEnabled !== false ? 'مفعل ✓' : 'معطل ✕'}</span>
+                  </button>
+                </div>
+
+                {/* Creative Code Editor & Direct Image Option */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* HTML / JavaScript Ad Code */}
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between text-slate-400 font-semibold">
+                      <span className="flex items-center gap-1.5">
+                        <Code2 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>كود HTML / JavaScript / Adsterra / AdSense المخصص:</span>
+                      </span>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={slot.code || ''}
+                      onChange={(e) => handleCodeChange(slot.id, e.target.value)}
+                      placeholder="<!-- الصق كود إعلان الشاشة الكاملة أو شفرة الجافاسكريبت هنا -->"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-amber-300 font-mono text-[11px] focus:outline-none focus:border-amber-500 resize-none leading-relaxed"
+                    />
+                  </div>
+
+                  {/* Direct Image Banner Creative (Optional) */}
+                  <div className="space-y-2.5 text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800">
+                    <span className="text-slate-400 font-bold flex items-center gap-1.5">
+                      <Image className="w-3.5 h-3.5 text-amber-400" />
+                      <span>إعلان صورة مباشر اختياري (Direct Image & Link):</span>
+                    </span>
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] text-slate-500 font-mono">رابط الصورة (Image URL):</span>
+                      <input
+                        type="url"
+                        value={slot.imageUrl || ''}
+                        onChange={(e) => handleUpdateSlotField(slot.id, 'imageUrl', e.target.value)}
+                        placeholder="https://example.com/banner-interstitial.png"
+                        className="w-full bg-slate-900 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-[11px] text-slate-500 font-mono">رابط التوجيه عند النقر (Destination URL):</span>
+                      <input
+                        type="url"
+                        value={slot.destinationUrl || ''}
+                        onChange={(e) => handleUpdateSlotField(slot.id, 'destinationUrl', e.target.value)}
+                        placeholder="https://sponsor-website.com/offer"
+                        className="w-full bg-slate-900 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div
@@ -675,7 +933,7 @@ export const AdManagerTab: React.FC<Props> = ({
                     <Power className="w-4 h-4" />
                   </button>
 
-                  {!['header_banner', 'pre_result', 'post_result', 'sidebar', 'footer_banner'].includes(slot.id) && (
+                  {!['header_banner', 'pre_result', 'post_result', 'sidebar', 'footer_banner', 'ad-interstitial'].includes(slot.id) && (
                     <button
                       onClick={() => handleDeleteSlot(slot.id)}
                       className="p-2 rounded-xl bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700 transition"

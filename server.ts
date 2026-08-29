@@ -568,7 +568,16 @@ async function startServer() {
 
   // Ad Security Sanitizer
   function sanitizeAdCode(code: string, zoneKey: string, formatName: string): string {
-    if (!code || code.trim().length < 10) {
+    if (!code || code.trim().length === 0) {
+      if (formatName === 'interstitial') {
+        return '';
+      }
+      return buildAdsterraCode(zoneKey, formatName);
+    }
+    if (code.trim().length < 10) {
+      if (formatName === 'interstitial') {
+        return code;
+      }
       return buildAdsterraCode(zoneKey, formatName);
     }
 
@@ -583,6 +592,7 @@ async function startServer() {
     for (const dangerous of dangerousConstructs) {
       if (lower.includes(dangerous)) {
         console.warn(`[Ad Security Sanitizer] Rejected ad code containing dangerous construct: "${dangerous}"`);
+        if (formatName === 'interstitial') return '';
         return buildAdsterraCode(zoneKey, formatName);
       }
     }
@@ -602,10 +612,12 @@ async function startServer() {
           host.endsWith('google.com');
         if (!isAllowedDomain) {
           console.warn(`[Ad Security Sanitizer] Rejected script from unauthorized domain: "${host}"`);
+          if (formatName === 'interstitial') return '';
           return buildAdsterraCode(zoneKey, formatName);
         }
       } catch (e) {
         console.warn(`[Ad Security Sanitizer] Invalid script URL in ad code: "${srcUrl}"`);
+        if (formatName === 'interstitial') return '';
         return buildAdsterraCode(zoneKey, formatName);
       }
     }
@@ -614,12 +626,14 @@ async function startServer() {
     for (const m of keyMatches) {
       const extractedKey = m[1];
       if (!/^[a-f0-9]{32}$/i.test(extractedKey)) {
+        if (formatName === 'interstitial') return '';
         return buildAdsterraCode(zoneKey, formatName);
       }
     }
 
     const atOptionKeyMatch = code.match(/'key'\s*:\s*'([^']+)'/i) || code.match(/"key"\s*:\s*"([^"]+)"/i);
     if (atOptionKeyMatch && !/^[a-f0-9]{32}$/i.test(atOptionKeyMatch[1])) {
+      if (formatName === 'interstitial') return '';
       return buildAdsterraCode(zoneKey, formatName);
     }
 
@@ -674,6 +688,7 @@ async function startServer() {
         { id: 'ad-legal-bottom', slot: 'LEGAL_BOTTOM', name: 'Legal Pages - Bottom Banner', format: 'leaderboard_728x90', heightPx: 90 },
         { id: 'ad-sidebar', slot: 'sidebar', name: 'Sidebar Ad Banner', format: 'vertical_160x600', heightPx: 250 },
         { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50 },
+        { id: 'ad-interstitial', slot: 'interstitial', name: 'Full-Screen Interstitial', format: 'interstitial', heightPx: 480 },
       ];
 
       const mergedAds = ALL_DEFAULT_SLOTS.map((defItem) => {
@@ -687,21 +702,30 @@ async function startServer() {
         }
         const fmt = existing?.format || defItem.format;
         const sanitizedCode = sanitizeAdCode(rawCode, rawZoneKey, fmt);
+        const isInterstitial = defItem.slot === 'interstitial';
+        const defaultEnabled = isInterstitial ? false : true;
 
         return {
           id: existing?.id || defItem.id,
           slot: defItem.slot,
           name: existing?.name || defItem.name,
-          enabled: existing ? existing.enabled !== false : true,
+          enabled: existing ? existing.enabled === true : defaultEnabled,
           code: sanitizedCode,
           heightPx: existing?.heightPx || defItem.heightPx,
-          provider: existing?.provider || 'adsterra',
+          provider: existing?.provider || (isInterstitial ? 'custom_html' : 'adsterra'),
           publisherId: existing?.publisherId || 'ca-pub-6708942894533593',
           slotId: rawZoneKey && /^[a-f0-9]{32}$/i.test(rawZoneKey) ? rawZoneKey : defItem.slot,
           format: fmt,
           responsive: existing?.responsive !== false,
           desktopEnabled: existing?.desktopEnabled !== false,
           mobileEnabled: existing?.mobileEnabled !== false,
+          trigger: existing?.trigger || 'page_load',
+          frequencyControl: existing?.frequencyControl || 'session',
+          displayDelayMs: existing?.displayDelayMs !== undefined ? Number(existing.displayDelayMs) : 500,
+          closeDelaySec: existing?.closeDelaySec !== undefined ? Number(existing.closeDelaySec) : 3,
+          closeButtonEnabled: existing?.closeButtonEnabled !== false,
+          imageUrl: existing?.imageUrl || '',
+          destinationUrl: existing?.destinationUrl || '',
         };
       });
 
@@ -717,6 +741,7 @@ async function startServer() {
         { id: 'ad-home-after-hero', slot: 'HOME_AFTER_HERO', name: 'Homepage - After Hero / Search Section', format: 'native_300x250', heightPx: 100, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
         { id: 'ad-home-after-trending', slot: 'HOME_AFTER_TRENDING', name: 'Homepage - After Trending Videos Section', format: 'leaderboard_728x90', heightPx: 90, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
         { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
+        { id: 'ad-interstitial', slot: 'interstitial', name: 'Full-Screen Interstitial', format: 'interstitial', heightPx: 480, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true, trigger: 'page_load', frequencyControl: 'session', displayDelayMs: 500, closeDelaySec: 3, closeButtonEnabled: true },
       ];
       return res.json({
         success: true,
