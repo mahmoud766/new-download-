@@ -3,8 +3,11 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ytdl from '@distube/ytdl-core';
+import * as btchModule from 'btch-downloader';
 import { recordTelemetry } from './telemetry';
 import { prisma, withDbTimeout } from '../src/lib/prisma';
+
+const btchLib: any = (btchModule as any).default || btchModule;
 
 const execFileAsync = promisify(execFile);
 
@@ -890,7 +893,7 @@ async function runBtchFbExtractor(
   console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="btch Facebook" targetUrl=${targetUrl}`);
   try {
     if (signal?.aborted) return null;
-    const btch = require('btch-downloader');
+    const btch = btchLib;
     if (typeof btch?.fbdown === 'function') {
       const res = await btch.fbdown(targetUrl);
       if (res && res.status) {
@@ -977,7 +980,7 @@ async function runBtchIgExtractor(
   console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="btch Instagram" targetUrl=${targetUrl}`);
   try {
     if (signal?.aborted) return null;
-    const btch = require('btch-downloader');
+    const btch = btchLib;
     if (typeof btch?.igdl === 'function') {
       const res = await btch.igdl(targetUrl);
       if (res && res.status && Array.isArray(res.result) && res.result.length > 0) {

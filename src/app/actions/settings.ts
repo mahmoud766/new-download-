@@ -3,17 +3,10 @@
 import { prisma } from '../../lib/prisma';
 import { SiteSettings } from '../../types';
 
-// Mock revalidatePath for Vite/Express runtime compatibility if next/cache is not present
-let revalidatePath: (path: string) => void;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const nextCache = require('next/cache');
-  revalidatePath = nextCache.revalidatePath;
-} catch {
-  revalidatePath = (path: string) => {
-    console.log(`[Cache Revalidation] Revalidated path: ${path}`);
-  };
-}
+// Mock revalidatePath for Vite/Express runtime compatibility
+const revalidatePath = (path: string) => {
+  console.log(`[Cache Revalidation] Revalidated path: ${path}`);
+};
 
 export interface SaveSettingsInput {
   siteName?: string;
