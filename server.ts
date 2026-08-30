@@ -2998,17 +2998,19 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
     let isResponded = false;
     let slotAcquired = false;
 
-    // Disconnect listener: if client drops socket, abort controller to free downstream sockets and queue immediately
-    const onClientClose = () => {
+    // Disconnect listener: if client drops connection before response finishes
+    const onResponseClose = () => {
       if (!res.writableEnded && !isResponded) {
         fetchAbortController.abort();
       }
     };
-    req.on('close', onClientClose);
+    res.on('close', onResponseClose);
 
     const safeRespond = (statusCode: number, data: any) => {
       if (isResponded || res.headersSent) return;
       isResponded = true;
+      clearTimeout(globalTimeoutId);
+      res.removeListener('close', onResponseClose);
       const elapsedMs = Date.now() - fetchStartTime;
       console.log(`[FETCH_RESPONSE_SENT] requestId=${requestId} statusCode=${statusCode} elapsedMs=${elapsedMs}`);
       if (statusCode === 200) {
@@ -3111,6 +3113,56 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
           },
         }).catch(() => {});
 
+        const renderedFormats = (extraction.formats && extraction.formats.length > 0)
+          ? extraction.formats.map((f, i) => {
+              const formatExt = f.format || (f.id?.includes('audio') ? 'mp3' : 'mp4');
+              const isAudio = formatExt === 'mp3';
+              const fUrl = f.url || directUrl;
+              const fTitleClean = `${titleClean}_${(f.quality || 'media').replace(/[^a-zA-Z0-9]/g, '_')}`;
+              const downloadProxyUrl = `/api/download?url=${encodeURIComponent(fUrl)}&sourceUrl=${encodeURIComponent(cleanUrl)}&filename=${encodeURIComponent(fTitleClean)}.${formatExt}`;
+
+              return {
+                id: f.id || `fmt_${i}`,
+                quality: f.quality || (isAudio ? 'Audio MP3' : 'HD Stream (MP4)'),
+                format: formatExt,
+                resolution: f.resolution || (isAudio ? 'Audio' : '720p'),
+                sizeBytes: f.sizeBytes,
+                sizeFormatted: f.sizeFormatted,
+                url: (f.forceProxy || forceProxyFlag) ? downloadProxyUrl : fUrl,
+                directVideoUrl: f.directVideoUrl || fUrl,
+                hasAudio: f.hasAudio ?? true,
+                watermarkFree: f.watermarkFree ?? true,
+                forceProxy: true,
+              };
+            })
+          : [
+              {
+                id: 'fmt_direct_hd',
+                quality: 'Full HD Stream (MP4)',
+                format: 'mp4',
+                resolution: '1080p',
+                sizeBytes: 25000000,
+                sizeFormatted: '25.0 MB',
+                url: `/api/download?url=${encodeURIComponent(directUrl)}&sourceUrl=${encodeURIComponent(cleanUrl)}&filename=${encodeURIComponent(titleClean)}.mp4`,
+                directVideoUrl: directUrl,
+                hasAudio: true,
+                watermarkFree: true,
+                forceProxy: forceProxyFlag,
+              },
+              {
+                id: 'fmt_direct_audio',
+                quality: 'Audio MP3 Stream (320kbps)',
+                format: 'mp3',
+                bitrate: '320 kbps',
+                sizeBytes: 4000000,
+                sizeFormatted: '4.0 MB',
+                url: `/api/download?url=${encodeURIComponent(directUrl)}&sourceUrl=${encodeURIComponent(cleanUrl)}&filename=${encodeURIComponent(titleClean)}_audio.mp3`,
+                directVideoUrl: directUrl,
+                hasAudio: true,
+                forceProxy: forceProxyFlag,
+              },
+            ];
+
         return safeRespond(200, {
           success: true,
           requestId,
@@ -3127,33 +3179,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
               username: `@${platformName.toLowerCase().replace(/[^a-z]/g, '')}`,
               verified: true,
             },
-            formats: [
-              {
-                id: 'fmt_direct_hd',
-                quality: 'Full HD Stream (MP4)',
-                format: 'mp4',
-                resolution: '1080p',
-                sizeBytes: 25000000,
-                sizeFormatted: '25.0 MB',
-                url: `/api/download?url=${encodeURIComponent(directUrl)}&filename=${encodeURIComponent(titleClean)}.mp4`,
-                directVideoUrl: directUrl,
-                hasAudio: true,
-                watermarkFree: true,
-                forceProxy: forceProxyFlag,
-              },
-              {
-                id: 'fmt_direct_audio',
-                quality: 'Audio MP3 Stream (320kbps)',
-                format: 'mp3',
-                bitrate: '320 kbps',
-                sizeBytes: 4000000,
-                sizeFormatted: '4.0 MB',
-                url: `/api/download?url=${encodeURIComponent(directUrl)}&filename=${encodeURIComponent(titleClean)}_audio.mp3`,
-                directVideoUrl: directUrl,
-                hasAudio: true,
-                forceProxy: forceProxyFlag,
-              },
-            ],
+            formats: renderedFormats,
           },
           debug: {
             requestId,
@@ -3547,7 +3573,7 @@ function buildAdsterraCode(zoneKey: string, formatName: string = ''): string {
       return safeRespond(500, { success: false, error: err.message || 'حدث خطأ في الخادم أثناء استخراج الفيديو' });
     } finally {
       clearTimeout(globalTimeoutId);
-      req.removeListener('close', onClientClose);
+      res.removeListener('close', onResponseClose);
       if (slotAcquired) {
         releaseFetchSlot();
       }

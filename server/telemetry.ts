@@ -1,4 +1,4 @@
-import { prisma } from '../src/lib/prisma';
+import { prisma, withDbTimeout } from '../src/lib/prisma';
 
 export interface TelemetryEvent {
   requestId?: string;
@@ -29,20 +29,22 @@ export function recordTelemetry(event: TelemetryEvent): void {
   }
 
   // Non-blocking asynchronous write to Supabase PostgreSQL ApiTelemetry table
-  prisma.apiTelemetry.create({
-    data: {
-      requestId: event.requestId || null,
-      provider: event.provider,
-      platform: event.platform,
-      latencyMs: Math.max(1, Math.round(event.latencyMs)),
-      success: event.success,
-      statusCode: event.statusCode || (event.success ? 200 : 500),
-      errorMessage: event.errorMessage ? event.errorMessage.substring(0, 255) : null,
-      targetUrl: event.targetUrl ? event.targetUrl.substring(0, 150) : null,
-    },
-  }).catch((err) => {
-    console.warn('[Telemetry DB Write Notice]:', err?.message || err);
-  });
+  withDbTimeout(
+    prisma.apiTelemetry.create({
+      data: {
+        requestId: event.requestId || null,
+        provider: event.provider,
+        platform: event.platform,
+        latencyMs: Math.max(1, Math.round(event.latencyMs)),
+        success: event.success,
+        statusCode: event.statusCode || (event.success ? 200 : 500),
+        errorMessage: event.errorMessage ? event.errorMessage.substring(0, 255) : null,
+        targetUrl: event.targetUrl ? event.targetUrl.substring(0, 150) : null,
+      },
+    }),
+    null,
+    500
+  ).catch(() => {});
 }
 
 export function getInMemoryEvents() {

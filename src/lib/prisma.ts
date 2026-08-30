@@ -289,6 +289,9 @@ export async function withDbTimeout<T>(
     if (timer && typeof timer.unref === 'function') timer.unref();
   });
 
+  // Attach catch handler to queryPromise to prevent unhandled rejection noise when timeout wins
+  queryPromise.catch(() => {});
+
   try {
     const result = await Promise.race([queryPromise, timeoutPromise]);
     if (timer) clearTimeout(timer);

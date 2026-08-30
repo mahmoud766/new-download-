@@ -1,8 +1,22 @@
 import fs from 'fs';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import ytdl from '@distube/ytdl-core';
 import { recordTelemetry } from './telemetry';
 import { prisma, withDbTimeout } from '../src/lib/prisma';
+
+const execFileAsync = promisify(execFile);
+
+function findYtDlpPath(): string | null {
+  const customBin = path.join(process.cwd(), 'bin', 'yt-dlp');
+  if (fs.existsSync(customBin)) return customBin;
+  const globalBin = '/app/applet/bin/yt-dlp';
+  if (fs.existsSync(globalBin)) return globalBin;
+  const tmpBin = '/tmp/yt-dlp';
+  if (fs.existsSync(tmpBin)) return tmpBin;
+  return 'yt-dlp';
+}
 
 export interface ExtractedMediaResult {
   status: 'SUCCESS' | 'FAILED';
@@ -64,34 +78,48 @@ export async function fetchWithTimeout(
 }
 
 const INITIAL_SEED_PROVIDERS = [
+  { providerKey: 'yt_dlp_fb', name: 'yt-dlp Facebook Engine', type: 'Node Native Binary', platform: 'Facebook', enabled: true, priority: 1 },
+  { providerKey: 'btch_fb', name: 'RapidCDN / FB Decoder', type: 'CDN Conversion', platform: 'Facebook', enabled: true, priority: 2 },
+  { providerKey: 'fb_plugin', name: 'FB Plugin Scraper', type: 'Facebook Scraper', platform: 'Facebook', enabled: true, priority: 3 },
+  { providerKey: 'cobalt_vkr_fb', name: 'Cobalt / VKR API', type: 'External Engine', platform: 'Facebook', enabled: true, priority: 4 },
   { providerKey: 'tikwm_api', name: 'TikWM API', type: 'Extractor Engine', platform: 'TikTok', enabled: true, priority: 1 },
-  { providerKey: 'cobalt_tiktok', name: 'Cobalt TikTok API', type: 'External Engine', platform: 'TikTok', enabled: true, priority: 2 },
-  { providerKey: 'ytdl_core', name: 'ytdl-core', type: 'Node Native', platform: 'YouTube', enabled: true, priority: 1 },
-  { providerKey: 'loader_to', name: 'Loader.to CDN', type: 'CDN Conversion', platform: 'YouTube', enabled: true, priority: 2 },
-  { providerKey: 'cobalt_api', name: 'Cobalt API', type: 'External Engine', platform: 'YouTube', enabled: true, priority: 3 },
-  { providerKey: 'instagram_mirrors', name: 'Instagram Mirrors', type: 'HTML Mirror Scraper', platform: 'Instagram', enabled: true, priority: 1 },
-  { providerKey: 'fb_plugin', name: 'FB Plugin Scraper', type: 'Facebook Scraper', platform: 'Facebook', enabled: true, priority: 1 },
-  { providerKey: 'cobalt_vkr_fb', name: 'Cobalt / VKR API', type: 'External Engine', platform: 'Facebook', enabled: true, priority: 2 },
+  { providerKey: 'yt_dlp_tiktok', name: 'yt-dlp TikTok Engine', type: 'Node Native Binary', platform: 'TikTok', enabled: true, priority: 2 },
+  { providerKey: 'cobalt_tiktok', name: 'Cobalt TikTok API', type: 'External Engine', platform: 'TikTok', enabled: true, priority: 3 },
+  { providerKey: 'yt_dlp_youtube', name: 'yt-dlp YouTube Engine', type: 'Node Native Binary', platform: 'YouTube', enabled: true, priority: 1 },
+  { providerKey: 'ytdl_core', name: 'ytdl-core', type: 'Node Native', platform: 'YouTube', enabled: true, priority: 2 },
+  { providerKey: 'loader_to', name: 'Loader.to CDN', type: 'CDN Conversion', platform: 'YouTube', enabled: true, priority: 3 },
+  { providerKey: 'cobalt_api', name: 'Cobalt API', type: 'External Engine', platform: 'YouTube', enabled: true, priority: 4 },
+  { providerKey: 'yt_dlp_instagram', name: 'yt-dlp Instagram Engine', type: 'Node Native Binary', platform: 'Instagram', enabled: true, priority: 1 },
+  { providerKey: 'instagram_mirrors', name: 'Instagram Mirrors', type: 'HTML Mirror Scraper', platform: 'Instagram', enabled: true, priority: 2 },
+  { providerKey: 'cobalt_instagram', name: 'Cobalt Instagram API', type: 'External Engine', platform: 'Instagram', enabled: true, priority: 3 },
   { providerKey: 'opengraph', name: 'OpenGraph Scraper', type: 'Metadata Scraper', platform: 'General', enabled: true, priority: 1 },
 ];
 
+let cachedDbProviders: any[] | null = null;
+let lastDbProviderCacheTime = 0;
+const DB_PROVIDER_CACHE_TTL_MS = 60000; // 60 seconds
+
 /**
- * Authoritative provider configuration lookup from Supabase PostgreSQL.
- * Case 1: Database available + ProviderSetting records exist -> return database providers.
- * Case 2: Database available + table empty -> use INITIAL_SEED_PROVIDERS as operational fallback (no mutation on read).
- * Case 3: Database unavailable -> use INITIAL_SEED_PROVIDERS as temporary resilience fallback with a clear warning (no mutation, no suppression).
+ * Authoritative provider configuration lookup with fast in-memory caching
  */
 export async function getProviderSettingsFromDb(): Promise<any[]> {
+  const now = Date.now();
+  if (cachedDbProviders && (now - lastDbProviderCacheTime < DB_PROVIDER_CACHE_TTL_MS)) {
+    return cachedDbProviders;
+  }
+
   try {
     const dbProviders = await withDbTimeout(
       prisma.providerSetting.findMany({
         orderBy: { priority: 'asc' },
       }),
       INITIAL_SEED_PROVIDERS,
-      1500
+      300 // Non-blocking 300ms threshold
     );
 
     if (dbProviders && dbProviders.length > 0) {
+      cachedDbProviders = dbProviders;
+      lastDbProviderCacheTime = now;
       return dbProviders;
     }
 
@@ -103,11 +131,11 @@ export async function getProviderSettingsFromDb(): Promise<any[]> {
 
 // Helper to resolve Facebook share/redirect links to canonical URL
 async function resolveFacebookUrl(inputUrl: string, signal?: AbortSignal): Promise<string> {
-  let fbUrl = inputUrl;
-  if (fbUrl.includes('?mibextid=')) fbUrl = fbUrl.split('?mibextid=')[0];
-  if (fbUrl.includes('?share_id=')) fbUrl = fbUrl.split('?share_id=')[0];
-  if (fbUrl.includes('&mibextid=')) fbUrl = fbUrl.split('&mibextid=')[0];
-  if (fbUrl.includes('?rdid=')) fbUrl = fbUrl.split('?rdid=')[0];
+  let fbUrl = inputUrl.trim();
+  fbUrl = fbUrl.replace(/(\?|&)(mibextid|share_id|rdid|ref|sfnsn|locale|__cft__\[0\]|__tn__|igsh|utm_[a-zA-Z_]+|fbclid)=[^&#]*/g, '');
+  if (fbUrl.endsWith('?') || fbUrl.endsWith('&')) {
+    fbUrl = fbUrl.slice(0, -1);
+  }
 
   if (fbUrl.includes('/share/') || fbUrl.includes('fb.watch') || fbUrl.includes('fb.gg') || fbUrl.includes('m.facebook.com')) {
     try {
@@ -118,7 +146,7 @@ async function resolveFacebookUrl(inputUrl: string, signal?: AbortSignal): Promi
           'Accept-Language': 'en-US,en;q=0.9',
         },
         redirect: 'follow',
-      }, 5000, signal);
+      }, 3500, signal);
 
       if (res.ok) {
         const resolvedRedirectUrl = res.url;
@@ -670,6 +698,319 @@ async function runInstagramMirrors(cleanUrl: string, requestId?: string, signal?
   return null;
 }
 
+async function runYtDlpExtractor(
+  targetUrl: string,
+  platform: string,
+  requestId?: string,
+  signal?: AbortSignal
+): Promise<ExtractedMediaResult | null> {
+  const ytStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="yt-dlp Engine" targetUrl=${targetUrl}`);
+
+  const binPath = findYtDlpPath();
+  if (!binPath) {
+    console.warn(`[FETCH_PROVIDER_ERROR] requestId=${requestId} provider="yt-dlp Engine" binary not found`);
+    return null;
+  }
+
+  const args = [
+    '-j',
+    '--no-warnings',
+    '--no-check-certificates',
+    '--prefer-free-formats',
+    '--add-header',
+    'User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+    targetUrl,
+  ];
+
+  try {
+    if (signal?.aborted) return null;
+
+    let stdout = '';
+    try {
+      const res = await execFileAsync(binPath, args, {
+        timeout: 16000,
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env, PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' },
+      });
+      stdout = res.stdout;
+    } catch (binErr: any) {
+      try {
+        const pyRes = await execFileAsync('python3', [binPath, ...args], {
+          timeout: 16000,
+          maxBuffer: 10 * 1024 * 1024,
+          env: { ...process.env, PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' },
+        });
+        stdout = pyRes.stdout;
+      } catch (pyErr: any) {
+        throw binErr;
+      }
+    }
+
+    if (!stdout || !stdout.trim()) return null;
+
+    const trimmed = stdout.trim();
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
+    const jsonStr = trimmed.substring(firstBrace, lastBrace + 1);
+    const info = JSON.parse(jsonStr);
+    const title = info.title || `${platform} Video`;
+    const thumbnail = info.thumbnail || '';
+    const rawFormats: any[] = Array.isArray(info.formats) ? info.formats : [];
+
+    const parsedFormats: Array<{
+      id: string;
+      quality: string;
+      format: string;
+      resolution?: string;
+      sizeBytes?: number;
+      sizeFormatted?: string;
+      url: string;
+      directVideoUrl?: string;
+      hasAudio?: boolean;
+      watermarkFree?: boolean;
+      forceProxy?: boolean;
+    }> = [];
+
+    // Filter progressive and valid formats
+    const progressive = rawFormats.filter((f) => f.url && f.vcodec !== 'none');
+    progressive.sort((a, b) => (b.height || 0) - (a.height || 0) || (b.filesize || 0) - (a.filesize || 0));
+
+    for (const f of progressive) {
+      const height = f.height || (f.resolution && f.resolution.includes('x') ? parseInt(f.resolution.split('x')[1]) : null);
+      const qualityLabel = height ? `${height}p` : f.format_note || (f.format_id === 'hd' ? 'HD 720p' : 'SD 480p');
+      const sizeBytes = f.filesize || f.filesize_approx || 0;
+      const sizeFormatted = sizeBytes > 0 ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB` : undefined;
+
+      parsedFormats.push({
+        id: f.format_id || `mp4-${qualityLabel}`,
+        quality: qualityLabel,
+        format: f.ext || 'mp4',
+        resolution: f.resolution || (height ? `${f.width || '1280'}x${height}` : undefined),
+        sizeBytes: sizeBytes || undefined,
+        sizeFormatted,
+        url: f.url,
+        directVideoUrl: f.url,
+        hasAudio: f.acodec !== 'none',
+        watermarkFree: true,
+        forceProxy: true,
+      });
+    }
+
+    if (parsedFormats.length === 0 && info.url) {
+      parsedFormats.push({
+        id: 'default',
+        quality: 'HD',
+        format: info.ext || 'mp4',
+        url: info.url,
+        directVideoUrl: info.url,
+        hasAudio: true,
+        watermarkFree: true,
+        forceProxy: true,
+      });
+    }
+
+    // Audio format
+    const audioStreams = rawFormats.filter((f) => f.url && f.vcodec === 'none' && f.acodec !== 'none');
+    if (audioStreams.length > 0) {
+      const topAudio = audioStreams[audioStreams.length - 1];
+      const audioSize = topAudio.filesize || topAudio.filesize_approx || 0;
+      parsedFormats.push({
+        id: 'audio-m4a',
+        quality: 'Audio MP3/M4A (128kbps)',
+        format: 'mp3',
+        sizeBytes: audioSize || undefined,
+        sizeFormatted: audioSize > 0 ? `${(audioSize / (1024 * 1024)).toFixed(1)} MB` : undefined,
+        url: topAudio.url,
+        directVideoUrl: topAudio.url,
+        hasAudio: true,
+        watermarkFree: true,
+        forceProxy: true,
+      });
+    }
+
+    // Prioritize formats with audio and MP4 format
+    parsedFormats.sort((a, b) => {
+      if (a.format === 'mp3' && b.format !== 'mp3') return 1;
+      if (b.format === 'mp3' && a.format !== 'mp3') return -1;
+      const aAudio = a.hasAudio ? 1 : 0;
+      const bAudio = b.hasAudio ? 1 : 0;
+      if (aAudio !== bAudio) return bAudio - aAudio;
+      return (b.sizeBytes || 0) - (a.sizeBytes || 0);
+    });
+
+    const firstVideo = parsedFormats.find((f) => f.format !== 'mp3' && f.url) || parsedFormats[0];
+    const topVideoUrl = firstVideo?.url || info.url || null;
+
+    if (topVideoUrl) {
+      const latencyMs = Date.now() - ytStart;
+      console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="yt-dlp Engine" success=true latencyMs=${latencyMs}`);
+      recordTelemetry({
+        requestId,
+        provider: 'yt-dlp Engine',
+        platform,
+        latencyMs,
+        success: true,
+        targetUrl,
+      });
+
+      return {
+        status: 'SUCCESS',
+        title,
+        thumbnail,
+        video_url: topVideoUrl,
+        formats: parsedFormats,
+        forceProxy: true,
+      };
+    }
+  } catch (err: any) {
+    const latencyMs = Date.now() - ytStart;
+    console.warn(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="yt-dlp Engine" success=false error="${err?.message || err}" latencyMs=${latencyMs}`);
+    recordTelemetry({
+      requestId,
+      provider: 'yt-dlp Engine',
+      platform,
+      latencyMs,
+      success: false,
+      errorMessage: err?.message || 'yt-dlp execution error',
+      targetUrl,
+    });
+  }
+
+  return null;
+}
+
+async function runBtchFbExtractor(
+  targetUrl: string,
+  requestId?: string,
+  signal?: AbortSignal
+): Promise<ExtractedMediaResult | null> {
+  const btchStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="btch Facebook" targetUrl=${targetUrl}`);
+  try {
+    if (signal?.aborted) return null;
+    const btch = require('btch-downloader');
+    if (typeof btch?.fbdown === 'function') {
+      const res = await btch.fbdown(targetUrl);
+      if (res && res.status) {
+        const hdUrl = res.HD || res.Normal_video;
+        const sdUrl = res.Normal_video || res.HD;
+
+        const extractDirect = (rapidUrl: string | null) => {
+          if (!rapidUrl) return null;
+          if (rapidUrl.includes('token=')) {
+            try {
+              const tokenPart = rapidUrl.split('token=')[1]?.split('&')[0];
+              if (tokenPart) {
+                const payload = JSON.parse(Buffer.from(tokenPart.split('.')[1], 'base64').toString('utf8'));
+                if (payload && payload.url && payload.url.startsWith('http')) {
+                  return payload.url;
+                }
+              }
+            } catch {}
+          }
+          return rapidUrl;
+        };
+
+        const directHd = extractDirect(hdUrl);
+        const directSd = extractDirect(sdUrl);
+        const finalTop = directHd || directSd || hdUrl || sdUrl;
+
+        if (finalTop && finalTop.startsWith('http')) {
+          const latencyMs = Date.now() - btchStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Facebook" success=true latencyMs=${latencyMs}`);
+          recordTelemetry({
+            requestId,
+            provider: 'btch Facebook',
+            platform: 'Facebook',
+            latencyMs,
+            success: true,
+            targetUrl,
+          });
+
+          return {
+            status: 'SUCCESS',
+            title: 'Facebook Video',
+            thumbnail: '',
+            video_url: finalTop,
+            formats: [
+              ...(directHd ? [{
+                id: 'fb-hd',
+                quality: 'HD 720p',
+                format: 'mp4',
+                url: directHd,
+                directVideoUrl: directHd,
+                hasAudio: true,
+                watermarkFree: true,
+                forceProxy: true,
+              }] : []),
+              ...(directSd ? [{
+                id: 'fb-sd',
+                quality: 'SD 480p',
+                format: 'mp4',
+                url: directSd,
+                directVideoUrl: directSd,
+                hasAudio: true,
+                watermarkFree: true,
+                forceProxy: true,
+              }] : []),
+            ],
+            forceProxy: true,
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    const latencyMs = Date.now() - btchStart;
+    console.warn(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Facebook" success=false error="${err?.message || err}" latencyMs=${latencyMs}`);
+  }
+  return null;
+}
+
+async function runBtchIgExtractor(
+  targetUrl: string,
+  requestId?: string,
+  signal?: AbortSignal
+): Promise<ExtractedMediaResult | null> {
+  const btchStart = Date.now();
+  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="btch Instagram" targetUrl=${targetUrl}`);
+  try {
+    if (signal?.aborted) return null;
+    const btch = require('btch-downloader');
+    if (typeof btch?.igdl === 'function') {
+      const res = await btch.igdl(targetUrl);
+      if (res && res.status && Array.isArray(res.result) && res.result.length > 0) {
+        const item = res.result.find((r: any) => r.url && r.url.startsWith('http')) || res.result[0];
+        if (item && item.url && item.url.startsWith('http')) {
+          const latencyMs = Date.now() - btchStart;
+          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Instagram" success=true latencyMs=${latencyMs}`);
+          recordTelemetry({
+            requestId,
+            provider: 'btch Instagram',
+            platform: 'Instagram',
+            latencyMs,
+            success: true,
+            targetUrl,
+          });
+
+          return {
+            status: 'SUCCESS',
+            title: 'Instagram Reel',
+            thumbnail: item.thumbnail || '',
+            video_url: item.url,
+            forceProxy: true,
+          };
+        }
+      }
+    }
+  } catch (err: any) {
+    const latencyMs = Date.now() - btchStart;
+    console.warn(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Instagram" success=false error="${err?.message || err}" latencyMs=${latencyMs}`);
+  }
+  return null;
+}
+
 async function runFbPluginScraper(fbUrl: string, rawUrl: string, cleanUrl: string, requestId?: string, signal?: AbortSignal): Promise<ExtractedMediaResult | null> {
   const fbStart = Date.now();
   console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="FB Plugin Scraper" targetUrl=${cleanUrl}`);
@@ -925,7 +1266,13 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
     const lowerUrl = cleanUrl.toLowerCase();
 
     // 1. Authoritative lookup from Supabase PostgreSQL via Prisma
-    const dbProviders = await getProviderSettingsFromDb();
+    const rawDbProviders = await getProviderSettingsFromDb();
+    const dbProviders = [...(rawDbProviders || [])];
+    for (const seed of INITIAL_SEED_PROVIDERS) {
+      if (!dbProviders.some((p) => p.providerKey === seed.providerKey)) {
+        dbProviders.push(seed);
+      }
+    }
 
     if (!dbProviders) {
       return {
@@ -986,6 +1333,12 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
+        } else if (key.includes('yt_dlp') || key.includes('ytdlp')) {
+          const res = await runYtDlpExtractor(cleanUrl, 'TikTok', requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
         } else if (key.includes('cobalt')) {
           const res = await runCobaltTikTok(cleanUrl, requestId, signal);
           if (res) {
@@ -1005,8 +1358,14 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       const tikwmRes = await runTikWmApi(cleanUrl, requestId, signal);
       if (tikwmRes) return tikwmRes;
 
+      const ytDlpRes = await runYtDlpExtractor(cleanUrl, 'TikTok', requestId, signal);
+      if (ytDlpRes) return ytDlpRes;
+
       const cobaltRes = await runCobaltTikTok(cleanUrl, requestId, signal);
       if (cobaltRes) return cobaltRes;
+
+      const ogRes = await runOpenGraphScraper(cleanUrl, requestId, signal);
+      if (ogRes) return ogRes;
 
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=TikTok status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled TikTok providers failed to extract media.' };
@@ -1038,7 +1397,13 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
         const key = (p.providerKey || '').toLowerCase();
-        if (key.includes('ytdl') || key.includes('ytdl_core')) {
+        if (key.includes('yt_dlp') || key.includes('ytdlp')) {
+          const res = await runYtDlpExtractor(ytUrl, 'YouTube', requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
+        } else if (key.includes('ytdl') || key.includes('ytdl_core')) {
           const res = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -1066,6 +1431,9 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       }
 
       // Built-in fallback tiers
+      const ytDlpRes = await runYtDlpExtractor(ytUrl, 'YouTube', requestId, signal);
+      if (ytDlpRes) return ytDlpRes;
+
       const ytdlRes = await runYtdlCore(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
       if (ytdlRes) return ytdlRes;
 
@@ -1075,36 +1443,63 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       const loaderRes = await runLoaderTo(ytUrl, fallbackTitle, fallbackThumb, requestId, signal);
       if (loaderRes) return loaderRes;
 
+      const ogRes = await runOpenGraphScraper(ytUrl, requestId, signal);
+      if (ogRes) return ogRes;
+
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=YouTube status=FAILED elapsedMs=${Date.now() - overallStart}`);
       return { status: 'FAILED', reason: 'All enabled YouTube providers failed to extract media.' };
     }
 
     if (platformKey === 'Facebook') {
       let fbUrl = cleanUrl;
+      let resolvedUrl: string | null = null;
       if (fbUrl.includes('/share/') || fbUrl.includes('fb.watch') || fbUrl.includes('fb.gg')) {
         try {
-          fbUrl = await resolveFacebookUrl(fbUrl, signal);
-          fbUrl = fbUrl.split('?')[0];
+          const resolved = await resolveFacebookUrl(fbUrl, signal);
+          if (resolved && resolved.startsWith('http')) {
+            resolvedUrl = resolved.split('?')[0].replace(/\/+$/, '');
+          }
         } catch (e) {}
       }
+
+      const candidateUrls = [resolvedUrl, fbUrl, cleanUrl, rawUrl].filter((u): u is string => Boolean(u && u.trim().length > 0));
+      const uniqueUrls = Array.from(new Set(candidateUrls));
 
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
         const key = (p.providerKey || '').toLowerCase();
-        if (key.includes('fb_plugin') || key.includes('facebook') || key.includes('scraper')) {
-          const res = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId, signal);
+        if (key.includes('yt_dlp') || key.includes('ytdlp')) {
+          for (const u of uniqueUrls) {
+            if (signal?.aborted) break;
+            const res = await runYtDlpExtractor(u, 'Facebook', requestId, signal);
+            if (res) {
+              console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+              return res;
+            }
+          }
+        } else if (key.includes('btch')) {
+          for (const u of uniqueUrls) {
+            if (signal?.aborted) break;
+            const res = await runBtchFbExtractor(u, requestId, signal);
+            if (res) {
+              console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+              return res;
+            }
+          }
+        } else if (key.includes('fb_plugin') || key.includes('facebook') || key.includes('scraper')) {
+          const res = await runFbPluginScraper(resolvedUrl || fbUrl, rawUrl, cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
         } else if (key.includes('cobalt') || key.includes('vkr')) {
-          const res = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId, signal);
+          const res = await runCobaltVkrFb(resolvedUrl || fbUrl, rawUrl, cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
           }
         } else if (key.includes('opengraph')) {
-          const res = await runOpenGraphScraper(fbUrl, requestId, signal);
+          const res = await runOpenGraphScraper(resolvedUrl || fbUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
@@ -1113,13 +1508,22 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       }
 
       // Built-in resilient fallback tiers for Facebook
-      const pluginRes = await runFbPluginScraper(fbUrl, rawUrl, cleanUrl, requestId, signal);
+      for (const u of uniqueUrls) {
+        if (signal?.aborted) break;
+        const ytDlpRes = await runYtDlpExtractor(u, 'Facebook', requestId, signal);
+        if (ytDlpRes) return ytDlpRes;
+
+        const btchRes = await runBtchFbExtractor(u, requestId, signal);
+        if (btchRes) return btchRes;
+      }
+
+      const pluginRes = await runFbPluginScraper(resolvedUrl || fbUrl, rawUrl, cleanUrl, requestId, signal);
       if (pluginRes) return pluginRes;
 
-      const cobaltFbRes = await runCobaltVkrFb(fbUrl, rawUrl, cleanUrl, requestId, signal);
+      const cobaltFbRes = await runCobaltVkrFb(resolvedUrl || fbUrl, rawUrl, cleanUrl, requestId, signal);
       if (cobaltFbRes) return cobaltFbRes;
 
-      const ogFbRes = await runOpenGraphScraper(fbUrl, requestId, signal);
+      const ogFbRes = await runOpenGraphScraper(resolvedUrl || fbUrl, requestId, signal);
       if (ogFbRes) return ogFbRes;
 
       console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Facebook status=FAILED elapsedMs=${Date.now() - overallStart}`);
@@ -1132,6 +1536,18 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
         const key = (p.providerKey || '').toLowerCase();
         if (key.includes('mirror') || key.includes('instagram') || key.includes('snapinsta') || key.includes('fastdl') || key.includes('saveig')) {
           const res = await runInstagramMirrors(cleanUrl, requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
+        } else if (key.includes('yt_dlp') || key.includes('ytdlp')) {
+          const res = await runYtDlpExtractor(cleanUrl, 'Instagram', requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
+        } else if (key.includes('btch')) {
+          const res = await runBtchIgExtractor(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=Instagram provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
             return res;
@@ -1155,8 +1571,14 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       const mirrorRes = await runInstagramMirrors(cleanUrl, requestId, signal);
       if (mirrorRes) return mirrorRes;
 
+      const btchIgRes = await runBtchIgExtractor(cleanUrl, requestId, signal);
+      if (btchIgRes) return btchIgRes;
+
       const cobaltIgRes = await runCobaltInstagram(cleanUrl, requestId, signal);
       if (cobaltIgRes) return cobaltIgRes;
+
+      const ytDlpIgRes = await runYtDlpExtractor(cleanUrl, 'Instagram', requestId, signal);
+      if (ytDlpIgRes) return ytDlpIgRes;
 
       const ogIgRes = await runOpenGraphScraper(cleanUrl, requestId, signal);
       if (ogIgRes) return ogIgRes;
@@ -1169,7 +1591,13 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
       for (const p of enabledProviders) {
         if (signal?.aborted) break;
         const key = (p.providerKey || '').toLowerCase();
-        if (key.includes('opengraph') || key.includes('scraper')) {
+        if (key.includes('yt_dlp') || key.includes('ytdlp')) {
+          const res = await runYtDlpExtractor(cleanUrl, 'General', requestId, signal);
+          if (res) {
+            console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=General provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
+            return res;
+          }
+        } else if (key.includes('opengraph') || key.includes('scraper')) {
           const res = await runOpenGraphScraper(cleanUrl, requestId, signal);
           if (res) {
             console.log(`[FETCH_EXTRACTION_COMPLETE] requestId=${requestId} platform=General provider=${p.providerKey} status=SUCCESS elapsedMs=${Date.now() - overallStart}`);
@@ -1177,6 +1605,9 @@ export async function extractMedia(rawUrl: string, requestId?: string, signal?: 
           }
         }
       }
+      const generalYtDlp = await runYtDlpExtractor(cleanUrl, 'General', requestId, signal);
+      if (generalYtDlp) return generalYtDlp;
+
       const generalRes = await runOpenGraphScraper(cleanUrl, requestId, signal);
       if (generalRes) return generalRes;
 
