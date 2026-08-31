@@ -1326,16 +1326,17 @@ export function generateAdsterraAdCode(zoneKey: string, format?: string, heightP
 }
 
 export function generateMonetagAdCode(
-  zoneId: string | number = '11696296',
+  zoneId: string | number = '11696786',
   format: 'in_page_push' | 'vignette' | 'onclick' | 'multitag' | 'banner' | string = 'in_page_push',
   domain: string = '5gvci.com'
 ): string {
-  const cleanZone = String(zoneId || '11696296').trim();
+  const cleanZone = String(zoneId || '11696786').trim();
   const cleanDomain = (domain || '5gvci.com').trim();
   const fmt = (format || '').toLowerCase();
 
   if (fmt.includes('multitag') || fmt.includes('tag')) {
-    return `<script src="https://${cleanDomain}/act/files/tag.min.js?z=${cleanZone}" data-cfasync="false" async></script>`;
+    // Official Monetag MultiTag tag script format
+    return `<script src="https://quge5.com/88/tag.min.js" data-zone="${cleanZone === '11696786' || cleanZone === '11696296' ? '275127' : cleanZone}" async data-cfasync="false"></script>`;
   }
 
   if (fmt.includes('onclick') || fmt.includes('popunder')) {

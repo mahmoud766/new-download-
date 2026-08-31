@@ -251,7 +251,7 @@ async function startServer() {
   });
 
   // Serve Service Worker files for Monetag and PWA with root scope
-  app.get(['/sw.js', '/service-worker.js', '/service-worker.min.js', '/sw-11696296.js'], (req: Request, res: Response) => {
+  app.get(['/sw.js', '/service-worker.js', '/service-worker.min.js', '/sw-11696786.js', '/sw-11696296.js'], (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     res.setHeader('Service-Worker-Allowed', '/');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

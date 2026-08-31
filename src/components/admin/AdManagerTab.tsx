@@ -83,7 +83,7 @@ export const AdManagerTab: React.FC<Props> = ({
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
 
   // Monetag Configuration State
-  const [monetagZoneId, setMonetagZoneId] = useState<string>('11696296');
+  const [monetagZoneId, setMonetagZoneId] = useState<string>('11696786');
   const [monetagDomain, setMonetagDomain] = useState<string>('5gvci.com');
 
   // Adsterra API Integration & Auto-Sync State

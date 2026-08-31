@@ -1,7 +1,7 @@
 // Monetag Ads & Web Push Service Worker Engine
 self.options = {
   "domain": "5gvci.com",
-  "zoneId": 11696296
+  "zoneId": 11696786
 };
 self.lary = "";
 try {

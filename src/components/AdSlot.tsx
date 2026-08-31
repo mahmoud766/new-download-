@@ -209,6 +209,7 @@ export function AdSlot({
         provider === 'monetag' ||
         provider === 'adsterra' ||
         provider === 'custom_html' ||
+        rawCode.includes('quge5.com') ||
         rawCode.includes('5gvci.com') ||
         rawCode.includes('monetag') ||
         rawCode.includes('<script') ||
@@ -217,7 +218,7 @@ export function AdSlot({
       ) {
         let finalCode = rawCode;
         if (!finalCode && provider === 'monetag') {
-          const zone = adConfig.monetagZoneId || slotId || '11696296';
+          const zone = adConfig.monetagZoneId || slotId || '11696786';
           const domain = adConfig.monetagDomain || '5gvci.com';
           finalCode = generateMonetagAdCode(zone, adConfig.format || 'in_page_push', domain);
         } else if (!finalCode && provider === 'adsterra') {
