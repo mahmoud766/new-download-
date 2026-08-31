@@ -250,6 +250,21 @@ async function startServer() {
     }
   });
 
+  // Serve Service Worker files for Monetag and PWA with root scope
+  app.get(['/sw.js', '/service-worker.js', '/service-worker.min.js', '/sw-11696296.js'], (req: Request, res: Response) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    const requestedFile = req.path.replace(/^\//, '');
+    let targetPath = path.join(process.cwd(), 'public', requestedFile);
+    if (!fs.existsSync(targetPath)) {
+      targetPath = path.join(process.cwd(), 'public', 'sw.js');
+    }
+    return res.sendFile(targetPath);
+  });
+
   // On-Demand Revalidation Engine (ISR Purge & CDN Cache Refresh)
   let lastRevalidationTimestamp = Date.now();
   let totalRevalidationCount = 0;

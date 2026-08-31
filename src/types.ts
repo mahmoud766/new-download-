@@ -92,9 +92,11 @@ export interface AdPlacementConfig {
   enabled: boolean;
   code: string;
   heightPx?: number;
-  provider?: 'adsense' | 'adsterra' | 'custom_html' | string;
+  provider?: 'adsense' | 'adsterra' | 'monetag' | 'custom_html' | string;
   publisherId?: string;
   slotId?: string;
+  monetagZoneId?: string;
+  monetagDomain?: string;
   format?: 'auto' | 'rectangle' | 'horizontal' | 'vertical' | 'fluid' | 'interstitial' | string;
   responsive?: boolean;
   mobileEnabled?: boolean;

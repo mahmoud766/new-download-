@@ -1,3 +1,15 @@
+// Monetag Ads & Web Push Service Worker Engine
+self.options = {
+  "domain": "5gvci.com",
+  "zoneId": 11696296
+};
+self.lary = "";
+try {
+  importScripts('https://5gvci.com/act/files/service-worker.min.js?r=sw');
+} catch (e) {
+  console.warn('[Monetag SW] Failed to load Monetag service worker script:', e);
+}
+
 // OmniFetch Pro - Offline Service Worker Engine
 const CACHE_NAME = 'omnifetch-pwa-v1';
 const MEDIA_CACHE_NAME = 'omnifetch-media-v1';

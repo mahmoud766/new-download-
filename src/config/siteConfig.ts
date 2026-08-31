@@ -1325,6 +1325,31 @@ export function generateAdsterraAdCode(zoneKey: string, format?: string, heightP
 <script type="text/javascript" src="https://www.highperformanceformat.com/${key}/invoke.js"></script>`;
 }
 
+export function generateMonetagAdCode(
+  zoneId: string | number = '11696296',
+  format: 'in_page_push' | 'vignette' | 'onclick' | 'multitag' | 'banner' | string = 'in_page_push',
+  domain: string = '5gvci.com'
+): string {
+  const cleanZone = String(zoneId || '11696296').trim();
+  const cleanDomain = (domain || '5gvci.com').trim();
+  const fmt = (format || '').toLowerCase();
+
+  if (fmt.includes('multitag') || fmt.includes('tag')) {
+    return `<script src="https://${cleanDomain}/act/files/tag.min.js?z=${cleanZone}" data-cfasync="false" async></script>`;
+  }
+
+  if (fmt.includes('onclick') || fmt.includes('popunder')) {
+    return `<script>(function(d,z,s){s.src='https://'+d+'/400/'+z;try{(document.body||document.documentElement).appendChild(s)}catch(e){}})('${cleanDomain}',${cleanZone},document.createElement('script'))</script>`;
+  }
+
+  if (fmt.includes('vignette') || fmt.includes('interstitial')) {
+    return `<script>(function(d,z,s){s.src='https://'+d+'/402/'+z;try{(document.body||document.documentElement).appendChild(s)}catch(e){}})('${cleanDomain}',${cleanZone},document.createElement('script'))</script>`;
+  }
+
+  // In-Page Push (Native Push Notification Banner)
+  return `<script>(function(d,z,s){s.src='https://'+d+'/401/'+z;try{(document.body||document.documentElement).appendChild(s)}catch(e){}})('${cleanDomain}',${cleanZone},document.createElement('script'))</script>`;
+}
+
 export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
   // Homepage Slots
   {

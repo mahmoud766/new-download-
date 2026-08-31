@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { AdPlacementConfig } from '../types';
 import { getAdsConfig } from '../lib/storage';
-import { generateAdsterraAdCode } from '../config/siteConfig';
+import { generateAdsterraAdCode, generateMonetagAdCode } from '../config/siteConfig';
 
 export const DEFAULT_PUBLISHER_ID = 'ca-pub-6708942894533593';
 
@@ -204,16 +204,23 @@ export function AdSlot({
         return;
       }
 
-      // Strategy B: Adsterra / Custom Script / High-Performance Sandboxed Iframe Rendering
+      // Strategy B: Monetag / Adsterra / Custom Script / High-Performance Sandboxed Iframe Rendering
       if (
+        provider === 'monetag' ||
         provider === 'adsterra' ||
         provider === 'custom_html' ||
+        rawCode.includes('5gvci.com') ||
+        rawCode.includes('monetag') ||
         rawCode.includes('<script') ||
         rawCode.includes('<iframe') ||
         rawCode.includes('invoke.js')
       ) {
         let finalCode = rawCode;
-        if (!finalCode && provider === 'adsterra') {
+        if (!finalCode && provider === 'monetag') {
+          const zone = adConfig.monetagZoneId || slotId || '11696296';
+          const domain = adConfig.monetagDomain || '5gvci.com';
+          finalCode = generateMonetagAdCode(zone, adConfig.format || 'in_page_push', domain);
+        } else if (!finalCode && provider === 'adsterra') {
           const zoneKey = slotId || 'c837392869612a4f865153e34abd0bf0';
           finalCode = generateAdsterraAdCode(zoneKey, adConfig.format || 'auto', adConfig.heightPx || 90);
         }
@@ -242,6 +249,8 @@ export function AdSlot({
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://5gvci.com" crossorigin="anonymous">
+<link rel="dns-prefetch" href="https://5gvci.com">
 <link rel="preconnect" href="https://www.highperformanceformat.com" crossorigin="anonymous">
 <link rel="dns-prefetch" href="https://www.highperformanceformat.com">
 <link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin="anonymous">

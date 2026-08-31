@@ -35,7 +35,7 @@ import {
   Sliders
 } from 'lucide-react';
 import { AdPlacementConfig, SupportedLanguage } from '../../types';
-import { DEFAULT_ADS_CONFIG } from '../../config/siteConfig';
+import { DEFAULT_ADS_CONFIG, generateMonetagAdCode, generateAdsterraAdCode } from '../../config/siteConfig';
 import {
   saveAdsConfig,
   fetchAdsConfigFromDb,
@@ -78,9 +78,13 @@ export const AdManagerTab: React.FC<Props> = ({
     return INITIAL_SLOTS;
   });
 
-  const [activeNetworkFilter, setActiveNetworkFilter] = useState<'all' | 'adsterra' | 'adsense' | 'ezoic' | 'direct'>('all');
+  const [activeNetworkFilter, setActiveNetworkFilter] = useState<'all' | 'monetag' | 'adsterra' | 'adsense' | 'ezoic' | 'direct'>('all');
   const [saving, setSaving] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
+
+  // Monetag Configuration State
+  const [monetagZoneId, setMonetagZoneId] = useState<string>('11696296');
+  const [monetagDomain, setMonetagDomain] = useState<string>('5gvci.com');
 
   // Adsterra API Integration & Auto-Sync State
   const [adsterraToken, setAdsterraToken] = useState<string>('');
@@ -261,6 +265,58 @@ export const AdManagerTab: React.FC<Props> = ({
   const handleCodeChange = (id: string, code: string) => {
     const updated = adList.map((slot) => (slot.id === id ? { ...slot, code } : slot));
     setAdList(updated);
+  };
+
+  // Apply Monetag Format to Selected / All slots
+  const handleApplyMonetagCodeToAll = (format: 'in_page_push' | 'vignette' | 'onclick' | 'multitag') => {
+    const code = generateMonetagAdCode(monetagZoneId || '11696296', format, monetagDomain || '5gvci.com');
+    const updated = adList.map((slot) => {
+      const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
+      if (format === 'vignette' && isInterstitial) {
+        return {
+          ...slot,
+          enabled: true,
+          provider: 'monetag',
+          code,
+          monetagZoneId: monetagZoneId || '11696296',
+          monetagDomain: monetagDomain || '5gvci.com',
+        };
+      }
+      if (format !== 'vignette' && !isInterstitial) {
+        return {
+          ...slot,
+          enabled: true,
+          provider: 'monetag',
+          code,
+          monetagZoneId: monetagZoneId || '11696296',
+          monetagDomain: monetagDomain || '5gvci.com',
+        };
+      }
+      return slot;
+    });
+    setAdList(updated);
+    onUpdateAds(updated);
+    onShowToast(`✅ تم تهيئة وتطبيق كود Monetag (${format}) على المساحات الإعلانية بنجاح!`);
+  };
+
+  // Apply Monetag to single slot
+  const handleApplyMonetagToSlot = (slotId: string, format: string = 'in_page_push') => {
+    const code = generateMonetagAdCode(monetagZoneId || '11696296', format, monetagDomain || '5gvci.com');
+    const updated = adList.map((slot) =>
+      slot.id === slotId
+        ? {
+            ...slot,
+            enabled: true,
+            provider: 'monetag',
+            code,
+            monetagZoneId: monetagZoneId || '11696296',
+            monetagDomain: monetagDomain || '5gvci.com',
+          }
+        : slot
+    );
+    setAdList(updated);
+    onUpdateAds(updated);
+    onShowToast('✅ تم تطبيق كود إعلان Monetag على هذه المساحة!');
   };
 
   // Delete Custom Slot
@@ -598,11 +654,82 @@ export const AdManagerTab: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* Monetag Native Integration & Service Worker Hub */}
+      <div className="bg-gradient-to-r from-indigo-950/60 via-slate-900 to-purple-950/50 p-5 rounded-2xl border border-indigo-500/30 shadow-xl space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-indigo-500/20">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-base text-white">إعدادات شبكة إعلانات Monetag</h3>
+                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Service Worker مثبت بنجاح
+                </span>
+              </div>
+              <span className="text-xs text-slate-400 font-mono">
+                Zone ID: <strong className="text-indigo-300 font-bold">{monetagZoneId}</strong> | Domain: <strong className="text-indigo-300 font-bold">{monetagDomain}</strong> | المسار: <code className="text-slate-300">/sw.js</code>
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/sw.js"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-mono transition"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> فحص ملف /sw.js
+            </a>
+          </div>
+        </div>
+
+        {/* Monetag Quick Action Buttons */}
+        <div className="space-y-2">
+          <span className="text-xs text-slate-300 font-bold block">تطبيق صيغ إعلانات Monetag بنقرة واحدة (One-Click Deploy):</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <button
+              onClick={() => handleApplyMonetagCodeToAll('in_page_push')}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-bold transition shadow"
+            >
+              <Zap className="w-4 h-4 text-indigo-400" />
+              <span>تطبيق In-Page Push على المساحات</span>
+            </button>
+
+            <button
+              onClick={() => handleApplyMonetagCodeToAll('multitag')}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-bold transition shadow"
+            >
+              <FileCode2 className="w-4 h-4 text-purple-400" />
+              <span>تطبيق كود MultiTag الشامل</span>
+            </button>
+
+            <button
+              onClick={() => handleApplyMonetagCodeToAll('vignette')}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-500/40 text-xs font-bold transition shadow"
+            >
+              <Maximize2 className="w-4 h-4 text-amber-400" />
+              <span>تطبيق Vignette على إعلان الشاشة</span>
+            </button>
+
+            <button
+              onClick={() => handleApplyMonetagCodeToAll('onclick')}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-600/30 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/40 text-xs font-bold transition shadow"
+            >
+              <DollarSign className="w-4 h-4 text-blue-400" />
+              <span>تطبيق OnClick (Popunder)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Network Filter & Stats Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-900 p-3.5 rounded-2xl border border-slate-800 text-xs gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-slate-400 font-bold px-2">تصفية حسب الشبكة:</span>
-          {(['all', 'adsterra', 'adsense', 'ezoic', 'direct'] as const).map((net) => (
+          {(['all', 'monetag', 'adsterra', 'adsense', 'ezoic', 'direct'] as const).map((net) => (
             <button
               key={net}
               onClick={() => setActiveNetworkFilter(net)}
@@ -629,8 +756,24 @@ export const AdManagerTab: React.FC<Props> = ({
 
       {/* Placements Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {adList.map((slot) => {
+        {adList
+          .filter((slot) => {
+            if (activeNetworkFilter === 'all') return true;
+            const isMonetag = slot.provider === 'monetag' || (slot.code && (slot.code.includes('5gvci.com') || slot.code.includes('monetag')));
+            const isAdsterra = slot.provider === 'adsterra' || (slot.code && (slot.code.includes('highperformanceformat') || slot.code.includes('atOptions')));
+            const isAdSense = slot.provider === 'adsense' || (slot.code && slot.code.includes('adsbygoogle'));
+            const isEzoic = slot.provider === 'ezoic' || (slot.code && slot.code.includes('ezoic'));
+
+            if (activeNetworkFilter === 'monetag') return isMonetag;
+            if (activeNetworkFilter === 'adsterra') return isAdsterra;
+            if (activeNetworkFilter === 'adsense') return isAdSense;
+            if (activeNetworkFilter === 'ezoic') return isEzoic;
+            if (activeNetworkFilter === 'direct') return !isMonetag && !isAdsterra && !isAdSense && !isEzoic;
+            return true;
+          })
+          .map((slot) => {
           const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
+          const isMonetag = slot.provider === 'monetag' || (slot.code && (slot.code.includes('5gvci.com') || slot.code.includes('monetag')));
           const isAdsterra = slot.code && (slot.code.includes('highperformanceformat') || slot.code.includes('atOptions'));
           const isAdSense = slot.code && slot.code.includes('adsbygoogle');
 
@@ -894,8 +1037,13 @@ export const AdManagerTab: React.FC<Props> = ({
                     <Layout className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
+                    <h3 className="font-extrabold text-sm text-white flex items-center gap-2 flex-wrap">
                       <span>{slot.name}</span>
+                      {isMonetag && (
+                        <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
+                          Monetag
+                        </span>
+                      )}
                       {isAdsterra && (
                         <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">
                           Adsterra
@@ -911,7 +1059,16 @@ export const AdManagerTab: React.FC<Props> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    onClick={() => handleApplyMonetagToSlot(slot.id, 'in_page_push')}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 font-bold text-[11px] transition"
+                    title="تطبيق كود إعلان Monetag على هذه المساحة"
+                  >
+                    <Sparkles className="w-3 h-3 text-indigo-400" />
+                    <span>تطبيق Monetag</span>
+                  </button>
+
                   <button
                     onClick={() => handleTestAd(slot)}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/40 font-bold text-xs transition"
@@ -950,15 +1107,15 @@ export const AdManagerTab: React.FC<Props> = ({
                 <div className="flex items-center justify-between text-slate-400 font-semibold">
                   <span className="flex items-center gap-1.5">
                     <Code2 className="w-3.5 h-3.5 text-amber-400" />
-                    <span>كود HTML / Adsterra Script / Google AdSense:</span>
+                    <span>كود HTML / Monetag Script / Adsterra / Google AdSense:</span>
                   </span>
-                  <span className="text-[10px] text-slate-500 font-mono">لا توجد أكواد افتراضية قديمة</span>
+                  <span className="text-[10px] text-slate-500 font-mono">يدعم نصوص الجافاسكريبت وiframes</span>
                 </div>
                 <textarea
                   rows={4}
                   value={slot.code || ''}
                   onChange={(e) => handleCodeChange(slot.id, e.target.value)}
-                  placeholder="<!-- ضع شفرة Adsterra أو كود AdSense الخاص بك هنا (إذا تُرك فارغاً لن يظهر أي شيء) -->"
+                  placeholder="<!-- الصق شفرة إعلان Monetag أو Adsterra أو كود AdSense الخاص بك هنا -->"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-amber-300 font-mono text-[11px] focus:outline-none focus:border-amber-500 resize-none leading-relaxed"
                 />
               </div>
