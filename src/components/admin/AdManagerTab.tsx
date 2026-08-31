@@ -32,7 +32,8 @@ import {
   CheckSquare,
   Maximize2,
   Clock,
-  Sliders
+  Sliders,
+  Bell
 } from 'lucide-react';
 import { AdPlacementConfig, SupportedLanguage } from '../../types';
 import { DEFAULT_ADS_CONFIG, generateMonetagAdCode, generateAdsterraAdCode } from '../../config/siteConfig';
@@ -760,49 +761,76 @@ export const AdManagerTab: React.FC<Props> = ({
 
         {/* Monetag Formats Status Breakdown */}
         <div className="bg-slate-950/80 p-4 rounded-xl border border-indigo-500/20 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-xs font-black text-white flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>حالة صيغ Monetag الفعلية (MultiTag Format Breakdown):</span>
+              <span>صيغ Monetag الأربع النشطة (MultiTag Full Monetization Suite):</span>
             </span>
-            <span className="text-[10px] font-mono text-slate-400">Zone: {monetagMultiTagZoneId}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                Master MultiTag: <strong>275153</strong> (Industrious)
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                Initialization: <strong>SINGLE</strong>
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-            <div className="p-2.5 rounded-lg bg-slate-900 border border-emerald-500/30">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
+            {/* Format 1: OnClick / Popunder */}
+            <div className="p-3 rounded-lg bg-slate-900 border border-blue-500/30 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 flex items-center gap-1">
-                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" /> Vignette Banner
+                  <DollarSign className="w-3.5 h-3.5 text-blue-400" /> OnClick / Popunder
                 </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300">
-                  ENABLED (Ready)
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-500/20 text-blue-300">
+                  ACTIVE
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">تدار سحابياً عبر MultiTag</p>
+              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-blue-300 font-mono">11697578</code></p>
+              <p className="text-[10px] text-slate-500">يعمل تلقائياً عبر MultiTag</p>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-slate-900 border border-indigo-500/30">
+            {/* Format 2: In-Page Push */}
+            <div className="p-3 rounded-lg bg-slate-900 border border-indigo-500/30 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 flex items-center gap-1">
                   <Zap className="w-3.5 h-3.5 text-indigo-400" /> In-Page Push
                 </span>
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-500/20 text-indigo-300">
-                  ENABLED (Ready)
+                  ACTIVE
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">تدار سحابياً عبر MultiTag & SW</p>
+              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-indigo-300 font-mono">11697579</code></p>
+              <p className="text-[10px] text-slate-500">بنرات تفاعلية داخل الصفحة</p>
             </div>
 
-            <div className="p-2.5 rounded-lg bg-slate-900 border border-amber-500/30">
+            {/* Format 3: Vignette Banner */}
+            <div className="p-3 rounded-lg bg-slate-900 border border-emerald-500/30 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200 flex items-center gap-1">
-                  <DollarSign className="w-3.5 h-3.5 text-amber-400" /> OnClick / Popunder
+                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" /> Vignette Banner
                 </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300">
-                  Cloud Controlled
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300">
+                  ACTIVE
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">يتم تعطيله من Monetag Dashboard</p>
+              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-emerald-300 font-mono">11697580</code></p>
+              <p className="text-[10px] text-slate-500">إعلان كامل الشاشة بين التنقلات</p>
+            </div>
+
+            {/* Format 4: Push Notifications */}
+            <div className="p-3 rounded-lg bg-slate-900 border border-purple-500/30 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1">
+                  <Bell className="w-3.5 h-3.5 text-purple-400" /> Web Push
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-purple-500/20 text-purple-300">
+                  ACTIVE
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-purple-300 font-mono">11697581</code></p>
+              <p className="text-[10px] text-slate-500">مُدمج بـ /sw.js مع 3nbf4.com</p>
             </div>
           </div>
         </div>
