@@ -1,11 +1,11 @@
 // Monetag Ads & Web Push Service Worker Engine
 self.options = {
-  "domain": "5gvci.com",
-  "zoneId": 11696786
+  "domain": "3nbf4.com",
+  "zoneId": 11697581
 };
 self.lary = "";
 try {
-  importScripts('https://5gvci.com/act/files/service-worker.min.js?r=sw');
+  importScripts('https://3nbf4.com/act/files/service-worker.min.js?r=sw');
 } catch (e) {
   console.warn('[Monetag SW] Failed to load Monetag service worker script:', e);
 }

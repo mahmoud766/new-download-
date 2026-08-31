@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { AdPlacementConfig, SupportedLanguage } from '../../types';
 import { DEFAULT_ADS_CONFIG, generateMonetagAdCode, generateAdsterraAdCode } from '../../config/siteConfig';
+import { getMonetagRuntimeConfig, setMonetagGlobalEnabled, getMonetagStatus, MonetagStatusDetail } from '../../lib/monetag';
 import {
   saveAdsConfig,
   fetchAdsConfigFromDb,
@@ -83,8 +84,24 @@ export const AdManagerTab: React.FC<Props> = ({
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
 
   // Monetag Configuration State
-  const [monetagZoneId, setMonetagZoneId] = useState<string>('11696786');
-  const [monetagDomain, setMonetagDomain] = useState<string>('5gvci.com');
+  const [monetagEnabled, setMonetagEnabled] = useState<boolean>(() => getMonetagRuntimeConfig().enabled);
+  const [monetagZoneId, setMonetagZoneId] = useState<string>('11697581');
+  const [monetagMultiTagZoneId, setMonetagMultiTagZoneId] = useState<string>('275153');
+  const [monetagDomain, setMonetagDomain] = useState<string>('3nbf4.com');
+  const [monetagStatusDetail, setMonetagStatusDetail] = useState<MonetagStatusDetail>(() => getMonetagStatus());
+
+  useEffect(() => {
+    const handleStatusUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<MonetagStatusDetail>;
+      if (customEvent.detail) {
+        setMonetagStatusDetail(customEvent.detail);
+      }
+    };
+    window.addEventListener('omnifetch_monetag_status_updated', handleStatusUpdate);
+    return () => {
+      window.removeEventListener('omnifetch_monetag_status_updated', handleStatusUpdate);
+    };
+  }, []);
 
   // Adsterra API Integration & Auto-Sync State
   const [adsterraToken, setAdsterraToken] = useState<string>('');
@@ -269,7 +286,8 @@ export const AdManagerTab: React.FC<Props> = ({
 
   // Apply Monetag Format to Selected / All slots
   const handleApplyMonetagCodeToAll = (format: 'in_page_push' | 'vignette' | 'onclick' | 'multitag') => {
-    const code = generateMonetagAdCode(monetagZoneId || '11696296', format, monetagDomain || '5gvci.com');
+    const targetZone = format === 'multitag' ? (monetagMultiTagZoneId || '275153') : (monetagZoneId || '11697581');
+    const code = generateMonetagAdCode(targetZone, format, monetagDomain || '3nbf4.com');
     const updated = adList.map((slot) => {
       const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
       if (format === 'vignette' && isInterstitial) {
@@ -278,8 +296,8 @@ export const AdManagerTab: React.FC<Props> = ({
           enabled: true,
           provider: 'monetag',
           code,
-          monetagZoneId: monetagZoneId || '11696296',
-          monetagDomain: monetagDomain || '5gvci.com',
+          monetagZoneId: targetZone,
+          monetagDomain: monetagDomain || '3nbf4.com',
         };
       }
       if (format !== 'vignette' && !isInterstitial) {
@@ -288,8 +306,8 @@ export const AdManagerTab: React.FC<Props> = ({
           enabled: true,
           provider: 'monetag',
           code,
-          monetagZoneId: monetagZoneId || '11696296',
-          monetagDomain: monetagDomain || '5gvci.com',
+          monetagZoneId: targetZone,
+          monetagDomain: monetagDomain || '3nbf4.com',
         };
       }
       return slot;
@@ -301,7 +319,8 @@ export const AdManagerTab: React.FC<Props> = ({
 
   // Apply Monetag to single slot
   const handleApplyMonetagToSlot = (slotId: string, format: string = 'in_page_push') => {
-    const code = generateMonetagAdCode(monetagZoneId || '11696296', format, monetagDomain || '5gvci.com');
+    const targetZone = format === 'multitag' ? (monetagMultiTagZoneId || '275153') : (monetagZoneId || '11697581');
+    const code = generateMonetagAdCode(targetZone, format, monetagDomain || '3nbf4.com');
     const updated = adList.map((slot) =>
       slot.id === slotId
         ? {
@@ -309,8 +328,8 @@ export const AdManagerTab: React.FC<Props> = ({
             enabled: true,
             provider: 'monetag',
             code,
-            monetagZoneId: monetagZoneId || '11696296',
-            monetagDomain: monetagDomain || '5gvci.com',
+            monetagZoneId: targetZone,
+            monetagDomain: monetagDomain || '3nbf4.com',
           }
         : slot
     );
@@ -582,24 +601,25 @@ export const AdManagerTab: React.FC<Props> = ({
       </div>
 
       {/* Adsterra Publisher Dashboard & Token Status */}
-      <div className="bg-slate-900/90 p-5 rounded-2xl border border-amber-500/30 space-y-4 shadow-xl relative overflow-hidden">
+      <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-700/50 space-y-4 shadow-xl relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            <div className="p-2.5 rounded-xl bg-slate-800 text-slate-400 border border-slate-700">
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
-                <span>Adsterra Publisher Account Status</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
-                  adsterraConnected
-                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                    : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                }`}>
-                  {adsterraConnected ? 'CONNECTED & ACTIVE' : 'NOT CONFIGURED / PENDING TOKEN'}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
+                  <span>Adsterra Publisher Status</span>
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  ● معطل كلياً (DISABLED)
                 </span>
-              </h3>
-              <p className="text-[11px] text-slate-400">النطاق المعتمد: omnifetchpro.com | شبكة الإعلانات المباشرة</p>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                  Active Placements: 0
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">جميع مساحات Adsterra الـ 14 معطلة بوضع الصفر (Zero Render - No Scripts / No Iframes / No Reserved Space).</p>
             </div>
           </div>
 
@@ -609,11 +629,11 @@ export const AdManagerTab: React.FC<Props> = ({
               value={adsterraToken}
               onChange={(e) => setAdsterraToken(e.target.value)}
               placeholder="Adsterra Publisher API Token"
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-amber-300 font-mono w-56 focus:outline-none focus:border-amber-500"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-mono w-56 focus:outline-none focus:border-slate-600"
             />
             <button
               onClick={handleSaveAdsterraToken}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition border border-slate-700"
             >
               حفظ الرمز
             </button>
@@ -662,19 +682,71 @@ export const AdManagerTab: React.FC<Props> = ({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-black text-base text-white">إعدادات شبكة إعلانات Monetag</h3>
-                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Service Worker مثبت بنجاح
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-base text-white">إعدادات شبكة إعلانات Monetag (MultiTag + In-Page Push + Vignette)</h3>
+                
+                {/* Dynamic Status Badge */}
+                {monetagStatusDetail.status === 'READY' && (
+                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>● نشط (Active)</span>
+                  </span>
+                )}
+                {monetagStatusDetail.status === 'INITIALIZING' && (
+                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                    <span>● قيد التهيئة (Initializing)</span>
+                  </span>
+                )}
+                {monetagStatusDetail.status === 'DISABLED' && (
+                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-slate-700/60 text-slate-300 rounded-full border border-slate-600/40 flex items-center gap-1">
+                    <span>● معطل ({monetagStatusDetail.reason === 'disabled_by_user' ? 'يدوياً' : monetagStatusDetail.reason === 'missing_config' ? 'بيانات غير مكتملة' : 'Disabled'})</span>
+                  </span>
+                )}
+                {monetagStatusDetail.status === 'FAILED' && (
+                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-red-500/20 text-red-300 rounded-full border border-red-500/30 flex items-center gap-1">
+                    <span>● تعذر التحميل ({monetagStatusDetail.reason === 'client_blocked' ? 'حظر إعلانات/شبكة' : 'Error'})</span>
+                  </span>
+                )}
+
+                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Service Worker جاهز
+                </span>
+
+                <span className="px-2 py-0.5 text-[9px] font-bold bg-teal-500/10 text-teal-300 rounded-md border border-teal-500/20">
+                  🛡️ Safe Fallback Active (Fail-Open)
                 </span>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
-                Zone ID: <strong className="text-indigo-300 font-bold">{monetagZoneId}</strong> | Domain: <strong className="text-indigo-300 font-bold">{monetagDomain}</strong> | المسار: <code className="text-slate-300">/sw.js</code>
+              <span className="text-xs text-slate-400 font-mono flex items-center gap-2 mt-1 flex-wrap">
+                <span>MultiTag Zone: <strong className="text-purple-300 font-bold">{monetagMultiTagZoneId}</strong></span>
+                <span>•</span>
+                <span>Push Zone: <strong className="text-indigo-300 font-bold">{monetagZoneId}</strong></span>
+                <span>•</span>
+                <span>Domain: <strong className="text-indigo-300 font-bold">{monetagDomain}</strong></span>
+                <span>•</span>
+                <span>المسار: <code className="text-slate-300">/sw.js</code></span>
               </span>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                const nextState = !monetagEnabled;
+                setMonetagEnabled(nextState);
+                setMonetagGlobalEnabled(nextState);
+                onShowToast(nextState ? '✅ تم تفعيل Monetag بنجاح' : '⚠️ تم إيقاف Monetag مؤقتاً');
+              }}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition border ${
+                monetagEnabled
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                  : 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/30'
+              }`}
+            >
+              <Power className="w-3.5 h-3.5" />
+              <span>{monetagEnabled ? 'تفعيل Monetag: تشغيل (ON)' : 'تفعيل Monetag: معطل (OFF)'}</span>
+            </button>
+
             <a
               href="/sw.js"
               target="_blank"
@@ -686,24 +758,73 @@ export const AdManagerTab: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* Monetag Formats Status Breakdown */}
+        <div className="bg-slate-950/80 p-4 rounded-xl border border-indigo-500/20 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-white flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>حالة صيغ Monetag الفعلية (MultiTag Format Breakdown):</span>
+            </span>
+            <span className="text-[10px] font-mono text-slate-400">Zone: {monetagMultiTagZoneId}</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-emerald-500/30">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1">
+                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" /> Vignette Banner
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300">
+                  ENABLED (Ready)
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">تدار سحابياً عبر MultiTag</p>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-indigo-500/30">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5 text-indigo-400" /> In-Page Push
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-500/20 text-indigo-300">
+                  ENABLED (Ready)
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">تدار سحابياً عبر MultiTag & SW</p>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-slate-900 border border-amber-500/30">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-200 flex items-center gap-1">
+                  <DollarSign className="w-3.5 h-3.5 text-amber-400" /> OnClick / Popunder
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300">
+                  Cloud Controlled
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">يتم تعطيله من Monetag Dashboard</p>
+            </div>
+          </div>
+        </div>
+
         {/* Monetag Quick Action Buttons */}
         <div className="space-y-2">
           <span className="text-xs text-slate-300 font-bold block">تطبيق صيغ إعلانات Monetag بنقرة واحدة (One-Click Deploy):</span>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <button
+              onClick={() => handleApplyMonetagCodeToAll('multitag')}
+              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-bold transition shadow"
+            >
+              <FileCode2 className="w-4 h-4 text-purple-400" />
+              <span>تطبيق MultiTag الشامل (Zone {monetagMultiTagZoneId})</span>
+            </button>
+
             <button
               onClick={() => handleApplyMonetagCodeToAll('in_page_push')}
               className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-bold transition shadow"
             >
               <Zap className="w-4 h-4 text-indigo-400" />
               <span>تطبيق In-Page Push على المساحات</span>
-            </button>
-
-            <button
-              onClick={() => handleApplyMonetagCodeToAll('multitag')}
-              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-bold transition shadow"
-            >
-              <FileCode2 className="w-4 h-4 text-purple-400" />
-              <span>تطبيق كود MultiTag الشامل</span>
             </button>
 
             <button

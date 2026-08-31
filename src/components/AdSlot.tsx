@@ -218,8 +218,8 @@ export function AdSlot({
       ) {
         let finalCode = rawCode;
         if (!finalCode && provider === 'monetag') {
-          const zone = adConfig.monetagZoneId || slotId || '11696786';
-          const domain = adConfig.monetagDomain || '5gvci.com';
+          const zone = adConfig.monetagZoneId || slotId || '11697581';
+          const domain = adConfig.monetagDomain || '3nbf4.com';
           finalCode = generateMonetagAdCode(zone, adConfig.format || 'in_page_push', domain);
         } else if (!finalCode && provider === 'adsterra') {
           const zoneKey = slotId || 'c837392869612a4f865153e34abd0bf0';
@@ -250,6 +250,10 @@ export function AdSlot({
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://quge5.com" crossorigin="anonymous">
+<link rel="dns-prefetch" href="https://quge5.com">
+<link rel="preconnect" href="https://3nbf4.com" crossorigin="anonymous">
+<link rel="dns-prefetch" href="https://3nbf4.com">
 <link rel="preconnect" href="https://5gvci.com" crossorigin="anonymous">
 <link rel="dns-prefetch" href="https://5gvci.com">
 <link rel="preconnect" href="https://www.highperformanceformat.com" crossorigin="anonymous">
@@ -347,6 +351,11 @@ ${rawCode}
     slot.includes('TOOLS');
 
   const targetMinHeight = adConfig?.heightPx ? `${adConfig.heightPx}px` : isLargeSlot ? '250px' : '90px';
+
+  // If ad is disabled and debug mode is not active, return null completely (Zero DOM footprint, Zero CLS, Zero margin)
+  if ((!adConfig || !adConfig.enabled) && !isDebugActive) {
+    return null;
+  }
 
   return (
     <div

@@ -251,7 +251,7 @@ async function startServer() {
   });
 
   // Serve Service Worker files for Monetag and PWA with root scope
-  app.get(['/sw.js', '/service-worker.js', '/service-worker.min.js', '/sw-11696786.js', '/sw-11696296.js'], (req: Request, res: Response) => {
+  app.get(['/sw.js', '/service-worker.js', '/service-worker.min.js', '/sw-11697581.js', '/sw-11696786.js', '/sw-11696296.js'], (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     res.setHeader('Service-Worker-Allowed', '/');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -673,13 +673,13 @@ async function startServer() {
         const fmt = existing?.format || defItem.format;
         const sanitizedCode = sanitizeAdCode(rawCode, rawZoneKey, fmt);
         const isInterstitial = defItem.slot === 'interstitial';
-        const defaultEnabled = isInterstitial ? false : true;
+        const defaultEnabled = false;
 
         return {
           id: existing?.id || defItem.id,
           slot: defItem.slot,
           name: existing?.name || defItem.name,
-          enabled: existing ? existing.enabled === true : defaultEnabled,
+          enabled: existing?.enabled === true,
           code: sanitizedCode,
           heightPx: existing?.heightPx || defItem.heightPx,
           provider: existing?.provider || (isInterstitial ? 'custom_html' : 'adsterra'),
@@ -706,11 +706,11 @@ async function startServer() {
         return res.json({ success: true, ads: CONFIG_CACHE.ads.data, syncVersion: globalSyncVersion });
       }
       const fallbackSlots = [
-        { id: 'ad-home-top', slot: 'HOME_TOP', name: 'Homepage - Top Header Banner (Leaderboard 728x90)', format: 'leaderboard_728x90', heightPx: 90, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-header', slot: 'header_banner', name: 'Header Top Leaderboard (728x90 / Responsive)', format: 'leaderboard_728x90', heightPx: 90, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-home-after-hero', slot: 'HOME_AFTER_HERO', name: 'Homepage - After Hero / Search Section', format: 'native_300x250', heightPx: 100, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-home-after-trending', slot: 'HOME_AFTER_TRENDING', name: 'Homepage - After Trending Videos Section', format: 'leaderboard_728x90', heightPx: 90, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50, enabled: true, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
+        { id: 'ad-home-top', slot: 'HOME_TOP', name: 'Homepage - Top Header Banner (Leaderboard 728x90)', format: 'leaderboard_728x90', heightPx: 90, enabled: false, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
+        { id: 'ad-header', slot: 'header_banner', name: 'Header Top Leaderboard (728x90 / Responsive)', format: 'leaderboard_728x90', heightPx: 90, enabled: false, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
+        { id: 'ad-home-after-hero', slot: 'HOME_AFTER_HERO', name: 'Homepage - After Hero / Search Section', format: 'native_300x250', heightPx: 100, enabled: false, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
+        { id: 'ad-home-after-trending', slot: 'HOME_AFTER_TRENDING', name: 'Homepage - After Trending Videos Section', format: 'leaderboard_728x90', heightPx: 90, enabled: false, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
+        { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50, enabled: false, provider: 'adsterra', responsive: true, desktopEnabled: true, mobileEnabled: true },
         { id: 'ad-interstitial', slot: 'interstitial', name: 'Full-Screen Interstitial', format: 'interstitial', heightPx: 480, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true, trigger: 'page_load', frequencyControl: 'session', displayDelayMs: 500, closeDelaySec: 3, closeButtonEnabled: true },
       ];
       return res.json({
