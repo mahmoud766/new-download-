@@ -12,12 +12,23 @@ const btchLib: any = (btchModule as any).default || btchModule;
 const execFileAsync = promisify(execFile);
 
 function findYtDlpPath(): string | null {
-  const customBin = path.join(process.cwd(), 'bin', 'yt-dlp');
-  if (fs.existsSync(customBin)) return customBin;
-  const globalBin = '/app/applet/bin/yt-dlp';
-  if (fs.existsSync(globalBin)) return globalBin;
-  const tmpBin = '/tmp/yt-dlp';
-  if (fs.existsSync(tmpBin)) return tmpBin;
+  const possiblePaths = [
+    path.join(process.cwd(), 'bin', 'yt-dlp'),
+    '/app/applet/bin/yt-dlp',
+    '/tmp/yt-dlp',
+    '/usr/local/bin/yt-dlp',
+    '/usr/bin/yt-dlp',
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        fs.chmodSync(p, 0o755);
+      } catch {}
+      return p;
+    }
+  }
+
   return 'yt-dlp';
 }
 
