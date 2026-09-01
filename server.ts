@@ -93,7 +93,7 @@ async function resolveYouTubeDirectDownloadUrl(youtubeUrl: string, formatHint: s
 
 async function startServer() {
   const app = express();
-  const PORT: number = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
 
   // Enable trust proxy for proper IP resolution and protocol handling behind Cloud Run, Cloudflare, and CDNs
   app.set('trust proxy', true);

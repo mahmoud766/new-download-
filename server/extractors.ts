@@ -3,11 +3,8 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ytdl from '@distube/ytdl-core';
-import * as btchModule from 'btch-downloader';
 import { recordTelemetry } from './telemetry';
 import { prisma, withDbTimeout } from '../src/lib/prisma';
-
-const btchLib: any = (btchModule as any).default || btchModule;
 
 const execFileAsync = promisify(execFile);
 
@@ -956,85 +953,6 @@ async function runBtchFbExtractor(
   requestId?: string,
   signal?: AbortSignal
 ): Promise<ExtractedMediaResult | null> {
-  const btchStart = Date.now();
-  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="btch Facebook" targetUrl=${targetUrl}`);
-  try {
-    if (signal?.aborted) return null;
-    const btch = btchLib;
-    if (typeof btch?.fbdown === 'function') {
-      const res = await btch.fbdown(targetUrl);
-      if (res && res.status) {
-        const hdUrl = res.HD || res.Normal_video;
-        const sdUrl = res.Normal_video || res.HD;
-
-        const extractDirect = (rapidUrl: string | null) => {
-          if (!rapidUrl) return null;
-          if (rapidUrl.includes('token=')) {
-            try {
-              const tokenPart = rapidUrl.split('token=')[1]?.split('&')[0];
-              if (tokenPart) {
-                const payload = JSON.parse(Buffer.from(tokenPart.split('.')[1], 'base64').toString('utf8'));
-                if (payload && payload.url && payload.url.startsWith('http')) {
-                  return payload.url;
-                }
-              }
-            } catch {}
-          }
-          return rapidUrl;
-        };
-
-        const directHd = extractDirect(hdUrl);
-        const directSd = extractDirect(sdUrl);
-        const finalTop = directHd || directSd || hdUrl || sdUrl;
-
-        if (finalTop && finalTop.startsWith('http')) {
-          const latencyMs = Date.now() - btchStart;
-          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Facebook" success=true latencyMs=${latencyMs}`);
-          recordTelemetry({
-            requestId,
-            provider: 'btch Facebook',
-            platform: 'Facebook',
-            latencyMs,
-            success: true,
-            targetUrl,
-          });
-
-          return {
-            status: 'SUCCESS',
-            title: 'Facebook Video',
-            thumbnail: '',
-            video_url: finalTop,
-            formats: [
-              ...(directHd ? [{
-                id: 'fb-hd',
-                quality: 'HD 720p',
-                format: 'mp4',
-                url: directHd,
-                directVideoUrl: directHd,
-                hasAudio: true,
-                watermarkFree: true,
-                forceProxy: true,
-              }] : []),
-              ...(directSd ? [{
-                id: 'fb-sd',
-                quality: 'SD 480p',
-                format: 'mp4',
-                url: directSd,
-                directVideoUrl: directSd,
-                hasAudio: true,
-                watermarkFree: true,
-                forceProxy: true,
-              }] : []),
-            ],
-            forceProxy: true,
-          };
-        }
-      }
-    }
-  } catch (err: any) {
-    const latencyMs = Date.now() - btchStart;
-    console.warn(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Facebook" success=false error="${err?.message || err}" latencyMs=${latencyMs}`);
-  }
   return null;
 }
 
@@ -1043,41 +961,6 @@ async function runBtchIgExtractor(
   requestId?: string,
   signal?: AbortSignal
 ): Promise<ExtractedMediaResult | null> {
-  const btchStart = Date.now();
-  console.log(`[FETCH_PROVIDER_REQUEST_START] requestId=${requestId} provider="btch Instagram" targetUrl=${targetUrl}`);
-  try {
-    if (signal?.aborted) return null;
-    const btch = btchLib;
-    if (typeof btch?.igdl === 'function') {
-      const res = await btch.igdl(targetUrl);
-      if (res && res.status && Array.isArray(res.result) && res.result.length > 0) {
-        const item = res.result.find((r: any) => r.url && r.url.startsWith('http')) || res.result[0];
-        if (item && item.url && item.url.startsWith('http')) {
-          const latencyMs = Date.now() - btchStart;
-          console.log(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Instagram" success=true latencyMs=${latencyMs}`);
-          recordTelemetry({
-            requestId,
-            provider: 'btch Instagram',
-            platform: 'Instagram',
-            latencyMs,
-            success: true,
-            targetUrl,
-          });
-
-          return {
-            status: 'SUCCESS',
-            title: 'Instagram Reel',
-            thumbnail: item.thumbnail || '',
-            video_url: item.url,
-            forceProxy: true,
-          };
-        }
-      }
-    }
-  } catch (err: any) {
-    const latencyMs = Date.now() - btchStart;
-    console.warn(`[FETCH_PROVIDER_RESPONSE] requestId=${requestId} provider="btch Instagram" success=false error="${err?.message || err}" latencyMs=${latencyMs}`);
-  }
   return null;
 }
 

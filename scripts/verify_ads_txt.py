@@ -1,4 +1,5 @@
 import sys
+import os
 import urllib.request
 
 # 1. Read public/ads.txt
@@ -19,7 +20,12 @@ with open('dist/ads.txt', 'r', encoding='utf-8') as f:
 dist_lines = [l.strip() for l in dist_content.splitlines() if l.strip()]
 
 # 3. Test HTTP /ads.txt
-req = urllib.request.urlopen('http://127.0.0.1:3000/ads.txt')
+port = os.environ.get('PORT', '3000')
+try:
+    req = urllib.request.urlopen(f'http://127.0.0.1:{port}/ads.txt')
+except Exception:
+    req = urllib.request.urlopen('http://127.0.0.1:8080/ads.txt')
+
 status = req.getcode()
 content_type = req.headers.get('Content-Type')
 http_body = req.read().decode('utf-8')

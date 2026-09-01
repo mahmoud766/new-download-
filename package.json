@@ -15,7 +15,6 @@
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
     "@google/genai": "^2.4.0",
-    "@jerrycoder/instagram-api": "^2.5.9",
     "@prisma/adapter-mariadb": "7.9.1",
     "@prisma/client": "7.9.1",
     "@supabase/supabase-js": "^2.112.3",
@@ -23,12 +22,10 @@
     "@types/bcryptjs": "^3.0.0",
     "@vitejs/plugin-react": "^5.0.4",
     "bcryptjs": "^3.0.3",
-    "btch-downloader": "^6.3.6",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.16.0",
     "fuse.js": "^7.5.0",
-    "instagram-url-direct": "^2.0.7",
     "lucide-react": "^0.546.0",
     "mariadb": "^3.5.3",
     "motion": "^12.23.24",
@@ -39,7 +36,6 @@
     "react-dom": "^19.0.1",
     "react-is": "^19.2.8",
     "recharts": "^3.10.1",
-    "snapsave-media-downloader": "^2.4.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {
@@ -51,13 +47,17 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.1",
     "pg": "^8.22.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2"
   },
   "overrides": {
-    "nanoid": "^3.3.18"
+    "nanoid": "^3.3.18",
+    "mysql2": "^3.22.0",
+    "mariadb": "^3.5.3",
+    "deepmerge-ts": "^8.0.0",
+    "esbuild": "^0.28.1"
   }
 }

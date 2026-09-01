@@ -16,6 +16,9 @@ export default defineConfig(() => {
     },
     optimizeDeps: {
       include: ['react', 'react-dom', 'lucide-react'],
+      esbuildOptions: {
+        target: 'esnext',
+      },
     },
     build: {
       sourcemap: true,
