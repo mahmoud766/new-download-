@@ -1251,106 +1251,6 @@ YouTube videos offer incredible 4K HDR quality. **OmniFetch Pro** extracts strea
   },
 ];
 
-export function generateAdsterraAdCode(zoneKey: string, format?: string, heightPx?: number): string {
-  const fmt = (format || '').toLowerCase();
-  let key = (zoneKey || '').trim();
-
-  const isHex32 = /^[a-f0-9]{32}$/i.test(key);
-
-  if (!isHex32) {
-    if (fmt.includes('vertical') || fmt.includes('160x600') || fmt.includes('sidebar')) {
-      key = '05178d7cac407042126a1fb7cff46960';
-    } else if (fmt.includes('rectangle') || fmt.includes('300x250') || fmt.includes('native') || fmt.includes('preresult') || fmt.includes('postresult')) {
-      key = 'a510025b9877c296a8d09e5eacdca38c';
-    } else if (fmt.includes('320x50') || fmt.includes('footer') || fmt.includes('mobile') || fmt.includes('sticky')) {
-      key = 'd4dff739ebfbcb851b3559c924c83d4c';
-    } else {
-      key = 'c837392869612a4f865153e34abd0bf0';
-    }
-  }
-
-  if (fmt.includes('rectangle') || fmt.includes('300x250')) {
-    return `<script type="text/javascript">
-\tatOptions = {
-\t\t'key' : '${key}',
-\t\t'format' : 'iframe',
-\t\t'height' : 250,
-\t\t'width' : 300,
-\t\t'params' : {}
-\t};
-</script>
-<script type="text/javascript" src="https://www.highperformanceformat.com/${key}/invoke.js"></script>`;
-  }
-
-  if (fmt.includes('vertical') || fmt.includes('160x600') || fmt.includes('sidebar')) {
-    return `<script type="text/javascript">
-\tatOptions = {
-\t\t'key' : '${key}',
-\t\t'format' : 'iframe',
-\t\t'height' : 600,
-\t\t'width' : 160,
-\t\t'params' : {}
-\t};
-</script>
-<script type="text/javascript" src="https://www.highperformanceformat.com/${key}/invoke.js"></script>`;
-  }
-
-  if (fmt.includes('320x50') || fmt.includes('footer') || fmt.includes('mobile')) {
-    return `<script type="text/javascript">
-\tatOptions = {
-\t\t'key' : '${key}',
-\t\t'format' : 'iframe',
-\t\t'height' : 50,
-\t\t'width' : 320,
-\t\t'params' : {}
-\t};
-</script>
-<script type="text/javascript" src="https://www.highperformanceformat.com/${key}/invoke.js"></script>`;
-  }
-
-  if (fmt.includes('native') || fmt.includes('social') || fmt.includes('popunder')) {
-    return `<script type="text/javascript" src="https://www.highperformanceformat.com/${key}/invoke.js"></script>
-<div id="container-${key}"></div>`;
-  }
-
-  return `<script type="text/javascript">
-\tatOptions = {
-\t\t'key' : '${key}',
-\t\t'format' : 'iframe',
-\t\t'height' : ${heightPx || 90},
-\t\t'width' : 728,
-\t\t'params' : {}
-\t};
-</script>
-<script type="text/javascript" src="https://www.highperformanceformat.com/${key}/invoke.js"></script>`;
-}
-
-export function generateMonetagAdCode(
-  zoneId: string | number = '11697581',
-  format: 'in_page_push' | 'vignette' | 'onclick' | 'multitag' | 'banner' | string = 'in_page_push',
-  domain: string = '3nbf4.com'
-): string {
-  const cleanZone = String(zoneId || '11697581').trim();
-  const cleanDomain = (domain || '3nbf4.com').trim();
-  const fmt = (format || '').toLowerCase();
-
-  if (fmt.includes('multitag') || fmt.includes('tag')) {
-    // Official Monetag MultiTag tag script format
-    return `<script src="https://quge5.com/88/tag.min.js" data-zone="${cleanZone === '11697581' || cleanZone === '11696786' || cleanZone === '11696296' ? '275153' : cleanZone}" async data-cfasync="false"></script>`;
-  }
-
-  if (fmt.includes('onclick') || fmt.includes('popunder')) {
-    return `<script>(function(d,z,s){s.src='https://'+d+'/400/'+z;try{(document.body||document.documentElement).appendChild(s)}catch(e){}})('${cleanDomain}',${cleanZone},document.createElement('script'))</script>`;
-  }
-
-  if (fmt.includes('vignette') || fmt.includes('interstitial')) {
-    return `<script>(function(d,z,s){s.src='https://'+d+'/402/'+z;try{(document.body||document.documentElement).appendChild(s)}catch(e){}})('${cleanDomain}',${cleanZone},document.createElement('script'))</script>`;
-  }
-
-  // In-Page Push (Native Push Notification Banner)
-  return `<script>(function(d,z,s){s.src='https://'+d+'/401/'+z;try{(document.body||document.documentElement).appendChild(s)}catch(e){}})('${cleanDomain}',${cleanZone},document.createElement('script'))</script>`;
-}
-
 export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
   // Homepage Slots
   {
@@ -1358,11 +1258,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_TOP',
     name: 'Homepage - Top Header Banner (Leaderboard 728x90)',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1373,11 +1273,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'header_banner',
     name: 'Header Top Leaderboard (728x90 / Responsive)',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1388,11 +1288,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_HERO',
     name: 'Homepage - After Hero / Search Section',
     enabled: false,
-    code: generateAdsterraAdCode('a510025b9877c296a8d09e5eacdca38c', 'native_300x250', 100),
+    code: '',
     heightPx: 100,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'a510025b9877c296a8d09e5eacdca38c',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'rectangle_300x250',
     responsive: true,
     desktopEnabled: true,
@@ -1403,11 +1303,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_TRENDING',
     name: 'Homepage - After Trending Videos Section',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1418,11 +1318,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'service_separator_1',
     name: 'Service Grid Separator 1 (Between Platforms 1-8 and 9-16)',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1433,11 +1333,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'service_separator_2',
     name: 'Service Grid Separator 2 (Between Platforms 16 and Rest)',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1448,11 +1348,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_PLATFORM',
     name: 'Homepage - After Platform Grid',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1463,11 +1363,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_TOOLS',
     name: 'Homepage - After Audio & Video Converter Tools',
     enabled: false,
-    code: generateAdsterraAdCode('a510025b9877c296a8d09e5eacdca38c', 'rectangle_300x250', 250),
+    code: '',
     heightPx: 250,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'a510025b9877c296a8d09e5eacdca38c',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'rectangle_300x250',
     responsive: true,
     desktopEnabled: true,
@@ -1478,11 +1378,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_HOW_TO',
     name: 'Homepage - After How-To Download Guide',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1493,11 +1393,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_WHY_US',
     name: 'Homepage - After Why Choose Us Section',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1508,11 +1408,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_FACEBOOK_GUIDE',
     name: 'Homepage - After Facebook Guide Section',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1523,11 +1423,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_SECURITY',
     name: 'Homepage - After Security & Privacy Specs',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1538,11 +1438,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_AFTER_REVIEWS',
     name: 'Homepage - After User Reviews & Ratings',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1553,11 +1453,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'HOME_BOTTOM',
     name: 'Homepage - Bottom Footer Banner',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1570,11 +1470,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'pre_result',
     name: 'Platform - Pre-Result Banner (Native / Below Search)',
     enabled: false,
-    code: generateAdsterraAdCode('a510025b9877c296a8d09e5eacdca38c', 'native_300x250', 100),
+    code: '',
     heightPx: 100,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'a510025b9877c296a8d09e5eacdca38c',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'rectangle_300x250',
     responsive: true,
     desktopEnabled: true,
@@ -1585,11 +1485,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'post_result',
     name: 'Platform - Post-Result Medium Rectangle (Below Extracted Download Box)',
     enabled: false,
-    code: generateAdsterraAdCode('a510025b9877c296a8d09e5eacdca38c', 'rectangle_300x250', 250),
+    code: '',
     heightPx: 250,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'a510025b9877c296a8d09e5eacdca38c',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'rectangle_300x250',
     responsive: true,
     desktopEnabled: true,
@@ -1600,11 +1500,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'PLATFORM_TOP',
     name: 'Platform Page - Top Hero Banner',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1615,11 +1515,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'PLATFORM_AFTER_TOOL',
     name: 'Platform Page - After Main Extractor Tool',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1630,11 +1530,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'PLATFORM_AFTER_DESCRIPTION',
     name: 'Platform Page - After Features & Description',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1645,11 +1545,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'PLATFORM_AFTER_FAQ',
     name: 'Platform Page - After Platform FAQ Section',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1660,11 +1560,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'PLATFORM_BOTTOM',
     name: 'Platform Page - Bottom Footer Banner',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1677,11 +1577,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'BLOG_TOP',
     name: 'Blog Article - Top Banner',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1692,11 +1592,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'BLOG_AFTER_INTRO',
     name: 'Blog Article - After Introduction',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1707,11 +1607,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'BLOG_MIDDLE',
     name: 'Blog Article - In-Article Middle Banner',
     enabled: false,
-    code: generateAdsterraAdCode('a510025b9877c296a8d09e5eacdca38c', 'rectangle_300x250', 250),
+    code: '',
     heightPx: 250,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'a510025b9877c296a8d09e5eacdca38c',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'rectangle_300x250',
     responsive: true,
     desktopEnabled: true,
@@ -1722,11 +1622,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'BLOG_AFTER_CONTENT',
     name: 'Blog Article - After Main Content Body',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1737,11 +1637,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'BLOG_BOTTOM',
     name: 'Blog Page - Bottom Banner',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1754,11 +1654,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'LEGAL_BOTTOM',
     name: 'Legal Pages - Bottom Banner',
     enabled: false,
-    code: generateAdsterraAdCode('c837392869612a4f865153e34abd0bf0', 'leaderboard_728x90', 90),
+    code: '',
     heightPx: 90,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'c837392869612a4f865153e34abd0bf0',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'leaderboard_728x90',
     responsive: true,
     desktopEnabled: true,
@@ -1769,11 +1669,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'sidebar',
     name: 'Sidebar Ad Banner',
     enabled: false,
-    code: generateAdsterraAdCode('05178d7cac407042126a1fb7cff46960', 'vertical_160x600', 250),
+    code: '',
     heightPx: 250,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: '05178d7cac407042126a1fb7cff46960',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'vertical_160x600',
     responsive: true,
     desktopEnabled: true,
@@ -1784,11 +1684,11 @@ export const DEFAULT_ADS_CONFIG: AdPlacementConfig[] = [
     slot: 'footer_banner',
     name: 'Footer Sticky Banner',
     enabled: false,
-    code: generateAdsterraAdCode('d4dff739ebfbcb851b3559c924c83d4c', 'footer_320x50', 50),
+    code: '',
     heightPx: 50,
-    provider: 'adsterra',
-    publisherId: 'ca-pub-6708942894533593',
-    slotId: 'd4dff739ebfbcb851b3559c924c83d4c',
+    provider: 'custom_html',
+    publisherId: '',
+    slotId: '',
     format: 'footer_320x50',
     responsive: true,
     desktopEnabled: true,

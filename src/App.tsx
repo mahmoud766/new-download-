@@ -5,7 +5,6 @@ import { isRTL, detectUserLanguage } from './i18n/translations';
 import { getDownloadHistory, fetchSiteSettingsFromDb, fetchAdsConfigFromDb, initRealtimeSyncLoop } from './lib/storage';
 import { DEFAULT_SITE_SETTINGS, PLATFORMS_CONFIG } from './config/siteConfig';
 import { trackPageView, initAnalyticsHeartbeat } from './lib/analytics';
-import { MonetagManager } from './components/ads/MonetagManager';
 
 // Critical On-Screen Components
 import { Navbar } from './components/Navbar';
@@ -423,9 +422,6 @@ export default function App() {
     }`}>
       {/* Dynamic SEO Meta & Schema Injector */}
       <SeoHead platform={currentPlatform} language={currentLang} {...getSeoProps()} />
-
-      {/* Global Monetag Advertising & Monetization Engine (Singleton, non-blocking) */}
-      <MonetagManager activeView={activeView} />
 
       <div>
         {/* Navigation Bar */}

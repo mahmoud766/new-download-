@@ -11,6 +11,56 @@ const btchLib: any = (btchModule as any).default || btchModule;
 
 const execFileAsync = promisify(execFile);
 
+let isDownloadingYtDlp = false;
+
+export async function ensureYtDlpBinary(): Promise<string | null> {
+  const targetDir = path.join(process.cwd(), 'bin');
+  const targetPath = path.join(targetDir, 'yt-dlp');
+
+  // 1. Check if existing file is valid and executable
+  if (fs.existsSync(targetPath)) {
+    try {
+      const stats = fs.statSync(targetPath);
+      if (stats.size > 2 * 1024 * 1024) {
+        fs.chmodSync(targetPath, 0o755);
+        return targetPath;
+      }
+    } catch {}
+  }
+
+  if (isDownloadingYtDlp) return findYtDlpPath();
+  isDownloadingYtDlp = true;
+
+  try {
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    console.log('[YT-DLP_INIT] Downloading official latest yt-dlp binary...');
+    const res = await fetch('https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+
+    if (res.ok) {
+      const arrayBuffer = await res.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      if (buffer.length > 2 * 1024 * 1024) {
+        fs.writeFileSync(targetPath, buffer);
+        fs.chmodSync(targetPath, 0o755);
+        console.log(`[YT-DLP_INIT] Successfully verified and installed official yt-dlp binary (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+        return targetPath;
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[YT-DLP_INIT] Failed to auto-download yt-dlp: ${err?.message || err}`);
+  } finally {
+    isDownloadingYtDlp = false;
+  }
+
+  return findYtDlpPath();
+}
+
 function findYtDlpPath(): string | null {
   const possiblePaths = [
     path.join(process.cwd(), 'bin', 'yt-dlp'),
@@ -23,11 +73,17 @@ function findYtDlpPath(): string | null {
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
       try {
-        fs.chmodSync(p, 0o755);
+        const stats = fs.statSync(p);
+        if (stats.size > 2 * 1024 * 1024) {
+          fs.chmodSync(p, 0o755);
+          return p;
+        }
       } catch {}
-      return p;
     }
   }
+
+  // Trigger background recovery if not already running
+  ensureYtDlpBinary().catch(() => {});
 
   return 'yt-dlp';
 }

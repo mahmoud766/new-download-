@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { AdPlacementConfig } from '../types';
 import { getAdsConfig } from '../lib/storage';
-import { generateAdsterraAdCode, generateMonetagAdCode } from '../config/siteConfig';
 
 export const DEFAULT_PUBLISHER_ID = 'ca-pub-6708942894533593';
 
@@ -14,7 +13,7 @@ export const ABOVE_THE_FOLD_SLOTS = new Set([
   'BLOG_TOP',
 ]);
 
-// Ensure Google AdSense script is injected ONCE globally
+// Ensure Google AdSense script is injected ONCE globally if needed
 function ensureAdSenseScriptLoaded(publisherId: string = DEFAULT_PUBLISHER_ID) {
   if (typeof window === 'undefined') return;
   const scriptId = 'omnifetch-adsense-script';
@@ -151,13 +150,13 @@ export function AdSlot({
     setAdStatus('LOADING');
     container.innerHTML = '';
 
-    const provider = adConfig.provider || 'adsterra';
+    const provider = adConfig.provider || 'custom_html';
     const pubId = adConfig.publisherId || DEFAULT_PUBLISHER_ID;
     const slotId = adConfig.slotId || '';
     const rawCode = (adConfig.code || '').trim();
 
     try {
-      // Strategy A: Google AdSense Rendering
+      // Strategy A: Google AdSense / GAM Tag Rendering
       if (provider === 'adsense' || rawCode.includes('adsbygoogle')) {
         ensureAdSenseScriptLoaded(pubId);
 
@@ -204,33 +203,8 @@ export function AdSlot({
         return;
       }
 
-      // Strategy B: Monetag / Adsterra / Custom Script / High-Performance Sandboxed Iframe Rendering
-      if (
-        provider === 'monetag' ||
-        provider === 'adsterra' ||
-        provider === 'custom_html' ||
-        rawCode.includes('quge5.com') ||
-        rawCode.includes('5gvci.com') ||
-        rawCode.includes('monetag') ||
-        rawCode.includes('<script') ||
-        rawCode.includes('<iframe') ||
-        rawCode.includes('invoke.js')
-      ) {
-        let finalCode = rawCode;
-        if (!finalCode && provider === 'monetag') {
-          const zone = adConfig.monetagZoneId || slotId || '11697581';
-          const domain = adConfig.monetagDomain || '3nbf4.com';
-          finalCode = generateMonetagAdCode(zone, adConfig.format || 'in_page_push', domain);
-        } else if (!finalCode && provider === 'adsterra') {
-          const zoneKey = slotId || 'c837392869612a4f865153e34abd0bf0';
-          finalCode = generateAdsterraAdCode(zoneKey, adConfig.format || 'auto', adConfig.heightPx || 90);
-        }
-
-        if (!finalCode) {
-          setAdStatus('NO_FILL');
-          return;
-        }
-
+      // Strategy B: Provider-Neutral Sandboxed Iframe (For Custom HTML / GAM / Partner tags)
+      if (rawCode) {
         const iframe = document.createElement('iframe');
         iframe.style.width = '100%';
         iframe.style.height = '100%';
@@ -241,7 +215,7 @@ export function AdSlot({
         iframe.setAttribute('frameBorder', '0');
         iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
 
-        // Sandbox: Allow scripts, same-origin, forms, and user-initiated navigation clicks
+        // Sandbox: Allow scripts, same-origin, forms, popups on explicit user activation
         iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
         iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
 
@@ -250,16 +224,6 @@ export function AdSlot({
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="preconnect" href="https://quge5.com" crossorigin="anonymous">
-<link rel="dns-prefetch" href="https://quge5.com">
-<link rel="preconnect" href="https://3nbf4.com" crossorigin="anonymous">
-<link rel="dns-prefetch" href="https://3nbf4.com">
-<link rel="preconnect" href="https://5gvci.com" crossorigin="anonymous">
-<link rel="dns-prefetch" href="https://5gvci.com">
-<link rel="preconnect" href="https://www.highperformanceformat.com" crossorigin="anonymous">
-<link rel="dns-prefetch" href="https://www.highperformanceformat.com">
-<link rel="preconnect" href="https://pagead2.googlesyndication.com" crossorigin="anonymous">
-<link rel="dns-prefetch" href="https://pagead2.googlesyndication.com">
 <style>
   html, body {
     margin: 0;
@@ -273,39 +237,6 @@ export function AdSlot({
     width: 100%;
     height: 100%;
   }
-  img { max-width: 100%; height: auto; }
-</style>
-</head>
-<body>
-${finalCode}
-</body>
-</html>`;
-
-        container.appendChild(iframe);
-        setAdStatus('LOADED');
-        return;
-      }
-
-      // Strategy C: Custom Raw HTML or Banner Image Link
-      if (rawCode) {
-        const iframe = document.createElement('iframe');
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        iframe.style.border = 'none';
-        iframe.style.overflow = 'hidden';
-        iframe.style.backgroundColor = 'transparent';
-        iframe.setAttribute('scrolling', 'no');
-        iframe.setAttribute('frameBorder', '0');
-        iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
-        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
-        iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
-
-        iframe.srcdoc = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  html, body { margin: 0; padding: 0; background: transparent; text-align: center; }
   img { max-width: 100%; height: auto; }
 </style>
 </head>
@@ -416,7 +347,7 @@ ${rawCode}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-indigo-300/90">
             <div>
               <span className="text-slate-400">Provider:</span>{' '}
-              <strong className="text-white">{adConfig?.provider || 'adsense'}</strong>
+              <strong className="text-white">{adConfig?.provider || 'custom_html'}</strong>
             </div>
             <div>
               <span className="text-slate-400">Pub ID:</span>{' '}
@@ -439,3 +370,4 @@ ${rawCode}
 
 // Export AdBanner as alias for AdSlot
 export const AdBanner = AdSlot;
+

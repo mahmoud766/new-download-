@@ -275,55 +275,6 @@ export async function saveAdsConfig(ads: AdPlacementConfig[]): Promise<AdPlaceme
   return await saveAdsConfigToDb(ads);
 }
 
-// --- Adsterra Auto-Sync Engine API Helpers ---
-export async function testAdsterraConnection(token?: string): Promise<{ success: boolean; connected: boolean; message: string; domainsCount?: number }> {
-  const res = await fetch('/api/admin/adsterra/test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Adsterra connection test failed');
-  }
-  return data;
-}
-
-export async function fetchAdsterraMappingsFromDb(): Promise<any> {
-  const res = await fetch('/api/admin/adsterra/mappings');
-  if (!res.ok) throw new Error(`Failed to fetch mappings: HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.error || 'Failed to fetch mappings');
-  return data;
-}
-
-export async function triggerAdsterraSync(isDryRun: boolean = false): Promise<any> {
-  const res = await fetch('/api/admin/adsterra/sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isDryRun }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Adsterra Sync failed');
-  }
-  return data;
-}
-
-export async function saveAdsterraMappingsToDb(mappings: any[]): Promise<any> {
-  const res = await fetch('/api/admin/adsterra/mappings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mappings }),
-  });
-  const data = await res.json();
-  if (!res.ok || !data.success) {
-    throw new Error(data.message || 'Failed to save mappings');
-  }
-  return data;
-}
-
-
 // --- FAQs & Blogs ---
 export function getFaqsConfig(): FAQItem[] {
   return cachedFaqs;

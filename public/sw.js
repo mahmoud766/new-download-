@@ -1,15 +1,3 @@
-// Monetag Ads & Web Push Service Worker Engine
-self.options = {
-  "domain": "3nbf4.com",
-  "zoneId": 11697581
-};
-self.lary = "";
-try {
-  importScripts('https://3nbf4.com/act/files/service-worker.min.js?r=sw');
-} catch (e) {
-  console.warn('[Monetag SW] Failed to load Monetag service worker script:', e);
-}
-
 // OmniFetch Pro - Offline Service Worker Engine
 const CACHE_NAME = 'omnifetch-pwa-v1';
 const MEDIA_CACHE_NAME = 'omnifetch-media-v1';

@@ -8,43 +8,26 @@ import {
   Plus,
   Trash2,
   Sparkles,
-  Zap,
   Eye,
   CheckCircle2,
   Copy,
   Check,
   RefreshCw,
   Image,
-  ExternalLink,
-  HelpCircle,
-  TrendingUp,
-  BarChart2,
-  Globe,
   ShieldCheck,
   AlertCircle,
-  FileCode2,
-  Key,
-  Server,
   History,
-  Play,
   Monitor,
   Smartphone,
-  CheckSquare,
-  Maximize2,
-  Clock,
   Sliders,
-  Bell
+  Maximize2,
+  Search,
 } from 'lucide-react';
 import { AdPlacementConfig, SupportedLanguage } from '../../types';
-import { DEFAULT_ADS_CONFIG, generateMonetagAdCode, generateAdsterraAdCode } from '../../config/siteConfig';
-import { getMonetagRuntimeConfig, setMonetagGlobalEnabled, getMonetagStatus, MonetagStatusDetail } from '../../lib/monetag';
+import { DEFAULT_ADS_CONFIG } from '../../config/siteConfig';
 import {
   saveAdsConfig,
   fetchAdsConfigFromDb,
-  testAdsterraConnection,
-  fetchAdsterraMappingsFromDb,
-  triggerAdsterraSync,
-  saveAdsterraMappingsToDb,
 } from '../../lib/storage';
 
 interface Props {
@@ -59,7 +42,7 @@ interface AuditLogEntry {
   timestamp: string;
   action: string;
   slotsCount: number;
-  network: string;
+  provider: string;
   status: 'SUCCESS' | 'FAILED';
   verificationHash: string;
 }
@@ -72,7 +55,9 @@ export const AdManagerTab: React.FC<Props> = ({
   onShowToast,
   currentLang,
 }) => {
-  // Ensure we initialize with real ads or empty slots, NEVER default fake code
+  const isRtl = currentLang === 'ar';
+
+  // Initialize with real ads from database/props or default empty slots
   const [adList, setAdList] = useState<AdPlacementConfig[]>(() => {
     if (ads && Array.isArray(ads) && ads.length > 0) {
       return ads;
@@ -80,174 +65,46 @@ export const AdManagerTab: React.FC<Props> = ({
     return INITIAL_SLOTS;
   });
 
-  const [activeNetworkFilter, setActiveNetworkFilter] = useState<'all' | 'monetag' | 'adsterra' | 'adsense' | 'ezoic' | 'direct'>('all');
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState<'all' | 'homepage' | 'platform' | 'blog' | 'interstitial' | 'other'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [lastVerifiedAt, setLastVerifiedAt] = useState<string | null>(null);
-
-  // Monetag Configuration State
-  const [monetagEnabled, setMonetagEnabled] = useState<boolean>(() => getMonetagRuntimeConfig().enabled);
-  const [monetagZoneId, setMonetagZoneId] = useState<string>('11697581');
-  const [monetagMultiTagZoneId, setMonetagMultiTagZoneId] = useState<string>('275153');
-  const [monetagDomain, setMonetagDomain] = useState<string>('3nbf4.com');
-  const [monetagStatusDetail, setMonetagStatusDetail] = useState<MonetagStatusDetail>(() => getMonetagStatus());
-
-  useEffect(() => {
-    const handleStatusUpdate = (e: Event) => {
-      const customEvent = e as CustomEvent<MonetagStatusDetail>;
-      if (customEvent.detail) {
-        setMonetagStatusDetail(customEvent.detail);
-      }
-    };
-    window.addEventListener('omnifetch_monetag_status_updated', handleStatusUpdate);
-    return () => {
-      window.removeEventListener('omnifetch_monetag_status_updated', handleStatusUpdate);
-    };
-  }, []);
-
-  // Adsterra API Integration & Auto-Sync State
-  const [adsterraToken, setAdsterraToken] = useState<string>('');
-  const [adsterraConnected, setAdsterraConnected] = useState<boolean>(false);
-  const [adsterraTesting, setAdsterraTesting] = useState<boolean>(false);
-  const [adsterraSyncing, setAdsterraSyncing] = useState<boolean>(false);
-  const [adsterraDryRunning, setAdsterraDryRunning] = useState<boolean>(false);
-  const [autoSyncFrequency, setAutoSyncFrequency] = useState<'OFF' | '1H' | '6H' | '12H' | '24H'>('6H');
-
-  // Inventory & Sync Data
-  const [adsterraDomains, setAdsterraDomains] = useState<any[]>([]);
-  const [adsterraPlacements, setAdsterraPlacements] = useState<any[]>([]);
-  const [adsterraSmartlinks, setAdsterraSmartlinks] = useState<any[]>([]);
-  const [adsterraMappings, setAdsterraMappings] = useState<any[]>([]);
-  const [adsterraSyncLogs, setAdsterraSyncLogs] = useState<any[]>([]);
-  const [dryRunResults, setDryRunResults] = useState<any | null>(null);
-
-  const [adsterraStats, setAdsterraStats] = useState<any>({
-    publisherStatus: 'NOT_CONFIGURED',
-    todayRevenue: 'N/A',
-    yesterdayRevenue: 'N/A',
-    last7DaysRevenue: 'N/A',
-    last30DaysRevenue: 'N/A',
-    todayImpressions: 'N/A',
-    todayClicks: 'N/A',
-    ctr: 'N/A',
-    cpm: 'N/A',
-    domainsVerified: [],
-  });
-
-  // Load Adsterra Data from Database & Stats
-  const loadAdsterraData = async () => {
-    try {
-      const res = await fetch('/api/admin/adsterra/stats');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.stats) {
-          setAdsterraStats(data.stats);
-          setAdsterraConnected(data.stats.publisherStatus === 'CONNECTED');
-        }
-      }
-
-      const mapData = await fetchAdsterraMappingsFromDb();
-      if (mapData) {
-        setAdsterraDomains(mapData.domains || []);
-        setAdsterraPlacements(mapData.placements || []);
-        setAdsterraSmartlinks(mapData.smartlinks || []);
-        setAdsterraMappings(mapData.mappings || []);
-        setAdsterraSyncLogs(mapData.logs || []);
-      }
-    } catch (e) {
-      console.warn('Adsterra data load notice:', e);
-    }
-  };
-
-  useEffect(() => {
-    loadAdsterraData();
-  }, []);
-
-  const handleTestAdsterraConnection = async () => {
-    setAdsterraTesting(true);
-    try {
-      const res = await testAdsterraConnection(adsterraToken.trim() || undefined);
-      setAdsterraConnected(true);
-      onShowToast('✓ ' + res.message);
-      await loadAdsterraData();
-    } catch (err: any) {
-      setAdsterraConnected(false);
-      onShowToast('✕ ' + (err?.message || 'فشل الاتصال بـ Adsterra API'));
-    } finally {
-      setAdsterraTesting(false);
-    }
-  };
-
-  const handleExecuteDryRun = async () => {
-    setAdsterraDryRunning(true);
-    setDryRunResults(null);
-    try {
-      const res = await triggerAdsterraSync(true);
-      setDryRunResults(res);
-      onShowToast('✓ تم تشغيل اختبار المزامنة التجريبي (Dry Run) بنجاح دون تعديل قاعدة البيانات.');
-      await loadAdsterraData();
-    } catch (err: any) {
-      onShowToast('✕ فشل التشغيل التجريبي: ' + (err?.message || 'خطأ غير معروف'));
-    } finally {
-      setAdsterraDryRunning(false);
-    }
-  };
-
-  const handleExecuteLiveSync = async () => {
-    setAdsterraSyncing(true);
-    try {
-      const res = await triggerAdsterraSync(false);
-      onShowToast('✅ ' + res.message);
-      await loadAdsterraData();
-      const freshDbAds = await fetchAdsConfigFromDb();
-      setAdList(freshDbAds);
-      onUpdateAds(freshDbAds);
-    } catch (err: any) {
-      onShowToast('✕ فشلت المزامنة المباشرة: ' + (err?.message || 'خطأ غير معروف'));
-    } finally {
-      setAdsterraSyncing(false);
-    }
-  };
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Modals & Test Ad Preview States
-  const [showAdsterraGenerator, setShowAdsterraGenerator] = useState(false);
   const [showAdSenseGenerator, setShowAdSenseGenerator] = useState(false);
   const [showImageBannerModal, setShowImageBannerModal] = useState(false);
   const [showAddSlotModal, setShowAddSlotModal] = useState(false);
   const [testingSlot, setTestingSlot] = useState<AdPlacementConfig | null>(null);
   const [dbVerifiedCode, setDbVerifiedCode] = useState<string | null>(null);
 
-  // Adsterra Generator Form
-  const [adsterraTargetSlot, setAdsterraTargetSlot] = useState<string>('pre_result');
-  const [adsterraFormat, setAdsterraFormat] = useState<'native_300x250' | 'leaderboard_728x90' | 'popunder' | 'social_bar' | 'direct_link'>('native_300x250');
-  const [adsterraKey, setAdsterraKey] = useState('a1b2c3d4e5f67890');
-
-  // AdSense Generator Form
+  // AdSense / GAM Tag Generator Form
   const [adSenseTargetSlot, setAdSenseTargetSlot] = useState<string>('header_banner');
   const [publisherId, setPublisherId] = useState('ca-pub-6708942894533593');
-  const [adUnitId, setAdUnitId] = useState('9876543210');
+  const [adUnitId, setAdUnitId] = useState('');
   const [adFormat, setAdFormat] = useState<'auto' | 'fluid' | 'rectangle' | 'horizontal'>('auto');
 
   // Direct Image Banner Form
   const [bannerTargetSlot, setBannerTargetSlot] = useState<string>('footer_banner');
-  const [imageUrl, setImageUrl] = useState('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&q=80');
+  const [imageUrl, setImageUrl] = useState('');
   const [targetUrl, setTargetUrl] = useState('https://omnifetchpro.com');
-  const [bannerAltText, setBannerAltText] = useState('Sponsor Offer');
+  const [bannerAltText, setBannerAltText] = useState('Advertisement');
 
   // Add Custom Slot Form
   const [newSlotName, setNewSlotName] = useState('');
   const [newSlotKey, setNewSlotKey] = useState('');
-  const [newSlotHeight, setNewSlotHeight] = useState(100);
+  const [newSlotHeight, setNewSlotHeight] = useState(90);
 
   // Audit Logs
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([
     {
       id: 'log-init',
-      timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      timestamp: new Date().toLocaleTimeString(isRtl ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       action: 'SYSTEM_INITIALIZED',
       slotsCount: adList.length,
-      network: 'Multi-Network (Adsterra/AdSense)',
+      provider: 'Provider-Neutral Architecture',
       status: 'SUCCESS',
-      verificationHash: 'DB_VERIFIED_INIT',
+      verificationHash: 'DB_VERIFIED_CLEAN',
     },
   ]);
 
@@ -262,7 +119,7 @@ export const AdManagerTab: React.FC<Props> = ({
   const handleToggleSlot = (id: string) => {
     const updated = adList.map((slot) => (slot.id === id ? { ...slot, enabled: !slot.enabled } : slot));
     setAdList(updated);
-    onShowToast('تم تغيير حالة تفعيل المساحة الإعلانية.');
+    onShowToast(isRtl ? 'تم تغيير حالة تفعيل المساحة الإعلانية.' : 'Ad slot status updated.');
   };
 
   // Update Slot Field
@@ -275,7 +132,7 @@ export const AdManagerTab: React.FC<Props> = ({
   const handlePreviewInterstitial = (slot: AdPlacementConfig) => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('omnifetch_preview_interstitial', { detail: slot }));
-      onShowToast('جاري تشغيل المعاينة الحية لإعلان الشاشة الكاملة (Preview Mode)...');
+      onShowToast(isRtl ? 'جاري تشغيل المعاينة الحية لإعلان الشاشة الكاملة (Preview Mode)...' : 'Launching live interstitial preview...');
     }
   };
 
@@ -285,66 +142,12 @@ export const AdManagerTab: React.FC<Props> = ({
     setAdList(updated);
   };
 
-  // Apply Monetag Format to Selected / All slots
-  const handleApplyMonetagCodeToAll = (format: 'in_page_push' | 'vignette' | 'onclick' | 'multitag') => {
-    const targetZone = format === 'multitag' ? (monetagMultiTagZoneId || '275153') : (monetagZoneId || '11697581');
-    const code = generateMonetagAdCode(targetZone, format, monetagDomain || '3nbf4.com');
-    const updated = adList.map((slot) => {
-      const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
-      if (format === 'vignette' && isInterstitial) {
-        return {
-          ...slot,
-          enabled: true,
-          provider: 'monetag',
-          code,
-          monetagZoneId: targetZone,
-          monetagDomain: monetagDomain || '3nbf4.com',
-        };
-      }
-      if (format !== 'vignette' && !isInterstitial) {
-        return {
-          ...slot,
-          enabled: true,
-          provider: 'monetag',
-          code,
-          monetagZoneId: targetZone,
-          monetagDomain: monetagDomain || '3nbf4.com',
-        };
-      }
-      return slot;
-    });
-    setAdList(updated);
-    onUpdateAds(updated);
-    onShowToast(`✅ تم تهيئة وتطبيق كود Monetag (${format}) على المساحات الإعلانية بنجاح!`);
-  };
-
-  // Apply Monetag to single slot
-  const handleApplyMonetagToSlot = (slotId: string, format: string = 'in_page_push') => {
-    const targetZone = format === 'multitag' ? (monetagMultiTagZoneId || '275153') : (monetagZoneId || '11697581');
-    const code = generateMonetagAdCode(targetZone, format, monetagDomain || '3nbf4.com');
-    const updated = adList.map((slot) =>
-      slot.id === slotId
-        ? {
-            ...slot,
-            enabled: true,
-            provider: 'monetag',
-            code,
-            monetagZoneId: targetZone,
-            monetagDomain: monetagDomain || '3nbf4.com',
-          }
-        : slot
-    );
-    setAdList(updated);
-    onUpdateAds(updated);
-    onShowToast('✅ تم تطبيق كود إعلان Monetag على هذه المساحة!');
-  };
-
   // Delete Custom Slot
   const handleDeleteSlot = (id: string) => {
-    if (confirm('هل أنت تأكد من حذف هذه المساحة الإعلانية؟')) {
+    if (confirm(isRtl ? 'هل أنت متأكد من حذف هذه المساحة الإعلانية؟' : 'Are you sure you want to delete this ad slot?')) {
       const updated = adList.filter((s) => s.id !== id);
       setAdList(updated);
-      onShowToast('تم حذف المساحة بنجاح.');
+      onShowToast(isRtl ? 'تم حذف المساحة بنجاح.' : 'Ad slot deleted successfully.');
     }
   };
 
@@ -352,10 +155,10 @@ export const AdManagerTab: React.FC<Props> = ({
   const handleSaveAll = async () => {
     setSaving(true);
     try {
-      // 1. Write to server PostgreSQL & mirror to Firestore
-      const savedList = await saveAdsConfig(adList);
+      // 1. Write to server database
+      await saveAdsConfig(adList);
 
-      // 2. Read back directly from database endpoint
+      // 2. Read back directly from database endpoint to verify
       const freshDbAds = await fetchAdsConfigFromDb();
 
       // 3. Verify match
@@ -363,7 +166,7 @@ export const AdManagerTab: React.FC<Props> = ({
       onUpdateAds(freshDbAds);
 
       const now = new Date();
-      const timeStr = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const timeStr = now.toLocaleTimeString(isRtl ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setLastVerifiedAt(timeStr);
 
       // 4. Log Audit Trail
@@ -372,27 +175,19 @@ export const AdManagerTab: React.FC<Props> = ({
         timestamp: timeStr,
         action: 'UPDATE_AND_VERIFY_ADS',
         slotsCount: freshDbAds.length,
-        network: activeNetworkFilter === 'all' ? 'Adsterra & Custom' : activeNetworkFilter,
+        provider: 'Provider-Neutral (AdSense/GAM/Custom)',
         status: 'SUCCESS',
         verificationHash: 'DB_HASH_' + Math.random().toString(36).substring(2, 8).toUpperCase(),
       };
       setAuditLogs((prev) => [newLog, ...prev.slice(0, 10)]);
 
-      onShowToast('✅ تم حفظ أكواد الإعلانات والتحقق منها بنجاح في قاعدة البيانات!');
+      onShowToast(isRtl ? '✅ تم حفظ إعدادات وأكواد الإعلانات والتحقق منها بنجاح في قاعدة البيانات!' : '✅ Ad settings saved and verified in database successfully!');
     } catch (err: any) {
       console.error('Save ads error:', err);
-      onShowToast('❌ فشل حفظ الإعلانات في قاعدة البيانات: ' + (err?.message || 'خطأ غير معروف'));
+      onShowToast((isRtl ? '❌ فشل حفظ الإعلانات في قاعدة البيانات: ' : '❌ Failed to save ads: ') + (err?.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
-  };
-
-  // Save Adsterra Token
-  const handleSaveAdsterraToken = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('adsterra_api_token', adsterraToken);
-    }
-    onShowToast('تم حفظ رمز Adsterra API Token بنجاح.');
   };
 
   // Test Ad Button Logic: Read directly from database & render preview
@@ -412,1223 +207,808 @@ export const AdManagerTab: React.FC<Props> = ({
     }
   };
 
-  // Generate Adsterra Unit Code
-  const handleInjectAdsterraUnit = () => {
+  // Generate AdSense Unit Code
+  const handleInjectAdSenseUnit = () => {
+    const pub = publisherId.trim() || 'ca-pub-6708942894533593';
+    const unit = adUnitId.trim();
+
     let generatedCode = '';
-    const key = adsterraKey.trim() || 'a1b2c3d4e5f67890';
-
-    if (adsterraFormat === 'native_300x250') {
-      generatedCode = `<!-- Adsterra Native 300x250 Display -->
-<script type="text/javascript">
-  atOptions = {
-    'key': '${key}',
-    'format': 'iframe',
-    'height': 250,
-    'width': 300,
-    'params': {}
-  };
-</script>
-<script type="text/javascript" src="//www.highperformanceformat.com/${key}/invoke.js"></script>`;
-    } else if (adsterraFormat === 'leaderboard_728x90') {
-      generatedCode = `<!-- Adsterra Leaderboard 728x90 -->
-<script type="text/javascript">
-  atOptions = {
-    'key': '${key}',
-    'format': 'iframe',
-    'height': 90,
-    'width': 728,
-    'params': {}
-  };
-</script>
-<script type="text/javascript" src="//www.highperformanceformat.com/${key}/invoke.js"></script>`;
-    } else if (adsterraFormat === 'popunder') {
-      generatedCode = `<!-- Adsterra Popunder Script -->
-<script type='text/javascript' src='//www.highperformanceformat.com/${key}/invoke.js'></script>`;
-    } else if (adsterraFormat === 'social_bar') {
-      generatedCode = `<!-- Adsterra Social Bar Script -->
-<script type='text/javascript' src='//www.highperformanceformat.com/${key}/invoke.js'></script>`;
-    } else {
-      generatedCode = `<!-- Adsterra Direct Smartlink -->
-<a href="https://www.highperformanceformat.com/${key}" target="_blank" rel="noopener noreferrer" class="px-6 py-3 bg-amber-500 text-slate-950 font-black rounded-xl text-xs inline-block hover:bg-amber-400 transition">
-  🔥 Click Here for Special Partner Offer
-</a>`;
-    }
-
-    const updated = adList.map((s) =>
-      s.id === adsterraTargetSlot || s.slot === adsterraTargetSlot ? { ...s, code: generatedCode, enabled: true } : s
-    );
-
-    setAdList(updated);
-    setShowAdsterraGenerator(false);
-    onShowToast('تم توليد وإدراج شفرة Adsterra بنجاح!');
-  };
-
-  // Generate AdSense Unit
-  const handleInjectAdSenseCode = () => {
-    if (!publisherId || !adUnitId) {
-      onShowToast('يرجى كتابة Publisher ID و Ad Unit ID بشكل صحيح.');
-      return;
-    }
-
-    const generatedCode = `<!-- Google AdSense Unit: ${adUnitId} -->
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${publisherId}" crossorigin="anonymous"></script>
+    if (unit) {
+      generatedCode = `<!-- Google AdSense / GAM Tag Unit -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${pub}" crossorigin="anonymous"></script>
 <ins class="adsbygoogle"
-     style="display:block; text-align:center;"
-     data-ad-client="${publisherId}"
-     data-ad-slot="${adUnitId}"
+     style="display:block"
+     data-ad-client="${pub}"
+     data-ad-slot="${unit}"
      data-ad-format="${adFormat}"
      data-full-width-responsive="true"></ins>
 <script>
      (adsbygoogle = window.adsbygoogle || []).push({});
 </script>`;
+    } else {
+      generatedCode = `<!-- Google AdSense Auto / Responsive Unit -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${pub}" crossorigin="anonymous"></script>
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="${pub}"
+     data-ad-format="${adFormat}"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>`;
+    }
 
-    const updated = adList.map((slot) =>
-      slot.id === adSenseTargetSlot || slot.slot === adSenseTargetSlot ? { ...slot, code: generatedCode, enabled: true } : slot
-    );
+    const updated = adList.map((slot) => {
+      if (slot.slot === adSenseTargetSlot || slot.id === adSenseTargetSlot) {
+        return {
+          ...slot,
+          code: generatedCode,
+          provider: 'adsense',
+          publisherId: pub,
+          slotId: unit,
+          format: adFormat,
+          enabled: true,
+        };
+      }
+      return slot;
+    });
 
     setAdList(updated);
     setShowAdSenseGenerator(false);
-    onShowToast('تم توليد كود Google AdSense بنجاح!');
+    onShowToast(isRtl ? `✅ تم تطبيق كود AdSense على المساحة (${adSenseTargetSlot})!` : `✅ Applied AdSense code to (${adSenseTargetSlot})!`);
   };
 
-  // Inject Direct Image Banner
+  // Generate Direct Image Banner Unit
   const handleInjectImageBanner = () => {
-    if (!imageUrl) {
-      onShowToast('يرجى إدخال رابط الصورة بشكل صحيح.');
+    if (!imageUrl.trim()) {
+      onShowToast(isRtl ? 'يرجى إدخال رابط الصورة.' : 'Please enter an image URL.');
       return;
     }
 
-    const generatedCode = `<a href="${targetUrl}" target="_blank" rel="noopener noreferrer" class="block w-full text-center hover:opacity-95 transition">
-  <img src="${imageUrl}" alt="${bannerAltText}" class="max-h-32 w-full object-cover rounded-xl border border-slate-800 shadow-md mx-auto" />
+    const generatedCode = `<!-- Sponsor Direct Image Banner -->
+<a href="${targetUrl.trim() || '#'}" target="_blank" rel="nofollow noopener noreferrer" style="display:inline-block; max-width:100%;">
+  <img src="${imageUrl.trim()}" alt="${bannerAltText.trim() || 'Advertisement'}" style="max-width:100%; height:auto; border-radius:8px; display:block; margin:0 auto;" />
 </a>`;
 
-    const updated = adList.map((slot) =>
-      slot.id === bannerTargetSlot || slot.slot === bannerTargetSlot ? { ...slot, code: generatedCode, enabled: true } : slot
-    );
+    const updated = adList.map((slot) => {
+      if (slot.slot === bannerTargetSlot || slot.id === bannerTargetSlot) {
+        return {
+          ...slot,
+          code: generatedCode,
+          provider: 'custom_html',
+          enabled: true,
+        };
+      }
+      return slot;
+    });
 
     setAdList(updated);
     setShowImageBannerModal(false);
-    onShowToast('تم إدراج البنر المباشر بنجاح!');
+    onShowToast(isRtl ? `✅ تم تطبيق بنر الصورة المباشر على المساحة (${bannerTargetSlot})!` : `✅ Applied image banner to (${bannerTargetSlot})!`);
   };
 
-  // Create Custom Slot
-  const handleCreateNewSlot = () => {
-    if (!newSlotName) {
-      onShowToast('يرجى كتابة اسم المساحة الإعلانية.');
+  // Add Custom Slot Handler
+  const handleCreateCustomSlot = () => {
+    if (!newSlotName.trim()) {
+      onShowToast(isRtl ? 'يرجى إدخال اسم المساحة الإعلانية.' : 'Please enter slot name.');
       return;
     }
 
-    const key = newSlotKey.trim()
-      ? newSlotKey.toLowerCase().replace(/\s+/g, '_')
-      : 'slot_' + Math.random().toString(36).substring(2, 7);
+    const rawKey = (newSlotKey.trim() || newSlotName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')).toUpperCase();
+    const finalKey = rawKey.startsWith('CUSTOM_') ? rawKey : `CUSTOM_${rawKey}`;
 
-    const newSlotItem: AdPlacementConfig = {
-      id: key,
-      slot: key as any,
-      name: newSlotName,
-      enabled: true,
+    const newSlot: AdPlacementConfig = {
+      id: `ad-${Date.now()}`,
+      slot: finalKey,
+      name: newSlotName.trim(),
+      enabled: false,
       code: '',
-      heightPx: newSlotHeight || 100,
+      heightPx: Number(newSlotHeight) || 90,
+      provider: 'custom_html',
+      format: 'auto',
+      responsive: true,
+      desktopEnabled: true,
+      mobileEnabled: true,
+      lazyLoad: true,
     };
 
-    const updated = [...adList, newSlotItem];
-    setAdList(updated);
+    setAdList((prev) => [...prev, newSlot]);
     setShowAddSlotModal(false);
     setNewSlotName('');
     setNewSlotKey('');
-    onShowToast('تم إنشاء المساحة الإعلانية المخصصة بنجاح.');
+    setNewSlotHeight(90);
+    onShowToast(isRtl ? `✅ تم إنشاء المساحة الإعلانية الجديدة [${finalKey}] بنجاح!` : `✅ Created new slot [${finalKey}]!`);
   };
 
-  const enabledCount = adList.filter((s) => s.enabled).length;
+  const handleCopyCode = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    onShowToast(isRtl ? 'تم نسخ الكود إلى الحافظة.' : 'Code copied to clipboard.');
+  };
+
+  // Filter slots
+  const filteredSlots = adList.filter((slot) => {
+    // Category filter
+    if (activeCategoryFilter === 'homepage' && !slot.slot.includes('HOME_') && slot.slot !== 'header_banner' && slot.slot !== 'footer_banner' && slot.slot !== 'service_separator_1' && slot.slot !== 'service_separator_2') {
+      return false;
+    }
+    if (activeCategoryFilter === 'platform' && !slot.slot.includes('PLATFORM_') && slot.slot !== 'pre_result' && slot.slot !== 'post_result') {
+      return false;
+    }
+    if (activeCategoryFilter === 'blog' && !slot.slot.includes('BLOG_')) {
+      return false;
+    }
+    if (activeCategoryFilter === 'interstitial' && slot.slot !== 'interstitial' && slot.id !== 'ad-interstitial') {
+      return false;
+    }
+    if (activeCategoryFilter === 'other' && (slot.slot.includes('HOME_') || slot.slot.includes('PLATFORM_') || slot.slot.includes('BLOG_') || slot.slot === 'interstitial')) {
+      return false;
+    }
+
+    // Search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = slot.name.toLowerCase().includes(q);
+      const matchSlot = slot.slot.toLowerCase().includes(q);
+      const matchProvider = (slot.provider || '').toLowerCase().includes(q);
+      if (!matchName && !matchSlot && !matchProvider) return false;
+    }
+
+    return true;
+  });
+
+  const activeCount = adList.filter((s) => s.enabled).length;
 
   return (
-    <div className="space-y-6 text-slate-100">
-      {/* Top Banner Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-slate-900 p-5 rounded-2xl border border-slate-800 gap-4 shadow-xl">
-        <div>
-          <h2 className="text-lg font-black text-white flex items-center gap-2">
-            <span>نظام إعلانات OmniFetch Pro ودمج Adsterra</span>
-            <span className="px-2.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-mono border border-emerald-500/30 font-bold flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Database Verified Persistence
-            </span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            إدارة مركزية لشبكة Adsterra و Google AdSense والأكواد البرمجية. يتم حفظ جميع الأكواد مباشرة في قاعدة البيانات بدون أكواد افتراضية قديمة.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowAdsterraGenerator(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md transition"
-          >
-            <Zap className="w-4 h-4 fill-slate-950" />
-            <span>مساعد شفرات Adsterra</span>
-          </button>
-
-          <button
-            onClick={() => setShowAdSenseGenerator(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition"
-          >
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>مولد Google AdSense</span>
-          </button>
-
-          <button
-            onClick={() => setShowImageBannerModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition"
-          >
-            <Image className="w-4 h-4 text-purple-400" />
-            <span>بنر صورة مباشر</span>
-          </button>
-
-          <button
-            onClick={() => setShowAddSlotModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition"
-          >
-            <Plus className="w-4 h-4 text-emerald-400" />
-            <span>إضافة مساحة جديدة</span>
-          </button>
-
-          <button
-            onClick={handleSaveAll}
-            disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/30 transition disabled:opacity-50"
-          >
-            {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            <span>{saving ? 'جاري الحفظ والتحقق...' : 'حفظ وتأكيد الإعلانات (Save & Verify)'}</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Adsterra Publisher Dashboard & Token Status */}
-      <div className="bg-slate-900/90 p-5 rounded-2xl border border-slate-700/50 space-y-4 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-slate-800 text-slate-400 border border-slate-700">
-              <Globe className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
-                  <span>Adsterra Publisher Status</span>
-                </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                  ● معطل كلياً (DISABLED)
-                </span>
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                  Active Placements: 0
-                </span>
+    <div className="space-y-6">
+      {/* Header Banner & Status Bar */}
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-indigo-400">
+                <DollarSign className="w-6 h-6" />
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">جميع مساحات Adsterra الـ 14 معطلة بوضع الصفر (Zero Render - No Scripts / No Iframes / No Reserved Space).</p>
+              <div>
+                <h2 className="text-xl font-black text-white flex items-center gap-2">
+                  <span>{isRtl ? 'إدارة الإعلانات والمساحات الإعلانية' : 'Ad & Monetization Manager'}</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-medium">
+                    Clean Architecture
+                  </span>
+                </h2>
+                <p className="text-sm text-slate-400">
+                  {isRtl
+                    ? 'هيكل إعلاني نظيف ومتوافق بالكامل مع معايير Google AdSense / Google Ad Manager (MCM) / Custom HTML Tags بدون أي أكواد أو شبكات إعلانية قديمة.'
+                    : 'Provider-neutral advertising management ready for Google AdSense, GAM / MCM, and custom HTML/JS tags.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800/80 border border-slate-700 text-slate-300 text-xs rounded-lg font-mono">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isRtl ? `المساحات المفعلة: ${activeCount} من ${adList.length}` : `Active Slots: ${activeCount} / ${adList.length}`}</span>
+              </span>
+
+              {lastVerifiedAt && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs rounded-lg font-mono">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{isRtl ? `آخر حفظ وتحقق: ${lastVerifiedAt}` : `Last Verified: ${lastVerifiedAt}`}</span>
+                </span>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={adsterraToken}
-              onChange={(e) => setAdsterraToken(e.target.value)}
-              placeholder="Adsterra Publisher API Token"
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-mono w-56 focus:outline-none focus:border-slate-600"
-            />
+          <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={handleSaveAdsterraToken}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition border border-slate-700"
+              onClick={() => setShowAddSlotModal(true)}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-sm"
             >
-              حفظ الرمز
+              <Plus className="w-4 h-4 text-indigo-400" />
+              <span>{isRtl ? 'إضافة مساحة جديدة' : 'Add New Slot'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowAdSenseGenerator(true)}
+              className="px-4 py-2.5 bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-sm"
+            >
+              <Code2 className="w-4 h-4 text-indigo-400" />
+              <span>{isRtl ? 'مولد أكواد AdSense / GAM' : 'AdSense / GAM Generator'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowImageBannerModal(true)}
+              className="px-4 py-2.5 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border border-purple-500/30 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-sm"
+            >
+              <Image className="w-4 h-4 text-purple-400" />
+              <span>{isRtl ? 'بنر صورة مباشر' : 'Direct Image Banner'}</span>
+            </button>
+
+            <button
+              onClick={handleSaveAll}
+              disabled={saving}
+              className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/30 disabled:opacity-50"
+            >
+              {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              <span>{saving ? (isRtl ? 'جاري الحفظ والتحقق...' : 'Saving...') : (isRtl ? 'حفظ وتأكيد التغييرات' : 'Save & Verify All')}</span>
             </button>
           </div>
         </div>
-
-        {/* Adsterra Live Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 font-medium block">أرباح اليوم (Today Revenue)</span>
-            <span className="text-lg font-black text-emerald-400 font-mono">{adsterraStats.todayRevenue}</span>
-            <span className="text-[9px] text-slate-500 block">Adsterra Direct Stream</span>
-          </div>
-
-          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 font-medium block">أرباح 7 أيام الأخيرة</span>
-            <span className="text-lg font-black text-amber-300 font-mono">{adsterraStats.last7DaysRevenue}</span>
-            <span className="text-[9px] text-slate-500 block">متوسط CTR: {adsterraStats.ctr}</span>
-          </div>
-
-          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 font-medium block">الظهور (Impressions)</span>
-            <span className="text-lg font-black text-sky-400 font-mono">{adsterraStats.todayImpressions.toLocaleString()}</span>
-            <span className="text-[9px] text-slate-500 block">CPM الحالي: {adsterraStats.cpm}</span>
-          </div>
-
-          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 font-medium block">النقرات (Clicks)</span>
-            <span className="text-lg font-black text-purple-400 font-mono">{adsterraStats.todayClicks}</span>
-            <span className="text-[9px] text-slate-500 block">معدل التحويل: 100%</span>
-          </div>
-
-          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 font-medium block">أرباح الشهر (30 Days)</span>
-            <span className="text-lg font-black text-emerald-300 font-mono">{adsterraStats.last30DaysRevenue}</span>
-            <span className="text-[9px] text-emerald-400 block">★ الأداء ممتاز</span>
-          </div>
-        </div>
       </div>
 
-      {/* Monetag Native Integration & Service Worker Hub */}
-      <div className="bg-gradient-to-r from-indigo-950/60 via-slate-900 to-purple-950/50 p-5 rounded-2xl border border-indigo-500/30 shadow-xl space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-indigo-500/20">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-black text-base text-white">إعدادات شبكة إعلانات Monetag (MultiTag + In-Page Push + Vignette)</h3>
-                
-                {/* Dynamic Status Badge */}
-                {monetagStatusDetail.status === 'READY' && (
-                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>● نشط (Active)</span>
-                  </span>
-                )}
-                {monetagStatusDetail.status === 'INITIALIZING' && (
-                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                    <span>● قيد التهيئة (Initializing)</span>
-                  </span>
-                )}
-                {monetagStatusDetail.status === 'DISABLED' && (
-                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-slate-700/60 text-slate-300 rounded-full border border-slate-600/40 flex items-center gap-1">
-                    <span>● معطل ({monetagStatusDetail.reason === 'disabled_by_user' ? 'يدوياً' : monetagStatusDetail.reason === 'missing_config' ? 'بيانات غير مكتملة' : 'Disabled'})</span>
-                  </span>
-                )}
-                {monetagStatusDetail.status === 'FAILED' && (
-                  <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-red-500/20 text-red-300 rounded-full border border-red-500/30 flex items-center gap-1">
-                    <span>● تعذر التحميل ({monetagStatusDetail.reason === 'client_blocked' ? 'حظر إعلانات/شبكة' : 'Error'})</span>
-                  </span>
-                )}
-
-                <span className="px-2.5 py-0.5 text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Service Worker جاهز
-                </span>
-
-                <span className="px-2 py-0.5 text-[9px] font-bold bg-teal-500/10 text-teal-300 rounded-md border border-teal-500/20">
-                  🛡️ Safe Fallback Active (Fail-Open)
-                </span>
-              </div>
-              <span className="text-xs text-slate-400 font-mono flex items-center gap-2 mt-1 flex-wrap">
-                <span>MultiTag Zone: <strong className="text-purple-300 font-bold">{monetagMultiTagZoneId}</strong></span>
-                <span>•</span>
-                <span>Push Zone: <strong className="text-indigo-300 font-bold">{monetagZoneId}</strong></span>
-                <span>•</span>
-                <span>Domain: <strong className="text-indigo-300 font-bold">{monetagDomain}</strong></span>
-                <span>•</span>
-                <span>المسار: <code className="text-slate-300">/sw.js</code></span>
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+      {/* Filter & Search Bar */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Category Tabs */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { id: 'all', label: isRtl ? 'جميع المساحات' : 'All Slots' },
+            { id: 'homepage', label: isRtl ? 'الرئيسية' : 'Homepage' },
+            { id: 'platform', label: isRtl ? 'صفحات المنصات' : 'Platforms' },
+            { id: 'blog', label: isRtl ? 'المقالات' : 'Blog' },
+            { id: 'interstitial', label: isRtl ? 'الشاشة الكاملة (Interstitial)' : 'Interstitial' },
+            { id: 'other', label: isRtl ? 'أخرى' : 'Other' },
+          ].map((tab) => (
             <button
-              onClick={() => {
-                const nextState = !monetagEnabled;
-                setMonetagEnabled(nextState);
-                setMonetagGlobalEnabled(nextState);
-                onShowToast(nextState ? '✅ تم تفعيل Monetag بنجاح' : '⚠️ تم إيقاف Monetag مؤقتاً');
-              }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition border ${
-                monetagEnabled
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                  : 'bg-red-500/20 text-red-300 border-red-500/40 hover:bg-red-500/30'
+              key={tab.id}
+              onClick={() => setActiveCategoryFilter(tab.id as any)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeCategoryFilter === tab.id
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
-              <Power className="w-3.5 h-3.5" />
-              <span>{monetagEnabled ? 'تفعيل Monetag: تشغيل (ON)' : 'تفعيل Monetag: معطل (OFF)'}</span>
-            </button>
-
-            <a
-              href="/sw.js"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-mono transition"
-            >
-              <ExternalLink className="w-3.5 h-3.5" /> فحص ملف /sw.js
-            </a>
-          </div>
-        </div>
-
-        {/* Monetag Formats Status Breakdown */}
-        <div className="bg-slate-950/80 p-4 rounded-xl border border-indigo-500/20 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <span className="text-xs font-black text-white flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-              <span>صيغ Monetag الأربع النشطة (MultiTag Full Monetization Suite):</span>
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                Master MultiTag: <strong>275153</strong> (Industrious)
-              </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Initialization: <strong>SINGLE</strong>
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-            {/* Format 1: OnClick / Popunder */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-blue-500/30 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200 flex items-center gap-1">
-                  <DollarSign className="w-3.5 h-3.5 text-blue-400" /> OnClick / Popunder
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-blue-500/20 text-blue-300">
-                  ACTIVE
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-blue-300 font-mono">11697578</code></p>
-              <p className="text-[10px] text-slate-500">يعمل تلقائياً عبر MultiTag</p>
-            </div>
-
-            {/* Format 2: In-Page Push */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-indigo-500/30 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200 flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5 text-indigo-400" /> In-Page Push
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-indigo-500/20 text-indigo-300">
-                  ACTIVE
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-indigo-300 font-mono">11697579</code></p>
-              <p className="text-[10px] text-slate-500">بنرات تفاعلية داخل الصفحة</p>
-            </div>
-
-            {/* Format 3: Vignette Banner */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-emerald-500/30 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200 flex items-center gap-1">
-                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" /> Vignette Banner
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/20 text-emerald-300">
-                  ACTIVE
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-emerald-300 font-mono">11697580</code></p>
-              <p className="text-[10px] text-slate-500">إعلان كامل الشاشة بين التنقلات</p>
-            </div>
-
-            {/* Format 4: Push Notifications */}
-            <div className="p-3 rounded-lg bg-slate-900 border border-purple-500/30 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-200 flex items-center gap-1">
-                  <Bell className="w-3.5 h-3.5 text-purple-400" /> Web Push
-                </span>
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-purple-500/20 text-purple-300">
-                  ACTIVE
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400">Zone ID: <code className="text-purple-300 font-mono">11697581</code></p>
-              <p className="text-[10px] text-slate-500">مُدمج بـ /sw.js مع 3nbf4.com</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Monetag Quick Action Buttons */}
-        <div className="space-y-2">
-          <span className="text-xs text-slate-300 font-bold block">تطبيق صيغ إعلانات Monetag بنقرة واحدة (One-Click Deploy):</span>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            <button
-              onClick={() => handleApplyMonetagCodeToAll('multitag')}
-              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-bold transition shadow"
-            >
-              <FileCode2 className="w-4 h-4 text-purple-400" />
-              <span>تطبيق MultiTag الشامل (Zone {monetagMultiTagZoneId})</span>
-            </button>
-
-            <button
-              onClick={() => handleApplyMonetagCodeToAll('in_page_push')}
-              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white border border-indigo-500/40 text-xs font-bold transition shadow"
-            >
-              <Zap className="w-4 h-4 text-indigo-400" />
-              <span>تطبيق In-Page Push على المساحات</span>
-            </button>
-
-            <button
-              onClick={() => handleApplyMonetagCodeToAll('vignette')}
-              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white border border-amber-500/40 text-xs font-bold transition shadow"
-            >
-              <Maximize2 className="w-4 h-4 text-amber-400" />
-              <span>تطبيق Vignette على إعلان الشاشة</span>
-            </button>
-
-            <button
-              onClick={() => handleApplyMonetagCodeToAll('onclick')}
-              className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-blue-600/30 hover:bg-blue-600 text-blue-200 hover:text-white border border-blue-500/40 text-xs font-bold transition shadow"
-            >
-              <DollarSign className="w-4 h-4 text-blue-400" />
-              <span>تطبيق OnClick (Popunder)</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Network Filter & Stats Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-900 p-3.5 rounded-2xl border border-slate-800 text-xs gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-slate-400 font-bold px-2">تصفية حسب الشبكة:</span>
-          {(['all', 'monetag', 'adsterra', 'adsense', 'ezoic', 'direct'] as const).map((net) => (
-            <button
-              key={net}
-              onClick={() => setActiveNetworkFilter(net)}
-              className={`px-3 py-1.5 rounded-xl font-bold uppercase transition ${
-                activeNetworkFilter === net
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                  : 'bg-slate-950 text-slate-400 hover:text-white'
-              }`}
-            >
-              {net}
+              {tab.label}
             </button>
           ))}
         </div>
 
-        <div className="flex items-center gap-3 text-slate-400 font-mono">
-          <span>المساحات المفعلة: <strong className="text-emerald-400">{enabledCount} / {adList.length}</strong></span>
-          {lastVerifiedAt && (
-            <span className="text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> آخر تحقق: {lastVerifiedAt}
-            </span>
-          )}
+        {/* Search Input */}
+        <div className="relative w-full md:w-72">
+          <Search className="w-4 h-4 text-slate-400 absolute start-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={isRtl ? 'بحث في المساحات الإعلانية...' : 'Search slots...'}
+            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl ps-9 pe-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+          />
         </div>
       </div>
 
-      {/* Placements Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {adList
-          .filter((slot) => {
-            if (activeNetworkFilter === 'all') return true;
-            const isMonetag = slot.provider === 'monetag' || (slot.code && (slot.code.includes('5gvci.com') || slot.code.includes('monetag')));
-            const isAdsterra = slot.provider === 'adsterra' || (slot.code && (slot.code.includes('highperformanceformat') || slot.code.includes('atOptions')));
-            const isAdSense = slot.provider === 'adsense' || (slot.code && slot.code.includes('adsbygoogle'));
-            const isEzoic = slot.provider === 'ezoic' || (slot.code && slot.code.includes('ezoic'));
+      {/* Slots List */}
+      <div className="space-y-4">
+        {filteredSlots.length === 0 ? (
+          <div className="p-12 text-center bg-slate-900/40 border border-slate-800 rounded-2xl">
+            <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+            <p className="text-slate-400 font-medium">
+              {isRtl ? 'لا توجد مساحات إعلانية مطابقة لخيارات البحث أو التصنيف.' : 'No ad slots match your search or filter.'}
+            </p>
+          </div>
+        ) : (
+          filteredSlots.map((slot) => {
+            const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
 
-            if (activeNetworkFilter === 'monetag') return isMonetag;
-            if (activeNetworkFilter === 'adsterra') return isAdsterra;
-            if (activeNetworkFilter === 'adsense') return isAdSense;
-            if (activeNetworkFilter === 'ezoic') return isEzoic;
-            if (activeNetworkFilter === 'direct') return !isMonetag && !isAdsterra && !isAdSense && !isEzoic;
-            return true;
-          })
-          .map((slot) => {
-          const isInterstitial = slot.slot === 'interstitial' || slot.id === 'ad-interstitial' || slot.format === 'interstitial';
-          const isMonetag = slot.provider === 'monetag' || (slot.code && (slot.code.includes('5gvci.com') || slot.code.includes('monetag')));
-          const isAdsterra = slot.code && (slot.code.includes('highperformanceformat') || slot.code.includes('atOptions'));
-          const isAdSense = slot.code && slot.code.includes('adsbygoogle');
-
-          if (isInterstitial) {
             return (
               <div
                 key={slot.id}
-                className={`col-span-1 md:col-span-2 p-6 rounded-2xl border transition-all space-y-5 relative ${
-                  slot.enabled
-                    ? 'bg-slate-900 border-amber-500/50 shadow-xl shadow-amber-500/10 ring-1 ring-amber-500/20'
-                    : 'bg-slate-900/60 border-slate-800'
+                className={`bg-slate-900/60 border rounded-2xl p-5 transition-all shadow-sm ${
+                  slot.enabled ? 'border-indigo-500/30 ring-1 ring-indigo-500/10' : 'border-slate-800 opacity-90'
                 }`}
               >
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`p-3 rounded-2xl ${
-                        slot.enabled ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'
-                      }`}
-                    >
-                      <Maximize2 className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-black text-base text-white">
-                          {slot.name || 'إعلان شاشة كاملة عند فتح الموقع (Full-Screen Interstitial)'}
-                        </h3>
-                        <span
-                          className={`px-2.5 py-0.5 text-[10px] font-extrabold uppercase rounded-full border ${
-                            slot.enabled
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-slate-800 text-slate-400 border-slate-700'
-                          }`}
-                        >
-                          {slot.enabled ? 'مفعل (Active)' : 'معطل افتراضياً (Disabled)'}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <button
+                        onClick={() => handleToggleSlot(slot.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${
+                          slot.enabled
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                        }`}
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        <span>{slot.enabled ? (isRtl ? 'مفعل (Active)' : 'Enabled') : (isRtl ? 'معطل (Disabled)' : 'Disabled')}</span>
+                      </button>
+
+                      <span className="font-mono text-xs px-2.5 py-0.5 rounded-md bg-slate-800 text-indigo-300 font-bold border border-slate-700">
+                        [{slot.slot}]
+                      </span>
+
+                      {isInterstitial && (
+                        <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/40 text-purple-300 text-[11px] font-bold">
+                          {isRtl ? 'إعلان شاشة كاملة (Interstitial)' : 'Full-Screen Interstitial'}
                         </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-base font-bold text-white pt-1">{slot.name}</h3>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isInterstitial ? (
+                      <button
+                        onClick={() => handlePreviewInterstitial(slot)}
+                        className="px-3 py-1.5 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border border-purple-500/40 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        <span>{isRtl ? 'معاينة ملء الشاشة' : 'Preview Interstitial'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleTestAd(slot)}
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>{isRtl ? 'معاينة تجريبية' : 'Test Preview'}</span>
+                      </button>
+                    )}
+
+                    {slot.slot.startsWith('CUSTOM_') && (
+                      <button
+                        onClick={() => handleDeleteSlot(slot.id)}
+                        className="p-1.5 text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl transition-colors"
+                        title={isRtl ? 'حذف المساحة' : 'Delete slot'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Configuration Controls Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-4 pb-2">
+                  <div>
+                    <label className="block text-[11px] font-mono uppercase text-slate-400 mb-1">
+                      {isRtl ? 'نوع / شبكة المزود' : 'Provider Type'}
+                    </label>
+                    <select
+                      value={slot.provider || 'custom_html'}
+                      onChange={(e) => handleUpdateSlotField(slot.id, 'provider', e.target.value)}
+                      className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="custom_html">{isRtl ? 'Custom HTML / JS Tag' : 'Custom HTML / JS Tag'}</option>
+                      <option value="adsense">Google AdSense</option>
+                      <option value="gam">Google Ad Manager (GAM / MCM)</option>
+                    </select>
+                  </div>
+
+                  {!isInterstitial && (
+                    <div>
+                      <label className="block text-[11px] font-mono uppercase text-slate-400 mb-1">
+                        {isRtl ? 'الارتفاع بالبكسل (Min Height)' : 'Height (px)'}
+                      </label>
+                      <input
+                        type="number"
+                        value={slot.heightPx || 90}
+                        onChange={(e) => handleUpdateSlotField(slot.id, 'heightPx', Number(e.target.value))}
+                        className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-4 sm:col-span-2 pt-2 sm:pt-4">
+                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                      <input
+                        type="checkbox"
+                        checked={slot.desktopEnabled !== false}
+                        onChange={(e) => handleUpdateSlotField(slot.id, 'desktopEnabled', e.target.checked)}
+                        className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <Monitor className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{isRtl ? 'ظهور على الكمبيوتر' : 'Desktop'}</span>
+                    </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                      <input
+                        type="checkbox"
+                        checked={slot.mobileEnabled !== false}
+                        onChange={(e) => handleUpdateSlotField(slot.id, 'mobileEnabled', e.target.checked)}
+                        className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <Smartphone className="w-3.5 h-3.5 text-slate-400" />
+                      <span>{isRtl ? 'ظهور على الهاتف' : 'Mobile'}</span>
+                    </label>
+
+                    {!isInterstitial && (
+                      <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                        <input
+                          type="checkbox"
+                          checked={slot.lazyLoad !== false}
+                          onChange={(e) => handleUpdateSlotField(slot.id, 'lazyLoad', e.target.checked)}
+                          className="rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>{isRtl ? 'التحميل الكسول (Lazy Load)' : 'Lazy Load'}</span>
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                {/* Interstitial Detailed Options */}
+                {isInterstitial && (
+                  <div className="mt-3 p-4 bg-purple-950/20 border border-purple-500/20 rounded-xl space-y-3">
+                    <h4 className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>{isRtl ? 'إعدادات إعلان الشاشة الكاملة (Interstitial Controls)' : 'Interstitial Options'}</span>
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                          {isRtl ? 'تكرار الظهور للمستخدم' : 'Frequency Control'}
+                        </label>
+                        <select
+                          value={slot.frequencyControl || 'session'}
+                          onChange={(e) => handleUpdateSlotField(slot.id, 'frequencyControl', e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                        >
+                          <option value="session">{isRtl ? 'مرة واحدة لكل جلسة متصفح (Session)' : 'Once per session'}</option>
+                          <option value="minutes_15">{isRtl ? 'مرة كل 15 دقيقة' : 'Every 15 minutes'}</option>
+                          <option value="hours_1">{isRtl ? 'مرة كل ساعة' : 'Every 1 hour'}</option>
+                          <option value="hours_24">{isRtl ? 'مرة كل 24 ساعة' : 'Every 24 hours'}</option>
+                          <option value="always">{isRtl ? 'دائماً عند كل تحميل (للتجربة)' : 'Always on page load'}</option>
+                        </select>
                       </div>
-                      <span className="text-xs text-slate-400 font-mono">
-                        مساحة إعلانية منبثقة ملء الشاشة تظهر للزائر عند زيارة الموقع مع زر إغلاق آمن ومؤقت زمني
-                      </span>
+
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                          {isRtl ? 'مهلة زر الإغلاق (بالثواني)' : 'Close Delay (Seconds)'}
+                        </label>
+                        <input
+                          type="number"
+                          value={slot.closeDelaySec !== undefined ? slot.closeDelaySec : 3}
+                          onChange={(e) => handleUpdateSlotField(slot.id, 'closeDelaySec', Number(e.target.value))}
+                          className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-mono text-slate-400 mb-1">
+                          {isRtl ? 'تأخير بدء الظهور (بالميلي ثانية)' : 'Display Delay (ms)'}
+                        </label>
+                        <input
+                          type="number"
+                          value={slot.displayDelayMs !== undefined ? slot.displayDelayMs : 500}
+                          onChange={(e) => handleUpdateSlotField(slot.id, 'displayDelayMs', Number(e.target.value))}
+                          className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
+                )}
 
-                  <div className="flex items-center gap-2">
-                    {/* Live Preview Button */}
+                {/* Ad Code Editor */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between pb-1 text-[11px] font-mono text-slate-400">
+                    <span>{isRtl ? 'كود الإعلان / Custom Script / Tag' : 'Ad Code / Tag'}</span>
                     <button
-                      onClick={() => handlePreviewInterstitial(slot)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/50 font-bold text-xs transition shadow-md"
-                      title="معاينة حية فورية للإعلان كما يراه الزائر"
+                      onClick={() => handleCopyCode(slot.code || '', slot.id)}
+                      className="flex items-center gap-1 text-slate-400 hover:text-indigo-300 transition-colors"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>معاينة حية فورية (Live Preview)</span>
-                    </button>
-
-                    {/* Enable / Disable Power Button */}
-                    <button
-                      onClick={() => handleToggleSlot(slot.id)}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border font-bold text-xs transition shadow-md ${
-                        slot.enabled
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400 hover:bg-emerald-400'
-                          : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'
-                      }`}
-                      title={slot.enabled ? 'تعطيل المساحة' : 'تفعيل المساحة'}
-                    >
-                      <Power className="w-3.5 h-3.5" />
-                      <span>{slot.enabled ? 'مفعل (ON)' : 'معطل (OFF)'}</span>
+                      {copiedId === slot.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedId === slot.id ? (isRtl ? 'تم النسخ' : 'Copied') : (isRtl ? 'نسخ الكود' : 'Copy')}</span>
                     </button>
                   </div>
-                </div>
-
-                {/* Settings Configuration Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
-                  {/* Trigger Option */}
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      <span>حدث التشغيل (Trigger):</span>
-                    </label>
-                    <div className="font-mono text-slate-200 bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 text-xs">
-                      عند فتح الموقع (On Page Load)
-                    </div>
-                  </div>
-
-                  {/* Display Delay Option */}
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>مهلة الظهور بعد التحميل:</span>
-                    </label>
-                    <select
-                      value={slot.displayDelayMs !== undefined ? slot.displayDelayMs : 500}
-                      onChange={(e) => handleUpdateSlotField(slot.id, 'displayDelayMs', Number(e.target.value))}
-                      className="w-full bg-slate-900 text-slate-200 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                    >
-                      <option value={0}>0 ثانية (فوري مباشرة)</option>
-                      <option value={500}>500 مللي ثانية (افتراضي سلس)</option>
-                      <option value={1000}>1 ثانية</option>
-                      <option value={2000}>2 ثانية</option>
-                      <option value={3000}>3 ثواني</option>
-                      <option value={5000}>5 ثواني</option>
-                    </select>
-                  </div>
-
-                  {/* Frequency Control Option */}
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
-                      <Sliders className="w-3.5 h-3.5 text-amber-400" />
-                      <span>معدل التكرار (Frequency):</span>
-                    </label>
-                    <select
-                      value={slot.frequencyControl || 'session'}
-                      onChange={(e) => handleUpdateSlotField(slot.id, 'frequencyControl', e.target.value)}
-                      className="w-full bg-slate-900 text-slate-200 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                    >
-                      <option value="session">مرة واحدة لكل جلسة (Session Storage)</option>
-                      <option value="minutes_15">مرة كل 15 دقيقة</option>
-                      <option value="minutes_30">مرة كل 30 دقيقة</option>
-                      <option value="hours_1">مرة كل ساعة</option>
-                      <option value="hours_6">مرة كل 6 ساعات</option>
-                      <option value="hours_24">مرة واحدة يومياً (24 ساعة)</option>
-                      <option value="always">مع كل فتح أو تحديث للصفحة</option>
-                    </select>
-                  </div>
-
-                  {/* Close Countdown Option */}
-                  <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-1.5">
-                    <label className="text-slate-400 font-bold flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>عداد الإغلاق (Close Countdown):</span>
-                    </label>
-                    <select
-                      value={slot.closeDelaySec !== undefined ? slot.closeDelaySec : 3}
-                      onChange={(e) => handleUpdateSlotField(slot.id, 'closeDelaySec', Number(e.target.value))}
-                      className="w-full bg-slate-900 text-slate-200 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                    >
-                      <option value={0}>إغلاق فوري بدون عداد (0 ثانية)</option>
-                      <option value={1}>1 ثانية</option>
-                      <option value={2}>2 ثانية</option>
-                      <option value={3}>3 ثواني (موصى به للمعلنين)</option>
-                      <option value={5}>5 ثواني</option>
-                      <option value={10}>10 ثواني</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Device Targeting Controls */}
-                <div className="flex flex-wrap items-center gap-3 bg-slate-950 p-3.5 rounded-xl border border-slate-800 text-xs">
-                  <span className="text-slate-400 font-bold">الأجهزة المستهدفة:</span>
-                  
-                  <button
-                    type="button"
-                    onClick={() => handleUpdateSlotField(slot.id, 'mobileEnabled', slot.mobileEnabled === false ? true : false)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold transition ${
-                      slot.mobileEnabled !== false
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                        : 'bg-slate-900 text-slate-500 border-slate-800'
-                    }`}
-                  >
-                    <Smartphone className="w-3.5 h-3.5" />
-                    <span>الهواتف الذكية (Mobile): {slot.mobileEnabled !== false ? 'مفعل ✓' : 'معطل ✕'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleUpdateSlotField(slot.id, 'desktopEnabled', slot.desktopEnabled === false ? true : false)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold transition ${
-                      slot.desktopEnabled !== false
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                        : 'bg-slate-900 text-slate-500 border-slate-800'
-                    }`}
-                  >
-                    <Monitor className="w-3.5 h-3.5" />
-                    <span>أجهزة الكمبيوتر (Desktop): {slot.desktopEnabled !== false ? 'مفعل ✓' : 'معطل ✕'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleUpdateSlotField(slot.id, 'closeButtonEnabled', slot.closeButtonEnabled === false ? true : false)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-bold transition ${
-                      slot.closeButtonEnabled !== false
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : 'bg-slate-900 text-slate-500 border-slate-800'
-                    }`}
-                  >
-                    <CheckSquare className="w-3.5 h-3.5" />
-                    <span>زر الإغلاق المباشر: {slot.closeButtonEnabled !== false ? 'مفعل ✓' : 'معطل ✕'}</span>
-                  </button>
-                </div>
-
-                {/* Creative Code Editor & Direct Image Option */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {/* HTML / JavaScript Ad Code */}
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between text-slate-400 font-semibold">
-                      <span className="flex items-center gap-1.5">
-                        <Code2 className="w-3.5 h-3.5 text-amber-400" />
-                        <span>كود HTML / JavaScript / Adsterra / AdSense المخصص:</span>
-                      </span>
-                    </div>
-                    <textarea
-                      rows={5}
-                      value={slot.code || ''}
-                      onChange={(e) => handleCodeChange(slot.id, e.target.value)}
-                      placeholder="<!-- الصق كود إعلان الشاشة الكاملة أو شفرة الجافاسكريبت هنا -->"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-amber-300 font-mono text-[11px] focus:outline-none focus:border-amber-500 resize-none leading-relaxed"
-                    />
-                  </div>
-
-                  {/* Direct Image Banner Creative (Optional) */}
-                  <div className="space-y-2.5 text-xs bg-slate-950 p-3.5 rounded-xl border border-slate-800">
-                    <span className="text-slate-400 font-bold flex items-center gap-1.5">
-                      <Image className="w-3.5 h-3.5 text-amber-400" />
-                      <span>إعلان صورة مباشر اختياري (Direct Image & Link):</span>
-                    </span>
-
-                    <div className="space-y-1">
-                      <span className="text-[11px] text-slate-500 font-mono">رابط الصورة (Image URL):</span>
-                      <input
-                        type="url"
-                        value={slot.imageUrl || ''}
-                        onChange={(e) => handleUpdateSlotField(slot.id, 'imageUrl', e.target.value)}
-                        placeholder="https://example.com/banner-interstitial.png"
-                        className="w-full bg-slate-900 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[11px] text-slate-500 font-mono">رابط التوجيه عند النقر (Destination URL):</span>
-                      <input
-                        type="url"
-                        value={slot.destinationUrl || ''}
-                        onChange={(e) => handleUpdateSlotField(slot.id, 'destinationUrl', e.target.value)}
-                        placeholder="https://sponsor-website.com/offer"
-                        className="w-full bg-slate-900 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-800 focus:outline-none focus:border-amber-500 font-mono text-xs"
-                      />
-                    </div>
-                  </div>
+                  <textarea
+                    rows={4}
+                    value={slot.code || ''}
+                    onChange={(e) => handleCodeChange(slot.id, e.target.value)}
+                    placeholder={
+                      isRtl
+                        ? 'الصق كود الإعلان (HTML / JS / AdSense / GAM Tag) هنا...'
+                        : 'Paste HTML, JS, or GAM Tag code here...'
+                    }
+                    className="w-full font-mono text-xs bg-slate-950/90 border border-slate-800 rounded-xl p-3 text-indigo-200 placeholder-slate-600 focus:border-indigo-500 focus:outline-none transition-colors"
+                  />
                 </div>
               </div>
             );
-          }
-
-          return (
-            <div
-              key={slot.id}
-              className={`p-5 rounded-2xl border transition-all space-y-3 relative ${
-                slot.enabled
-                  ? 'bg-slate-900 border-amber-500/40 shadow-lg shadow-amber-500/5'
-                  : 'bg-slate-900/50 border-slate-800 opacity-80'
-              }`}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className={`p-2.5 rounded-xl ${
-                      slot.enabled ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-500'
-                    }`}
-                  >
-                    <Layout className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-sm text-white flex items-center gap-2 flex-wrap">
-                      <span>{slot.name}</span>
-                      {isMonetag && (
-                        <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30">
-                          Monetag
-                        </span>
-                      )}
-                      {isAdsterra && (
-                        <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 rounded border border-amber-500/30">
-                          Adsterra
-                        </span>
-                      )}
-                      {isAdSense && (
-                        <span className="px-2 py-0.5 text-[9px] font-mono font-bold bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">
-                          AdSense
-                        </span>
-                      )}
-                    </h3>
-                    <span className="text-[11px] text-slate-400 font-mono">slot key: {slot.slot || slot.id}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => handleApplyMonetagToSlot(slot.id, 'in_page_push')}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 font-bold text-[11px] transition"
-                    title="تطبيق كود إعلان Monetag على هذه المساحة"
-                  >
-                    <Sparkles className="w-3 h-3 text-indigo-400" />
-                    <span>تطبيق Monetag</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleTestAd(slot)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/40 font-bold text-xs transition"
-                    title="اختبار ومعاينة الكود مباشرة من قاعدة البيانات"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>فحص وتجربة</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleToggleSlot(slot.id)}
-                    className={`p-2 rounded-xl border transition ${
-                      slot.enabled
-                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                        : 'bg-slate-800 text-slate-500 border-slate-700'
-                    }`}
-                    title={slot.enabled ? 'المساحة مفعلة' : 'المساحة معطلة'}
-                  >
-                    <Power className="w-4 h-4" />
-                  </button>
-
-                  {!['header_banner', 'pre_result', 'post_result', 'sidebar', 'footer_banner', 'ad-interstitial'].includes(slot.id) && (
-                    <button
-                      onClick={() => handleDeleteSlot(slot.id)}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 border border-slate-700 transition"
-                      title="حذف المساحة"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Code Editor Area */}
-              <div className="space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-slate-400 font-semibold">
-                  <span className="flex items-center gap-1.5">
-                    <Code2 className="w-3.5 h-3.5 text-amber-400" />
-                    <span>كود HTML / Monetag Script / Adsterra / Google AdSense:</span>
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono">يدعم نصوص الجافاسكريبت وiframes</span>
-                </div>
-                <textarea
-                  rows={4}
-                  value={slot.code || ''}
-                  onChange={(e) => handleCodeChange(slot.id, e.target.value)}
-                  placeholder="<!-- الصق شفرة إعلان Monetag أو Adsterra أو كود AdSense الخاص بك هنا -->"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-amber-300 font-mono text-[11px] focus:outline-none focus:border-amber-500 resize-none leading-relaxed"
-                />
-              </div>
-            </div>
-          );
-        })}
+          })
+        )}
       </div>
 
-      {/* Audit Log Trail */}
-      <div className="bg-slate-900 p-5 rounded-2xl border border-slate-800 space-y-3">
-        <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2">
-          <History className="w-4 h-4 text-purple-400" />
-          <span>سجل التغييرات والتحقق من الحفظ في قاعدة البيانات (Persistence Audit Trail)</span>
+      {/* Audit Log / Verification Trail */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 shadow-sm">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
+          <History className="w-4 h-4 text-indigo-400" />
+          <span>{isRtl ? 'سجل التحقق والتعديلات في قاعدة البيانات (Audit Logs)' : 'Audit & Verification Trail'}</span>
         </h3>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs font-mono">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-500">
-                <th className="py-2 px-3">الوقت</th>
-                <th className="py-2 px-3">الإجراء</th>
-                <th className="py-2 px-3">عدد المساحات</th>
-                <th className="py-2 px-3">الشبكة</th>
-                <th className="py-2 px-3">حالة التحقق</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditLogs.map((log) => (
-                <tr key={log.id} className="border-b border-slate-800/40 text-slate-300">
-                  <td className="py-2 px-3 text-slate-400">{log.timestamp}</td>
-                  <td className="py-2 px-3 text-amber-300 font-bold">{log.action}</td>
-                  <td className="py-2 px-3">{log.slotsCount} Slots</td>
-                  <td className="py-2 px-3 text-slate-400">{log.network}</td>
-                  <td className="py-2 px-3">
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[10px]">
-                      {log.status} ({log.verificationHash})
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-2 font-mono text-xs">
+          {auditLogs.map((log) => (
+            <div
+              key={log.id}
+              className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-slate-300"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500">[{log.timestamp}]</span>
+                <span className="font-bold text-indigo-400">{log.action}</span>
+                <span className="text-slate-400">({log.slotsCount} {isRtl ? 'مساحة' : 'slots'})</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-slate-400">{log.provider}</span>
+                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                  {log.status}
+                </span>
+                <span className="text-[10px] text-slate-500">{log.verificationHash}</span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Modal: Test Ad Verification & Live Preview */}
+      {/* Sandbox Test Ad Modal */}
       {testingSlot && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-2xl w-full space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                <span>فحص الكود المسجل في قاعدة البيانات ({testingSlot.name})</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Eye className="w-4 h-4 text-indigo-400" />
+                <span>{isRtl ? 'معاينة المساحة الإعلانية (Sandbox Test)' : 'Ad Sandbox Preview'}</span>
+                <span className="text-xs font-mono text-slate-400">[{testingSlot.slot}]</span>
               </h3>
-              <button onClick={() => setTestingSlot(null)} className="text-slate-400 hover:text-white text-xs font-bold">
-                إغلاق ✕
-              </button>
-            </div>
-
-            <div className="p-3 bg-emerald-950/30 border border-emerald-800/50 rounded-xl space-y-1">
-              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4" /> Database Readback Verification Result:
-              </span>
-              <p className="text-[11px] text-slate-300">
-                الكود المسترجع من قاعدة البيانات متطابق 100% وليس كوداً افتراضياً أو قديمًا.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-400">الكود الفعلي من قاعدة البيانات (Actual DB Script):</label>
-              <pre className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-amber-300 font-mono text-[11px] overflow-x-auto max-h-40">
-                {dbVerifiedCode || testingSlot.code || '<!-- لا يوجد كود مسجل لهذا الإعلان -->'}
-              </pre>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-400">المعاينة المباشرة (Live Render Test):</label>
-              <div
-                className="w-full min-h-[100px] bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-center overflow-hidden"
-                dangerouslySetInnerHTML={{ __html: dbVerifiedCode || testingSlot.code || '<div class="text-slate-500 font-mono text-xs">لا يوجد كود إعلاني مفعل</div>' }}
-              />
-            </div>
-
-            <div className="flex justify-end pt-2">
               <button
                 onClick={() => setTestingSlot(null)}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition"
+                className="text-slate-400 hover:text-white transition-colors"
               >
-                إغلاق الفحص
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Adsterra Generator */}
-      {showAdsterraGenerator && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-lg w-full space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Zap className="w-5 h-5 text-amber-400" />
-                <span>مساعد وقوالب شفرات Adsterra (Ad Placement Code Helper)</span>
-              </h3>
-              <button onClick={() => setShowAdsterraGenerator(false)} className="text-slate-400 hover:text-white text-xs font-bold">
-                إغلاق ✕
+                ✕
               </button>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-[11px] text-amber-300 leading-relaxed">
-              📌 <strong>ملاحظة للإنتاج الفعلي:</strong> للاستخدام الإنتاجي التجاري، يُنصح بلصق كود الإعلان الرسمي (Exact Ad Code) المنسوخ مباشرة من لوحة Adsterra Publisher Dashboard الخاصة بك في حقل المساحة الإعلانية.
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">اختر المساحة المستهدفة:</label>
-                <select
-                  value={adsterraTargetSlot}
-                  onChange={(e) => setAdsterraTargetSlot(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
-                >
-                  {adList.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.slot || s.id})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">تنسيق إعلان Adsterra:</label>
-                <select
-                  value={adsterraFormat}
-                  onChange={(e) => setAdsterraFormat(e.target.value as any)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
-                >
-                  <option value="native_300x250">إعلان Native Banner (300x250)</option>
-                  <option value="leaderboard_728x90">إعلان Leaderboard (728x90)</option>
-                  <option value="popunder">Popunder Script (نافذة منبثقة)</option>
-                  <option value="social_bar">Social Bar Script (شريط تواصل تفاعلي)</option>
-                  <option value="direct_link">Direct Smartlink (رابط مباشر)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Adsterra Key (مفتاح الوحدة الإعلانية):</label>
-                <input
-                  type="text"
-                  value={adsterraKey}
-                  onChange={(e) => setAdsterraKey(e.target.value)}
-                  placeholder="e.g. a1b2c3d4e5f67890"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-amber-300 font-mono"
+            <div className="p-4 bg-slate-950 rounded-xl border border-slate-800/80 min-h-[160px] flex items-center justify-center overflow-hidden">
+              {dbVerifiedCode ? (
+                <iframe
+                  title="Ad Test Preview"
+                  sandbox="allow-scripts allow-same-origin allow-popups"
+                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100%;text-align:center;color:#fff;font-family:sans-serif;}</style></head><body>${dbVerifiedCode}</body></html>`}
+                  className="w-full h-48 border-0"
                 />
-              </div>
+              ) : (
+                <p className="text-xs text-slate-500">{isRtl ? 'لا يوجد كود إعلاني مضاف لهذه المساحة.' : 'No code configured for this slot.'}</p>
+              )}
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex justify-end">
               <button
-                onClick={handleInjectAdsterraUnit}
-                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl transition"
+                onClick={() => setTestingSlot(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
               >
-                توليد وحقن شفرة Adsterra فوراً
-              </button>
-              <button
-                onClick={() => setShowAdsterraGenerator(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
-              >
-                إلغاء
+                {isRtl ? 'إغلاق المعاينة' : 'Close Preview'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: AdSense Generator */}
+      {/* AdSense Generator Modal */}
       {showAdSenseGenerator && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-lg w-full space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-400" />
-                <span>مولد كود Google AdSense</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Code2 className="w-4 h-4 text-indigo-400" />
+                <span>{isRtl ? 'مولد أكواد Google AdSense / GAM Tag' : 'AdSense / GAM Tag Generator'}</span>
               </h3>
-              <button onClick={() => setShowAdSenseGenerator(false)} className="text-slate-400 hover:text-white text-xs font-bold">
-                إغلاق ✕
+              <button
+                onClick={() => setShowAdSenseGenerator(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">المساحة المستهدفة:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">
+                  {isRtl ? 'المساحة الإعلانية المستهدفة' : 'Target Slot'}
+                </label>
                 <select
                   value={adSenseTargetSlot}
                   onChange={(e) => setAdSenseTargetSlot(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
                 >
                   {adList.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.slot || s.id})
+                    <option key={s.id} value={s.slot}>
+                      {s.name} [{s.slot}]
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Publisher ID:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">Publisher ID (Client ID)</label>
                 <input
                   type="text"
                   value={publisherId}
                   onChange={(e) => setPublisherId(e.target.value)}
-                  placeholder="ca-pub-1234567890"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-amber-300 font-mono"
+                  placeholder="ca-pub-XXXXXXXXXXXXXXXX"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">Ad Unit ID:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">Ad Unit ID (Slot ID)</label>
                 <input
                   type="text"
                   value={adUnitId}
                   onChange={(e) => setAdUnitId(e.target.value)}
                   placeholder="9876543210"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-amber-300 font-mono"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-slate-400 mb-1">{isRtl ? 'التنسيق' : 'Ad Format'}</label>
+                <select
+                  value={adFormat}
+                  onChange={(e) => setAdFormat(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="auto">Auto / Responsive (Default)</option>
+                  <option value="rectangle">Rectangle (300x250)</option>
+                  <option value="horizontal">Horizontal (Leaderboard 728x90)</option>
+                  <option value="fluid">Fluid (In-Article)</option>
+                </select>
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={handleInjectAdSenseCode}
-                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs rounded-xl transition"
-              >
-                توليد وحقن كود AdSense
-              </button>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 onClick={() => setShowAdSenseGenerator(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
               >
-                إلغاء
+                {isRtl ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                onClick={handleInjectAdSenseUnit}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                {isRtl ? 'تطبيق الكود على المساحة' : 'Apply to Slot'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Direct Image Banner */}
+      {/* Image Banner Modal */}
       {showImageBannerModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-lg w-full space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Image className="w-5 h-5 text-purple-400" />
-                <span>إدراج بنر صورة + رابط مباشر</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Image className="w-4 h-4 text-purple-400" />
+                <span>{isRtl ? 'إنشاء بنر صورة مباشر (Direct Image Banner)' : 'Direct Image Banner'}</span>
               </h3>
-              <button onClick={() => setShowImageBannerModal(false)} className="text-slate-400 hover:text-white text-xs font-bold">
-                إغلاق ✕
+              <button
+                onClick={() => setShowImageBannerModal(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">المساحة المستهدفة:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">
+                  {isRtl ? 'المساحة المستهدفة' : 'Target Slot'}
+                </label>
                 <select
                   value={bannerTargetSlot}
                   onChange={(e) => setBannerTargetSlot(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
                 >
                   {adList.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.slot || s.id})
+                    <option key={s.id} value={s.slot}>
+                      {s.name} [{s.slot}]
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">رابط صورة البنر:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">{isRtl ? 'رابط الصورة (Image URL)' : 'Image URL'}</label>
                 <input
                   type="text"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  placeholder="https://example.com/banner.png"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">رابط التوجيه:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">{isRtl ? 'رابط الوجهة عند النقر (Destination URL)' : 'Target Link'}</label>
                 <input
                   type="text"
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  placeholder="https://sponsor.com"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-purple-500 focus:outline-none"
                 />
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={handleInjectImageBanner}
-                className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl transition"
-              >
-                إدراج البنر فورياً
-              </button>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 onClick={() => setShowImageBannerModal(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
               >
-                إلغاء
+                {isRtl ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                onClick={handleInjectImageBanner}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                {isRtl ? 'تطبيق البنر' : 'Apply Banner'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Add Custom Slot */}
+      {/* Add Custom Slot Modal */}
       {showAddSlotModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl max-w-lg w-full space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-black text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-emerald-400" />
-                <span>إضافة مساحة إعلانية مخصصة جديدة</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Plus className="w-4 h-4 text-indigo-400" />
+                <span>{isRtl ? 'إضافة مساحة إعلانية مخصصة' : 'Add Custom Slot'}</span>
               </h3>
-              <button onClick={() => setShowAddSlotModal(false)} className="text-slate-400 hover:text-white text-xs font-bold">
-                إغلاق ✕
+              <button
+                onClick={() => setShowAddSlotModal(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                ✕
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3">
               <div>
-                <label className="block text-slate-300 font-bold mb-1">اسم المساحة الإعلانية:</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">{isRtl ? 'اسم المساحة' : 'Slot Name'}</label>
                 <input
                   type="text"
                   value={newSlotName}
                   onChange={(e) => setNewSlotName(e.target.value)}
-                  placeholder="مثال: إعلان أسفل نتائج البحث"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                  placeholder={isRtl ? 'مثال: بنر أسفل أزرار المشاركة' : 'e.g., Below Share Buttons Banner'}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 font-bold mb-1">رمز المساحة البرمجي (Slot Key):</label>
+                <label className="block text-xs font-mono text-slate-400 mb-1">{isRtl ? 'مفتاح المساحة الفريد (Slot Key)' : 'Slot Key'}</label>
                 <input
                   type="text"
                   value={newSlotKey}
                   onChange={(e) => setNewSlotKey(e.target.value)}
-                  placeholder="e.g. search_bottom_native"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-amber-300 font-mono"
+                  placeholder="CUSTOM_BELOW_SHARE"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-slate-400 mb-1">{isRtl ? 'الارتفاع بالبكسل (Height px)' : 'Height (px)'}</label>
+                <input
+                  type="number"
+                  value={newSlotHeight}
+                  onChange={(e) => setNewSlotHeight(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
                 />
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={handleCreateNewSlot}
-                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl transition"
-              >
-                إنشاء المساحة
-              </button>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 onClick={() => setShowAddSlotModal(false)}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
               >
-                إلغاء
+                {isRtl ? 'إلغاء' : 'Cancel'}
+              </button>
+              <button
+                onClick={handleCreateCustomSlot}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                {isRtl ? 'إنشاء المساحة' : 'Create Slot'}
               </button>
             </div>
           </div>

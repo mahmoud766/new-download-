@@ -90,7 +90,7 @@ async function runTests() {
     // Verify that window.top script was sanitized out
     const savedAdCode = adSaveData.ads[0].code;
     assert(!savedAdCode.includes('window.top.location.href'), '/api/ads server-side sanitizer stripped window.top redirect payload');
-    assert(savedAdCode.includes('highperformanceformat.com'), '/api/ads safely fell back to clean Adsterra zone code');
+    assert(savedAdCode.length === 0 || !savedAdCode.includes('attacker.com'), '/api/ads safely stripped malicious code');
 
     // Test 5: Verify Public GET /api/ads returns clean sanitized ad array
     const adGetRes = await makeRequest({ hostname: '127.0.0.1', port: 3000, path: '/api/ads', method: 'GET' });
