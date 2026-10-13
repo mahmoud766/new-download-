@@ -13,7 +13,7 @@ import { extractMedia, getProviderSettingsFromDb, fetchWithTimeout, ensureYtDlpB
 import { prisma, getSafeDatabaseDiagnostics, testDatabaseConnection, withDbTimeout } from './src/lib/prisma';
 import { recordTelemetry, getInMemoryEvents } from './server/telemetry';
 import { acquireFetchSlot, releaseFetchSlot, getFetchConcurrencyStatus, fetchMetrics } from './server/concurrency';
-import { DEFAULT_FAQS, INITIAL_BLOG_POSTS, PLATFORMS_CONFIG } from './src/config/siteConfig';
+import { DEFAULT_FAQS, INITIAL_BLOG_POSTS, PLATFORMS_CONFIG, DEFAULT_ADS_CONFIG } from './src/config/siteConfig';
 import { DEFAULT_PAGES, DEFAULT_SECURITY, DEFAULT_REDIRECTS, DEFAULT_USERS } from './src/lib/adminStorage';
 import { apiResponseInterceptor, apiErrorHandler, createApiTimeoutMiddleware } from './src/lib/api-middleware';
 
@@ -596,7 +596,30 @@ async function startServer() {
     return trimmed;
   }
 
-  // 2. Ad Placement Configurations API (Provider-Neutral & MCM-Ready)
+  const ADS_STORAGE_FILE = path.join(process.cwd(), 'data', 'ads-config.json');
+
+  function loadAdsFromFile(): any[] | null {
+    try {
+      if (fs.existsSync(ADS_STORAGE_FILE)) {
+        const raw = fs.readFileSync(ADS_STORAGE_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return null;
+  }
+
+  function saveAdsToFile(adsList: any[]): void {
+    try {
+      const dir = path.dirname(ADS_STORAGE_FILE);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(ADS_STORAGE_FILE, JSON.stringify(adsList, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn('[Ads Storage] Failed to save ads to disk backup:', err);
+    }
+  }
+
+  // 2. Ad Placement Configurations API (Adsterra & Universal Provider Support)
   app.get('/api/ads', async (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=120, stale-while-revalidate=300');
     if (CONFIG_CACHE.ads && (Date.now() - CONFIG_CACHE.ads.timestamp < CONFIG_CACHE_TTL_MS)) {
@@ -604,81 +627,53 @@ async function startServer() {
     }
 
     try {
+      let dbAds: any[] = [];
       const record = await withDbTimeout(
         prisma.globalSettings.findUnique({ where: { id: 'default' } }),
         null,
         1500
       );
-      let dbAds: any[] = [];
       if (record && record.adsConfigJson) {
         try { dbAds = JSON.parse(record.adsConfigJson); } catch {}
       }
 
-      const ALL_DEFAULT_SLOTS = [
-        { id: 'ad-home-top', slot: 'HOME_TOP', name: 'Homepage - Top Header Banner (Leaderboard 728x90)', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-header', slot: 'header_banner', name: 'Header Top Leaderboard (728x90 / Responsive)', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-hero', slot: 'HOME_AFTER_HERO', name: 'Homepage - After Hero / Search Section', format: 'native_300x250', heightPx: 100 },
-        { id: 'ad-home-after-trending', slot: 'HOME_AFTER_TRENDING', name: 'Homepage - After Trending Videos Section', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-separator-1', slot: 'service_separator_1', name: 'Service Grid Separator 1 (Between Platforms 1-8 and 9-16)', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-separator-2', slot: 'service_separator_2', name: 'Service Grid Separator 2 (Between Platforms 16 and Rest)', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-platform', slot: 'HOME_AFTER_PLATFORM', name: 'Homepage - After Platform Grid', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-tools', slot: 'HOME_AFTER_TOOLS', name: 'Homepage - After Audio & Video Converter Tools', format: 'rectangle_300x250', heightPx: 250 },
-        { id: 'ad-home-after-how-to', slot: 'HOME_AFTER_HOW_TO', name: 'Homepage - After How-To Download Guide', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-why-us', slot: 'HOME_AFTER_WHY_US', name: 'Homepage - After Why Choose Us Section', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-facebook-guide', slot: 'HOME_AFTER_FACEBOOK_GUIDE', name: 'Homepage - After Facebook Guide Section', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-security', slot: 'HOME_AFTER_SECURITY', name: 'Homepage - After Security & Privacy Specs', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-after-reviews', slot: 'HOME_AFTER_REVIEWS', name: 'Homepage - After User Reviews & Ratings', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-home-bottom', slot: 'HOME_BOTTOM', name: 'Homepage - Bottom Footer Banner', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-preresult', slot: 'pre_result', name: 'Platform - Pre-Result Banner (Native / Below Search)', format: 'native_300x250', heightPx: 100 },
-        { id: 'ad-postresult', slot: 'post_result', name: 'Platform - Post-Result Medium Rectangle (Below Extracted Download Box)', format: 'rectangle_300x250', heightPx: 250 },
-        { id: 'ad-platform-top', slot: 'PLATFORM_TOP', name: 'Platform Page - Top Hero Banner', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-platform-after-tool', slot: 'PLATFORM_AFTER_TOOL', name: 'Platform Page - After Main Extractor Tool', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-platform-after-description', slot: 'PLATFORM_AFTER_DESCRIPTION', name: 'Platform Page - After Features & Description', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-platform-after-faq', slot: 'PLATFORM_AFTER_FAQ', name: 'Platform Page - After Platform FAQ Section', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-platform-bottom', slot: 'PLATFORM_BOTTOM', name: 'Platform Page - Bottom Footer Banner', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-blog-top', slot: 'BLOG_TOP', name: 'Blog Article - Top Banner', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-blog-after-intro', slot: 'BLOG_AFTER_INTRO', name: 'Blog Article - After Introduction', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-blog-middle', slot: 'BLOG_MIDDLE', name: 'Blog Article - In-Article Middle Banner', format: 'rectangle_300x250', heightPx: 250 },
-        { id: 'ad-blog-after-content', slot: 'BLOG_AFTER_CONTENT', name: 'Blog Article - After Main Content Body', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-blog-bottom', slot: 'BLOG_BOTTOM', name: 'Blog Page - Bottom Banner', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-legal-bottom', slot: 'LEGAL_BOTTOM', name: 'Legal Pages - Bottom Banner', format: 'leaderboard_728x90', heightPx: 90 },
-        { id: 'ad-sidebar', slot: 'sidebar', name: 'Sidebar Ad Banner', format: 'vertical_160x600', heightPx: 250 },
-        { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50 },
-        { id: 'ad-interstitial', slot: 'interstitial', name: 'Full-Screen Interstitial', format: 'interstitial', heightPx: 480 },
-      ];
+      if (!dbAds || dbAds.length === 0) {
+        const diskAds = loadAdsFromFile();
+        if (diskAds && diskAds.length > 0) dbAds = diskAds;
+      }
 
-      const mergedAds = ALL_DEFAULT_SLOTS.map((defItem) => {
+      const mergedAds = DEFAULT_ADS_CONFIG.map((defItem) => {
         const existing = Array.isArray(dbAds) ? dbAds.find((a: any) => a.slot === defItem.slot || a.id === defItem.id) : null;
-        let rawCode = existing?.code || '';
+        let rawCode = existing?.code;
         if (typeof rawCode === 'string' && rawCode.startsWith('base64:')) {
           try {
             rawCode = Buffer.from(rawCode.slice(7), 'base64').toString('utf-8');
           } catch {}
         }
         const fmt = existing?.format || defItem.format;
-        const sanitizedCode = sanitizeAdCode(rawCode);
+        const sanitizedCode = rawCode !== undefined && rawCode !== null ? sanitizeAdCode(rawCode) : defItem.code;
 
         return {
           id: existing?.id || defItem.id,
           slot: defItem.slot,
           name: existing?.name || defItem.name,
-          enabled: existing?.enabled === true,
-          code: sanitizedCode,
+          enabled: existing !== null && existing !== undefined ? existing.enabled === true : defItem.enabled,
+          code: sanitizedCode !== '' ? sanitizedCode : defItem.code,
           heightPx: existing?.heightPx || defItem.heightPx,
-          provider: existing?.provider || 'custom_html',
-          publisherId: existing?.publisherId || '',
-          slotId: existing?.slotId || defItem.slot,
+          provider: existing?.provider || defItem.provider || 'adsterra',
+          publisherId: existing?.publisherId || defItem.publisherId || 'adsterra_network',
+          slotId: existing?.slotId || defItem.slotId || defItem.slot,
           format: fmt,
           responsive: existing?.responsive !== false,
           desktopEnabled: existing?.desktopEnabled !== false,
           mobileEnabled: existing?.mobileEnabled !== false,
-          trigger: existing?.trigger || 'page_load',
-          frequencyControl: existing?.frequencyControl || 'session',
-          displayDelayMs: existing?.displayDelayMs !== undefined ? Number(existing.displayDelayMs) : 500,
-          closeDelaySec: existing?.closeDelaySec !== undefined ? Number(existing.closeDelaySec) : 3,
+          trigger: existing?.trigger || defItem.trigger || 'page_load',
+          frequencyControl: existing?.frequencyControl || defItem.frequencyControl || 'session',
+          displayDelayMs: existing?.displayDelayMs !== undefined ? Number(existing.displayDelayMs) : (defItem.displayDelayMs ?? 500),
+          closeDelaySec: existing?.closeDelaySec !== undefined ? Number(existing.closeDelaySec) : (defItem.closeDelaySec ?? 3),
           closeButtonEnabled: existing?.closeButtonEnabled !== false,
-          imageUrl: existing?.imageUrl || '',
-          destinationUrl: existing?.destinationUrl || '',
+          imageUrl: existing?.imageUrl || defItem.imageUrl || '',
+          destinationUrl: existing?.destinationUrl || defItem.destinationUrl || '',
         };
       });
 
@@ -688,17 +683,11 @@ async function startServer() {
       if (CONFIG_CACHE.ads) {
         return res.json({ success: true, ads: CONFIG_CACHE.ads.data, syncVersion: globalSyncVersion });
       }
-      const fallbackSlots = [
-        { id: 'ad-home-top', slot: 'HOME_TOP', name: 'Homepage - Top Header Banner (Leaderboard 728x90)', format: 'leaderboard_728x90', heightPx: 90, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-header', slot: 'header_banner', name: 'Header Top Leaderboard (728x90 / Responsive)', format: 'leaderboard_728x90', heightPx: 90, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-home-after-hero', slot: 'HOME_AFTER_HERO', name: 'Homepage - After Hero / Search Section', format: 'native_300x250', heightPx: 100, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-home-after-trending', slot: 'HOME_AFTER_TRENDING', name: 'Homepage - After Trending Videos Section', format: 'leaderboard_728x90', heightPx: 90, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-footer', slot: 'footer_banner', name: 'Footer Sticky Banner', format: 'footer_320x50', heightPx: 50, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true },
-        { id: 'ad-interstitial', slot: 'interstitial', name: 'Full-Screen Interstitial', format: 'interstitial', heightPx: 480, enabled: false, provider: 'custom_html', responsive: true, desktopEnabled: true, mobileEnabled: true, trigger: 'page_load', frequencyControl: 'session', displayDelayMs: 500, closeDelaySec: 3, closeButtonEnabled: true },
-      ];
+      const diskAds = loadAdsFromFile();
+      const finalFallback = diskAds && diskAds.length > 0 ? diskAds : DEFAULT_ADS_CONFIG;
       return res.json({
         success: true,
-        ads: fallbackSlots,
+        ads: finalFallback,
         syncVersion: globalSyncVersion,
       });
     }
@@ -799,6 +788,8 @@ async function startServer() {
       console.warn('[Ads API] Database update notice:', e?.message || e);
     }
 
+    // Persist to disk backup so ads stay active across server restarts and DB pauses
+    saveAdsToFile(verifiedAds);
     CONFIG_CACHE.ads = { data: verifiedAds, timestamp: Date.now() };
 
     return res.json({

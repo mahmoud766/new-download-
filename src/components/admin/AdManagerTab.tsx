@@ -78,6 +78,13 @@ export const AdManagerTab: React.FC<Props> = ({
   const [testingSlot, setTestingSlot] = useState<AdPlacementConfig | null>(null);
   const [dbVerifiedCode, setDbVerifiedCode] = useState<string | null>(null);
 
+  // Adsterra Generator Form
+  const [showAdsterraGenerator, setShowAdsterraGenerator] = useState(false);
+  const [adsterraTargetSlot, setAdsterraTargetSlot] = useState<string>('all_recommended');
+  const [adsterraKey, setAdsterraKey] = useState<string>('f311c6bfb94b159787ff8b0c445c71b6');
+  const [adsterraFormat, setAdsterraFormat] = useState<'leaderboard_728x90' | 'rectangle_300x250' | 'mobile_320x50' | 'skyscraper_160x600' | 'social_bar' | 'native' | 'popunder' | 'direct_link'>('leaderboard_728x90');
+  const [adsterraCustomSnippet, setAdsterraCustomSnippet] = useState<string>('');
+
   // AdSense / GAM Tag Generator Form
   const [adSenseTargetSlot, setAdSenseTargetSlot] = useState<string>('header_banner');
   const [publisherId, setPublisherId] = useState('ca-pub-6708942894533593');
@@ -258,6 +265,126 @@ export const AdManagerTab: React.FC<Props> = ({
     onShowToast(isRtl ? `✅ تم تطبيق كود AdSense على المساحة (${adSenseTargetSlot})!` : `✅ Applied AdSense code to (${adSenseTargetSlot})!`);
   };
 
+  // Helper to generate Adsterra unit scripts for any format
+  const generateAdsterraCode = (format: string, key: string, customCode?: string) => {
+    if (customCode && customCode.trim()) return customCode.trim();
+    const cleanKey = (key || 'f311c6bfb94b159787ff8b0c445c71b6').trim();
+
+    if (format === 'rectangle_300x250') {
+      return `<script type="text/javascript">
+\tatOptions = {
+\t\t'key' : '${cleanKey}',
+\t\t'format' : 'iframe',
+\t\t'height' : 250,
+\t\t'width' : 300,
+\t\t'params' : {}
+\t};
+</script>
+<script type="text/javascript" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>`;
+    }
+
+    if (format === 'mobile_320x50') {
+      return `<script type="text/javascript">
+\tatOptions = {
+\t\t'key' : '${cleanKey}',
+\t\t'format' : 'iframe',
+\t\t'height' : 50,
+\t\t'width' : 320,
+\t\t'params' : {}
+\t};
+</script>
+<script type="text/javascript" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>`;
+    }
+
+    if (format === 'skyscraper_160x600') {
+      return `<script type="text/javascript">
+\tatOptions = {
+\t\t'key' : '${cleanKey}',
+\t\t'format' : 'iframe',
+\t\t'height' : 600,
+\t\t'width' : 160,
+\t\t'params' : {}
+\t};
+</script>
+<script type="text/javascript" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>`;
+    }
+
+    if (format === 'social_bar') {
+      return `<script type="text/javascript" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>`;
+    }
+
+    if (format === 'native') {
+      return `<script async="async" data-cfasync="false" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>
+<div id="container-${cleanKey}"></div>`;
+    }
+
+    if (format === 'popunder') {
+      return `<script type="text/javascript" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>`;
+    }
+
+    if (format === 'direct_link') {
+      return `https://www.highperformanceformat.com/${cleanKey}`;
+    }
+
+    // Default: 728x90 Leaderboard
+    return `<script type="text/javascript">
+\tatOptions = {
+\t\t'key' : '${cleanKey}',
+\t\t'format' : 'iframe',
+\t\t'height' : 90,
+\t\t'width' : 728,
+\t\t'params' : {}
+\t};
+</script>
+<script type="text/javascript" src="//www.highperformanceformat.com/${cleanKey}/invoke.js"></script>`;
+  };
+
+  // Inject Adsterra Unit Handler
+  const handleInjectAdsterraUnit = () => {
+    const key = adsterraKey.trim() || 'f311c6bfb94b159787ff8b0c445c71b6';
+    const isAllRecommended = adsterraTargetSlot === 'all_recommended';
+
+    const updated = adList.map((slot) => {
+      if (isAllRecommended) {
+        // Automatically assign matching format and height based on slot position
+        const isRect = slot.slot === 'post_result' || slot.slot === 'pre_result' || slot.slot === 'HOME_AFTER_HERO' || slot.slot === 'BLOG_MIDDLE';
+        const isFooter = slot.slot === 'footer_banner';
+        const isSidebar = slot.slot === 'sidebar';
+
+        const assignedFormat = isRect ? 'rectangle_300x250' : isFooter ? 'mobile_320x50' : isSidebar ? 'skyscraper_160x600' : 'leaderboard_728x90';
+        const assignedHeight = isRect ? 250 : isFooter ? 50 : isSidebar ? 600 : 90;
+        const code = generateAdsterraCode(assignedFormat, key, adsterraCustomSnippet);
+
+        return {
+          ...slot,
+          code,
+          provider: 'adsterra',
+          publisherId: 'adsterra_network',
+          slotId: key,
+          heightPx: assignedHeight,
+          enabled: true,
+        };
+      } else if (slot.slot === adsterraTargetSlot || slot.id === adsterraTargetSlot) {
+        const height = adsterraFormat.includes('250') ? 250 : adsterraFormat.includes('50') ? 50 : adsterraFormat.includes('600') ? 600 : 90;
+        const code = generateAdsterraCode(adsterraFormat, key, adsterraCustomSnippet);
+        return {
+          ...slot,
+          code,
+          provider: 'adsterra',
+          publisherId: 'adsterra_network',
+          slotId: key,
+          heightPx: height,
+          enabled: true,
+        };
+      }
+      return slot;
+    });
+
+    setAdList(updated);
+    setShowAdsterraGenerator(false);
+    onShowToast(isRtl ? '✅ تم تفعيل وتطبيق إعلانات Adsterra بنجاح!' : '✅ Adsterra ads generated and applied successfully!');
+  };
+
   // Generate Direct Image Banner Unit
   const handleInjectImageBanner = () => {
     if (!imageUrl.trim()) {
@@ -401,6 +528,14 @@ export const AdManagerTab: React.FC<Props> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => setShowAdsterraGenerator(true)}
+              className="px-4 py-2.5 bg-gradient-to-r from-amber-600/30 to-orange-600/30 hover:from-amber-600/50 hover:to-orange-600/50 text-amber-200 border border-amber-500/40 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-md shadow-amber-950/20"
+            >
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>{isRtl ? '⚡ مولد إعلانات Adsterra' : '⚡ Adsterra Generator'}</span>
+            </button>
+
             <button
               onClick={() => setShowAddSlotModal(true)}
               className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-sm"
@@ -759,8 +894,7 @@ export const AdManagerTab: React.FC<Props> = ({
               {dbVerifiedCode ? (
                 <iframe
                   title="Ad Test Preview"
-                  sandbox="allow-scripts allow-same-origin allow-popups"
-                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100%;text-align:center;color:#fff;font-family:sans-serif;}</style></head><body>${dbVerifiedCode}</body></html>`}
+                  srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><base href="${typeof window !== 'undefined' ? window.location.origin : 'https://omnifetchpro.com'}/"><style>html,body{margin:0;padding:0;display:flex;align-items:center;justify-content:center;height:100%;text-align:center;color:#fff;font-family:sans-serif;background:transparent;overflow:hidden;}</style></head><body>${dbVerifiedCode}</body></html>`}
                   className="w-full h-48 border-0"
                 />
               ) : (
@@ -775,6 +909,129 @@ export const AdManagerTab: React.FC<Props> = ({
               >
                 {isRtl ? 'إغلاق المعاينة' : 'Close Preview'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adsterra Generator Modal */}
+      {showAdsterraGenerator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+                <span>{isRtl ? 'مولد إعلانات Adsterra الذكي' : 'Adsterra Ad Generator & Deployer'}</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono">
+                  Direct Integration
+                </span>
+              </h3>
+              <button
+                onClick={() => setShowAdsterraGenerator(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              {isRtl
+                ? 'قم بتوليد وتفعيل إعلانات شبكة Adsterra على الموقع بسهولة. يمكنك تفعيل جميع المساحات الرئيسية دفعة واحدة أو اختيار مساحة محددة.'
+                : 'Generate and deploy Adsterra ad codes across your site. Apply to all recommended placements at once or target an individual slot.'}
+            </p>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-mono text-slate-400 mb-1">
+                  {isRtl ? 'المساحة الإعلانية المستهدفة' : 'Target Placement'}
+                </label>
+                <select
+                  value={adsterraTargetSlot}
+                  onChange={(e) => setAdsterraTargetSlot(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="all_recommended">
+                    {isRtl ? '⭐ تفعيل على جميع المساحات الرئيسية دفعة واحدة (موصى به)' : '⭐ Apply to All Recommended Placements (Best)'}
+                  </option>
+                  {adList.map((s) => (
+                    <option key={s.id} value={s.slot}>
+                      {s.name} [{s.slot}]
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {adsterraTargetSlot !== 'all_recommended' && (
+                <div>
+                  <label className="block text-xs font-mono text-slate-400 mb-1">
+                    {isRtl ? 'صيغة الإعلان (Ad Format)' : 'Ad Format'}
+                  </label>
+                  <select
+                    value={adsterraFormat}
+                    onChange={(e: any) => setAdsterraFormat(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="leaderboard_728x90">Leaderboard 728x90 (بانر علوي كبير)</option>
+                    <option value="rectangle_300x250">Medium Rectangle 300x250 (مستطيل نتائج وتحميل)</option>
+                    <option value="mobile_320x50">Mobile Leaderboard 320x50 (بانر جوال وفوتر)</option>
+                    <option value="skyscraper_160x600">Wide Skyscraper 160x600 (بانر جانبي)</option>
+                    <option value="social_bar">Social Bar (شريط إشعارات تفاعلي)</option>
+                    <option value="native">Native Banner (بانر مدمج محلي)</option>
+                    <option value="popunder">Popunder (بوب أندر)</option>
+                    <option value="direct_link">Direct Link / Smartlink (رابط مباشر)</option>
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-mono text-slate-400 mb-1">
+                  {isRtl ? 'مفتاح الوحدة الإعلانية من Adsterra (Auth Key / Zone ID)' : 'Adsterra Zone Key'}
+                </label>
+                <input
+                  type="text"
+                  value={adsterraKey}
+                  onChange={(e) => setAdsterraKey(e.target.value)}
+                  placeholder="f311c6bfb94b159787ff8b0c445c71b6"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-500 focus:outline-none font-mono"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  {isRtl ? 'المفتاح الخاص بحسابك من لوحة Adsterra (أو اتركه للاستخدام الافتراضي).' : 'Your Adsterra Zone ID/Key (leave default for built-in units).'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono text-slate-400 mb-1">
+                  {isRtl ? 'أو الصق كود Adsterra بالكامل مباشرة (اختياري)' : 'Or Paste Full Adsterra Snippet (Optional)'}
+                </label>
+                <textarea
+                  value={adsterraCustomSnippet}
+                  onChange={(e) => setAdsterraCustomSnippet(e.target.value)}
+                  placeholder="<script type='text/javascript'>...</script>"
+                  rows={3}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-amber-200/90 font-mono focus:border-amber-500 focus:outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <span className="text-[11px] text-slate-400 font-mono">
+                {isRtl ? '⚡ سيتم تفعيل العرض الفوري للزوار' : '⚡ Instant visitor visibility'}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowAdsterraGenerator(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  {isRtl ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  onClick={handleInjectAdsterraUnit}
+                  className="px-5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-950/30 flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'تطبيق وحفظ إعلانات Adsterra' : 'Apply Adsterra Ads'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -203,11 +203,52 @@ export function AdSlot({
         return;
       }
 
-      // Strategy B: Provider-Neutral Sandboxed Iframe (For Custom HTML / GAM / Partner tags)
+      // Strategy B: Direct Image Banner (if configured)
+      if (adConfig.imageUrl && adConfig.destinationUrl) {
+        const link = document.createElement('a');
+        link.href = adConfig.destinationUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer sponsored';
+        link.className = 'flex items-center justify-center w-full h-full transition-transform hover:scale-[1.01]';
+
+        const img = document.createElement('img');
+        img.src = adConfig.imageUrl;
+        img.alt = 'Sponsored Ad';
+        img.className = 'max-w-full h-auto rounded-lg shadow-sm object-contain';
+        img.loading = isHighPriority ? 'eager' : 'lazy';
+
+        link.appendChild(img);
+        container.appendChild(link);
+        setAdStatus('LOADED');
+        return;
+      }
+
+      // Strategy C: Adsterra & Universal Partner Tag Execution via Friendly Same-Origin Frame
       if (rawCode) {
+        // Detect if this is a floating/in-page push or page-level script (e.g. social bar)
+        const isPageLevelScript = rawCode.toLowerCase().includes('socialbar') || 
+                                  rawCode.toLowerCase().includes('inpagepush') ||
+                                  adConfig.format === 'social_bar';
+
+        if (isPageLevelScript) {
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = rawCode;
+          const scripts = Array.from(tempDiv.querySelectorAll('script'));
+          scripts.forEach((oldScript) => {
+            const newScript = document.createElement('script');
+            Array.from(oldScript.attributes).forEach((attr) => newScript.setAttribute(attr.name, attr.value));
+            if (oldScript.innerHTML) newScript.innerHTML = oldScript.innerHTML;
+            document.body.appendChild(newScript);
+          });
+          setAdStatus('LOADED');
+          return;
+        }
+
+        // Standard Display Banner (Adsterra atOptions + invoke.js / Iframe banners)
+        const targetHeight = adConfig.heightPx || 90;
         const iframe = document.createElement('iframe');
         iframe.style.width = '100%';
-        iframe.style.height = '100%';
+        iframe.style.height = `${targetHeight}px`;
         iframe.style.border = 'none';
         iframe.style.overflow = 'hidden';
         iframe.style.backgroundColor = 'transparent';
@@ -215,38 +256,48 @@ export function AdSlot({
         iframe.setAttribute('frameBorder', '0');
         iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
 
-        // Sandbox: Allow scripts, same-origin, forms, popups on explicit user activation
-        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
-        iframe.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+        container.appendChild(iframe);
 
-        iframe.srcdoc = `<!DOCTYPE html>
+        try {
+          const iframeDoc = iframe.contentWindow?.document;
+          if (iframeDoc) {
+            iframeDoc.open();
+            iframeDoc.write(`<!DOCTYPE html>
 <html>
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    text-align: center;
-    overflow: hidden;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    height: 100%;
-  }
-  img { max-width: 100%; height: auto; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="${typeof window !== 'undefined' ? window.location.origin : 'https://omnifetchpro.com'}/">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      text-align: center;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+    }
+    img { max-width: 100%; height: auto; }
+  </style>
 </head>
 <body>
-${rawCode}
+  ${rawCode}
 </body>
-</html>`;
-
-        container.appendChild(iframe);
-        setAdStatus('LOADED');
+</html>`);
+            iframeDoc.close();
+            setAdStatus('LOADED');
+          } else {
+            setAdStatus('LOADED');
+          }
+        } catch (frameErr) {
+          console.warn('[AdSlot] Friendly frame notice:', frameErr);
+          setAdStatus('LOADED');
+        }
       } else {
         setAdStatus('NO_FILL');
       }
@@ -279,9 +330,11 @@ ${rawCode}
     slot === 'post_result' ||
     slot === 'sidebar' ||
     slot.includes('MIDDLE') ||
-    slot.includes('TOOLS');
+    slot.includes('TOOLS') ||
+    slot.includes('AFTER_HERO');
 
-  const targetMinHeight = adConfig?.heightPx ? `${adConfig.heightPx}px` : isLargeSlot ? '250px' : '90px';
+  const baseHeight = adConfig?.heightPx || (isLargeSlot ? 250 : 90);
+  const targetMinHeight = `${baseHeight + 10}px`;
 
   // If ad is disabled and debug mode is not active, return null completely (Zero DOM footprint, Zero CLS, Zero margin)
   if ((!adConfig || !adConfig.enabled) && !isDebugActive) {
@@ -307,7 +360,7 @@ ${rawCode}
       {adConfig?.enabled && (
         <div
           ref={containerRef}
-          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-2 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
+          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-1 sm:p-1.5 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
           style={{
             minHeight: targetMinHeight,
             containIntrinsicSize: `auto ${targetMinHeight}`,

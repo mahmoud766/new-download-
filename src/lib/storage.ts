@@ -22,7 +22,10 @@ function getInitialAdsConfig(): AdPlacementConfig[] {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const hasEnabled = parsed.some((p: any) => p && p.enabled && p.code && p.code.trim().length > 0);
+          if (hasEnabled) {
+            return parsed;
+          }
         }
       }
     } catch {}

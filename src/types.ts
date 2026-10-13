@@ -92,7 +92,7 @@ export interface AdPlacementConfig {
   enabled: boolean;
   code: string;
   heightPx?: number;
-  provider?: 'adsense' | 'gam' | 'custom_html' | string;
+  provider?: 'adsterra' | 'adsense' | 'gam' | 'custom_html' | string;
   publisherId?: string;
   slotId?: string;
   format?: 'auto' | 'rectangle' | 'horizontal' | 'vertical' | 'fluid' | 'interstitial' | string;
