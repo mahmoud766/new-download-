@@ -91,10 +91,12 @@ export interface AdPlacementConfig {
   name: string;
   enabled: boolean;
   code: string;
+  rawCode?: string;
   heightPx?: number;
-  provider?: 'adsterra' | 'adsense' | 'gam' | 'custom_html' | string;
+  provider?: 'monetag' | 'adsterra' | 'adsense' | 'gam' | 'custom_html' | string;
   publisherId?: string;
   slotId?: string;
+  monetagZoneId?: string;
   format?: 'auto' | 'rectangle' | 'horizontal' | 'vertical' | 'fluid' | 'interstitial' | string;
   responsive?: boolean;
   mobileEnabled?: boolean;
@@ -191,6 +193,18 @@ export interface SiteSettings {
   rateLimitPerMinute: number;
   allowMp3Conversion: boolean;
   watermarkFreeByDefault: boolean;
+  monetagEnabled?: boolean;
+  monetagZoneId?: string;
+  monetagScriptUrl?: string;
+}
+
+export interface MonetagConfig {
+  enabled: boolean;
+  zoneId: string;
+  scriptUrl: string;
+  enableMultiTag?: boolean;
+  enableOnClick?: boolean;
+  enableInPagePush?: boolean;
 }
 
 export interface GlobalSeoConfig {

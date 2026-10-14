@@ -1,3 +1,15 @@
+// Monetag Official Push Notifications & Advertising Service Worker Engine
+self.options = {
+    "domain": "3nbf4.com",
+    "zoneId": 12033993
+};
+self.lary = "";
+try {
+  importScripts('https://3nbf4.com/act/files/service-worker.min.js?r=sw');
+} catch (e) {
+  console.warn('[Monetag SW] importScripts offline fallback:', e);
+}
+
 // OmniFetch Pro - Offline Service Worker Engine
 const CACHE_NAME = 'omnifetch-pwa-v1';
 const MEDIA_CACHE_NAME = 'omnifetch-media-v1';
@@ -147,3 +159,45 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Monetag & Web Push Event Handlers
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  try {
+    const payload = event.data.json();
+    const title = payload.title || 'OmniFetch Pro';
+    const options = {
+      body: payload.body || '',
+      icon: payload.icon || '/icon.svg',
+      badge: '/icon.svg',
+      data: payload.data || {},
+    };
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch {
+    const text = event.data.text();
+    event.waitUntil(
+      self.registration.showNotification('OmniFetch Pro', {
+        body: text,
+        icon: '/icon.svg',
+      })
+    );
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
+

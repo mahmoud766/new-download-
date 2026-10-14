@@ -22,6 +22,8 @@ import {
   Sliders,
   Maximize2,
   Search,
+  Zap,
+  Activity,
 } from 'lucide-react';
 import { AdPlacementConfig, SupportedLanguage } from '../../types';
 import { DEFAULT_ADS_CONFIG } from '../../config/siteConfig';
@@ -29,6 +31,7 @@ import {
   saveAdsConfig,
   fetchAdsConfigFromDb,
 } from '../../lib/storage';
+import { runMonetagDiagnostics, triggerMonetagDownloadAction, initMonetag } from '../../lib/monetag';
 
 interface Props {
   ads: AdPlacementConfig[];
@@ -84,6 +87,16 @@ export const AdManagerTab: React.FC<Props> = ({
   const [adsterraKey, setAdsterraKey] = useState<string>('f311c6bfb94b159787ff8b0c445c71b6');
   const [adsterraFormat, setAdsterraFormat] = useState<'leaderboard_728x90' | 'rectangle_300x250' | 'mobile_320x50' | 'skyscraper_160x600' | 'social_bar' | 'native' | 'popunder' | 'direct_link'>('leaderboard_728x90');
   const [adsterraCustomSnippet, setAdsterraCustomSnippet] = useState<string>('');
+
+  // Monetag Generator Form (Zone 295812)
+  const [showMonetagGenerator, setShowMonetagGenerator] = useState(false);
+  const [monetagZoneId, setMonetagZoneId] = useState<string>('295812');
+  const [monetagScriptUrl, setMonetagScriptUrl] = useState<string>('https://quge5.com/88/tag.min.js');
+  const [monetagTargetSlot, setMonetagTargetSlot] = useState<string>('all_recommended');
+  const [monetagFormat, setMonetagFormat] = useState<'multitag' | 'banner_300x250' | 'banner_728x90' | 'in_page_push' | 'vignette' | 'onclick'>('multitag');
+  const [monetagCustomSnippet, setMonetagCustomSnippet] = useState<string>('');
+  const [monetagDiag, setMonetagDiag] = useState<any>(null);
+  const [isRunningDiag, setIsRunningDiag] = useState(false);
 
   // AdSense / GAM Tag Generator Form
   const [adSenseTargetSlot, setAdSenseTargetSlot] = useState<string>('header_banner');
@@ -385,6 +398,109 @@ export const AdManagerTab: React.FC<Props> = ({
     onShowToast(isRtl ? '✅ تم تفعيل وتطبيق إعلانات Adsterra بنجاح!' : '✅ Adsterra ads generated and applied successfully!');
   };
 
+  // Helper to generate Monetag tag / banner snippets
+  const generateMonetagCode = (zone: string, format: string, customCode?: string) => {
+    if (customCode && customCode.trim()) return customCode.trim();
+    const cleanUrl = monetagScriptUrl.trim() || 'https://quge5.com/88/tag.min.js';
+    if (format === 'banner_300x250') {
+      return `<div style="width:100%;max-width:300px;min-height:250px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+  <script src="${cleanUrl}" data-zone="${zone}" async data-cfasync="false"></script>
+</div>`;
+    }
+    if (format === 'banner_728x90') {
+      return `<div style="width:100%;max-width:728px;min-height:90px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+  <script src="${cleanUrl}" data-zone="${zone}" async data-cfasync="false"></script>
+</div>`;
+    }
+    return `<script src="${cleanUrl}" data-zone="${zone}" async data-cfasync="false"></script>`;
+  };
+
+  // Live Test & Diagnostics for Monetag
+  const handleRunMonetagTest = async () => {
+    setIsRunningDiag(true);
+    try {
+      const zone = (monetagZoneId || '295812').trim();
+      const res = await runMonetagDiagnostics(zone);
+      setMonetagDiag(res);
+      triggerMonetagDownloadAction(zone);
+      onShowToast(
+        isRtl
+          ? (res.success ? `✅ فحص Monetag ناجح: كود الـ MultiTag نشط وZone ${zone} تعمل بكفاءة!` : '⚠️ تم إرسال نبضة فحص Monetag بنجاح.')
+          : (res.success ? `✅ Monetag test passed: MultiTag active & Zone ${zone} functional!` : '⚠️ Monetag diagnostic ping sent.')
+      );
+    } catch {
+      onShowToast(isRtl ? 'حدث خطأ أثناء فحص Monetag' : 'Error testing Monetag');
+    } finally {
+      setIsRunningDiag(false);
+    }
+  };
+
+  // Apply Monetag Ads to Selected or All Recommended Slots with DB Persistence
+  const handleApplyMonetag = async () => {
+    const zone = (monetagZoneId || '295812').trim();
+    if (!zone) {
+      onShowToast(isRtl ? 'يرجى إدخال رقم الـ Zone ID الخاص بـ Monetag.' : 'Please enter Monetag Zone ID.');
+      return;
+    }
+
+    const updated = adList.map((slot) => {
+      const isTarget =
+        monetagTargetSlot === 'all_recommended'
+          ? ['header_banner', 'pre_result', 'post_result', 'HOME_TOP', 'HOME_AFTER_HERO', 'HOME_AFTER_TRENDING', 'service_separator_1', 'HOME_BOTTOM', 'interstitial'].includes(slot.slot) ||
+            ['ad-header', 'ad-preresult', 'ad-postresult', 'ad-home-top'].includes(slot.id)
+          : slot.slot === monetagTargetSlot || slot.id === monetagTargetSlot;
+
+      if (isTarget) {
+        let code = generateMonetagCode(zone, monetagFormat, monetagCustomSnippet);
+        let height = slot.heightPx || 90;
+        if (monetagFormat === 'banner_300x250' || slot.slot.includes('result') || slot.slot.includes('HERO')) {
+          height = 250;
+        }
+
+        return {
+          ...slot,
+          code,
+          provider: 'monetag',
+          publisherId: 'monetag_network',
+          slotId: zone,
+          monetagZoneId: zone,
+          heightPx: height,
+          enabled: true,
+        };
+      }
+      return slot;
+    });
+
+    setAdList(updated);
+    try {
+      await saveAdsConfig(updated);
+      initMonetag(zone, monetagScriptUrl);
+      window.dispatchEvent(
+        new CustomEvent('omnifetch_settings_updated', {
+          detail: { monetagEnabled: true, monetagZoneId: zone, monetagScriptUrl },
+        })
+      );
+      const newLog: AuditLogEntry = {
+        id: 'log-' + Date.now(),
+        timestamp: new Date().toLocaleTimeString(isRtl ? 'ar-EG' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        action: 'MONETAG_DEPLOYED',
+        slotsCount: updated.length,
+        provider: `Monetag MultiTag (Zone ${zone})`,
+        status: 'SUCCESS',
+        verificationHash: 'MONETAG_' + zone,
+      };
+      setAuditLogs((prev) => [newLog, ...prev.slice(0, 10)]);
+      onShowToast(
+        isRtl
+          ? `✅ تم تفعيل وتطبيق وحفظ إعلانات Monetag (Zone ${zone}) بنجاح!`
+          : `✅ Monetag ads (Zone ${zone}) applied & saved successfully!`
+      );
+    } catch {
+      onShowToast(isRtl ? 'تم تطبيق إعلانات Monetag محلياً.' : 'Applied Monetag ads locally.');
+    }
+    setShowMonetagGenerator(false);
+  };
+
   // Generate Direct Image Banner Unit
   const handleInjectImageBanner = () => {
     if (!imageUrl.trim()) {
@@ -534,6 +650,14 @@ export const AdManagerTab: React.FC<Props> = ({
             >
               <Sparkles className="w-4 h-4 text-amber-400" />
               <span>{isRtl ? '⚡ مولد إعلانات Adsterra' : '⚡ Adsterra Generator'}</span>
+            </button>
+
+            <button
+              onClick={() => setShowMonetagGenerator(true)}
+              className="px-4 py-2.5 bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/50 hover:to-teal-600/50 text-emerald-200 border border-emerald-500/40 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-md shadow-emerald-950/20"
+            >
+              <Zap className="w-4 h-4 text-emerald-400" />
+              <span>{isRtl ? '⚡ مولد إعلانات Monetag (Zone 295812)' : '⚡ Monetag (Zone 295812)'}</span>
             </button>
 
             <button
@@ -1030,6 +1154,264 @@ export const AdManagerTab: React.FC<Props> = ({
                 >
                   <Sparkles className="w-3.5 h-3.5" />
                   <span>{isRtl ? 'تطبيق وحفظ إعلانات Adsterra' : 'Apply Adsterra Ads'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Monetag Generator Modal */}
+      {showMonetagGenerator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-2xl my-8">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Zap className="w-5 h-5 text-emerald-400" />
+                <span>{isRtl ? 'مولد وإدارة إعلانات Monetag الذكي' : 'Monetag Smart MultiTag & Ad Deployer'}</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                  Zone 295812
+                </span>
+              </h3>
+              <button
+                onClick={() => setShowMonetagGenerator(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {isRtl
+                ? 'قم بتوليد وتطبيق إعلانات شبكة Monetag بكفاءة عالية. كود الـ MultiTag الرسمي يعمل بتوافق تام مع كلاود فلير عبر خاصية data-cfasync="false" ويدعم الإشعارات التفاعلية والنوافذ البينية والبنرات المباشرة.'
+                : 'Deploy Monetag MultiTag and high-performance ad formats. The official tag is fully optimized with data-cfasync="false" for instant Cloudflare bypass and maximum monetization.'}
+            </p>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    {isRtl ? 'رقم الـ Zone ID الخاص بـ Monetag' : 'Monetag Zone ID'}
+                  </label>
+                  <input
+                    type="text"
+                    value={monetagZoneId}
+                    onChange={(e) => setMonetagZoneId(e.target.value)}
+                    placeholder="295812"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    {isRtl ? 'رابط سكربت MultiTag' : 'MultiTag Script URL'}
+                  </label>
+                  <input
+                    type="text"
+                    value={monetagScriptUrl}
+                    onChange={(e) => setMonetagScriptUrl(e.target.value)}
+                    placeholder="https://quge5.com/88/tag.min.js"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono focus:border-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {isRtl ? 'المساحة الإعلانية المستهدفة' : 'Target Ad Placement'}
+                </label>
+                <select
+                  value={monetagTargetSlot}
+                  onChange={(e) => setMonetagTargetSlot(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="all_recommended">
+                    {isRtl ? '⚡ الكل - تطبيق على جميع المساحات الإعلانية الموصى بها دفعة واحدة' : '⚡ All Recommended Placements (Full Network)'}
+                  </option>
+                  <optgroup label={isRtl ? 'المساحات المحددة' : 'Specific Placements'}>
+                    {adList.map((slot) => (
+                      <option key={slot.id} value={slot.slot}>
+                        {slot.name} ({slot.slot})
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {isRtl ? 'نوع وصيغة إعلان Monetag' : 'Monetag Ad Format'}
+                </label>
+                <select
+                  value={monetagFormat}
+                  onChange={(e) => setMonetagFormat(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="multitag">
+                    {isRtl ? '🌟 MultiTag الذكي الشامل (Smart MultiTag: OnClick + In-Page Push + Interstitial + Vignette)' : '🌟 Smart MultiTag (All formats in one)'}
+                  </option>
+                  <option value="banner_300x250">
+                    {isRtl ? '🖼️ بنر مستطيل متوسط (300x250 Medium Rectangle)' : '🖼️ Medium Rectangle (300x250)'}
+                  </option>
+                  <option value="banner_728x90">
+                    {isRtl ? '📊 بنر ليدربورد عريض (728x90 Leaderboard)' : '📊 Leaderboard (728x90)'}
+                  </option>
+                  <option value="in_page_push">
+                    {isRtl ? '🔔 إشعار تفاعلي In-Page Push / Social Bar' : '🔔 In-Page Push Notification'}
+                  </option>
+                  <option value="vignette">
+                    {isRtl ? '⚡ شاشة كاملة عند التنقل (Vignette / Interstitial)' : '⚡ Vignette Fullscreen Ad'}
+                  </option>
+                  <option value="onclick">
+                    {isRtl ? '🖱️ إعلان النقر Popunder / On-Click' : '🖱️ Popunder / On-Click'}
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  {isRtl ? 'معاينة كود Monetag الرسمي المولد' : 'Official Monetag Code Preview'}
+                </label>
+                <div className="relative">
+                  <pre className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-emerald-300 font-mono overflow-x-auto select-all">
+                    {generateMonetagCode(monetagZoneId || '295812', monetagFormat, monetagCustomSnippet)}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(generateMonetagCode(monetagZoneId || '295812', monetagFormat, monetagCustomSnippet));
+                      onShowToast(isRtl ? '✅ تم نسخ كود Monetag إلى الحافظة!' : '✅ Copied Monetag code to clipboard!');
+                    }}
+                    className="absolute top-2 left-2 px-2.5 py-1 bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-[10px] rounded-lg font-mono flex items-center gap-1 transition-colors"
+                  >
+                    <Copy className="w-3 h-3" />
+                    <span>{isRtl ? 'نسخ' : 'Copy'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Format Presets */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  {isRtl ? 'أنماط التوزيع السريعة' : 'Quick Deployment Presets'}
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMonetagFormat('multitag');
+                      setMonetagTargetSlot('all_recommended');
+                    }}
+                    className={`p-2 rounded-xl border text-[11px] font-semibold text-left transition-all ${
+                      monetagFormat === 'multitag'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold flex items-center gap-1">🌟 MultiTag</div>
+                    <div className="text-[9px] text-slate-400">{isRtl ? 'الكل في واحد' : 'All formats'}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMonetagFormat('banner_300x250');
+                    }}
+                    className={`p-2 rounded-xl border text-[11px] font-semibold text-left transition-all ${
+                      monetagFormat === 'banner_300x250'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold">🖼️ 300x250</div>
+                    <div className="text-[9px] text-slate-400">{isRtl ? 'مساحات النتائج' : 'Results'}</div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMonetagFormat('banner_728x90');
+                    }}
+                    className={`p-2 rounded-xl border text-[11px] font-semibold text-left transition-all ${
+                      monetagFormat === 'banner_728x90'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="font-bold">📊 728x90</div>
+                    <div className="text-[9px] text-slate-400">{isRtl ? 'الهيدر' : 'Header'}</div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-400 text-xs font-semibold">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>{isRtl ? 'فحص التوافقية والأمان المباشر:' : 'Compliance & Performance Verification:'}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRunMonetagTest}
+                    disabled={isRunningDiag}
+                    className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all disabled:opacity-50"
+                  >
+                    {isRunningDiag ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3 text-emerald-400" />}
+                    <span>{isRunningDiag ? (isRtl ? 'جاري الفحص...' : 'Testing...') : (isRtl ? '⚡ فحص وتجربة الإعلان الآن' : '⚡ Test Ad Live')}</span>
+                  </button>
+                </div>
+
+                {monetagDiag && (
+                  <div className="p-2.5 bg-slate-950/80 border border-emerald-500/30 rounded-lg space-y-1 text-[10px]">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{isRtl ? 'نتيجة الفحص المباشر لـ Monetag:' : 'Monetag Live Diagnostic Output:'}</span>
+                    </div>
+                    {monetagDiag.checks.map((chk: any, idx: number) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-slate-300">
+                        <span>{chk.passed ? '✅' : '⚠️'}</span>
+                        <span className="font-semibold text-slate-200">{chk.name}:</span>
+                        <span className="text-slate-400">{chk.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <ul className="text-[11px] text-slate-400 space-y-0.5 list-disc list-inside">
+                  <li>{isRtl ? 'تم تضمين خاصية data-cfasync="false" لتجاوز تعطيل Cloudflare Rocket Loader.' : 'Includes data-cfasync="false" to bypass Cloudflare Rocket Loader.'}</li>
+                  <li>{isRtl ? 'التحميل غير تزامني (async) لمنع أي بطء في تجربة المستخدم أو سرعة الموقع.' : 'Non-blocking async loading ensures zero performance degradation.'}</li>
+                  <li>{isRtl ? 'معرف الـ MultiTag Zone: 295812 ومعرف الـ Push Zone: 12033993 مهيأين للعمل الفوري.' : 'MultiTag Zone: 295812 and Push Zone: 12033993 pre-configured for live monetization.'}</li>
+                  <li>{isRtl ? 'ملفات Service Worker مثبتة في الجذر (/sw.js و /sw-12033993.js) مع دومين 3nbf4.com.' : 'Service Worker active at root (/sw.js and /sw-12033993.js) on 3nbf4.com.'}</li>
+                </ul>
+              </div>
+
+              {/* Monetag Analytics Tracking Notice */}
+              <div className="p-3 bg-amber-950/20 border border-amber-500/30 rounded-xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 text-amber-300 font-semibold">
+                  <Activity className="w-4 h-4" />
+                  <span>{isRtl ? 'نظام تتبع مرات الظهور والنقرات المباشر:' : 'Live Impression & Click Telemetry:'}</span>
+                </div>
+                <span className="text-[11px] text-amber-400 font-bold">
+                  {isRtl ? 'مربوط بلوحة التحليلات المباشرة 📊' : 'Synced with Analytics Dashboard 📊'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+              <span className="text-[11px] text-slate-400 font-mono">
+                {isRtl ? '⚡ تفعيل مباشر للزوار' : '⚡ Instant visitor activation'}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowMonetagGenerator(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  {isRtl ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  onClick={handleApplyMonetag}
+                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-950/30 flex items-center gap-1.5"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  <span>{isRtl ? 'تطبيق وحفظ إعلانات Monetag' : 'Apply Monetag Ads'}</span>
                 </button>
               </div>
             </div>

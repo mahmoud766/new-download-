@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { AdPlacementConfig } from '../types';
 import { getAdsConfig } from '../lib/storage';
+import { trackAdImpression, trackAdClick } from '../lib/analytics';
 
 export const DEFAULT_PUBLISHER_ID = 'ca-pub-6708942894533593';
 
@@ -75,6 +76,70 @@ export function AdSlot({
   const [adStatus, setAdStatus] = useState<'IDLE' | 'LOADING' | 'LOADED' | 'NO_FILL' | 'DISABLED'>('IDLE');
   const containerRef = useRef<HTMLDivElement>(null);
   const slotRef = useRef<HTMLDivElement>(null);
+  const hasTrackedImpressionRef = useRef<boolean>(false);
+  const isHoveringRef = useRef<boolean>(false);
+
+  // Reset impression tracker if slot changes
+  useEffect(() => {
+    hasTrackedImpressionRef.current = false;
+  }, [slot, adConfig?.id]);
+
+  // Track Impression once the ad is LOADED and intersecting
+  useEffect(() => {
+    if (adStatus === 'LOADED' && !hasTrackedImpressionRef.current && adConfig && adConfig.enabled) {
+      hasTrackedImpressionRef.current = true;
+      const rawCode = adConfig.code || adConfig.rawCode || '';
+      const isMonetag = adConfig.provider === 'monetag' || rawCode.includes('quge5.com') || rawCode.includes('data-zone');
+      const provider = isMonetag ? 'monetag' : (adConfig.provider || 'adsense');
+      const zoneId = adConfig.monetagZoneId || (rawCode.match(/data-zone="([0-9]+)"/)?.[1]) || '295812';
+
+      trackAdImpression({
+        provider,
+        slotId: slot,
+        format: adConfig.format || 'banner',
+        zoneId: isMonetag ? zoneId : undefined,
+      });
+    }
+  }, [adStatus, adConfig, slot]);
+
+  // Track Clicks via Window Blur (industry standard for iframe ad interaction) and hover state
+  useEffect(() => {
+    const handleBlur = () => {
+      if (isHoveringRef.current && adConfig && adConfig.enabled) {
+        const rawCode = adConfig.code || adConfig.rawCode || '';
+        const isMonetag = adConfig.provider === 'monetag' || rawCode.includes('quge5.com') || rawCode.includes('data-zone');
+        const provider = isMonetag ? 'monetag' : (adConfig.provider || 'adsense');
+        const zoneId = adConfig.monetagZoneId || (rawCode.match(/data-zone="([0-9]+)"/)?.[1]) || '295812';
+
+        trackAdClick({
+          provider,
+          slotId: slot,
+          format: adConfig.format || 'banner',
+          zoneId: isMonetag ? zoneId : undefined,
+        });
+      }
+    };
+
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
+  }, [adConfig, slot]);
+
+  // Direct click handler
+  const handleDirectAdClick = () => {
+    if (adConfig && adConfig.enabled) {
+      const rawCode = adConfig.code || adConfig.rawCode || '';
+      const isMonetag = adConfig.provider === 'monetag' || rawCode.includes('quge5.com') || rawCode.includes('data-zone');
+      const provider = isMonetag ? 'monetag' : (adConfig.provider || 'adsense');
+      const zoneId = adConfig.monetagZoneId || (rawCode.match(/data-zone="([0-9]+)"/)?.[1]) || '295812';
+
+      trackAdClick({
+        provider,
+        slotId: slot,
+        format: adConfig.format || 'banner',
+        zoneId: isMonetag ? zoneId : undefined,
+      });
+    }
+  };
 
   // Sync config from storage / window events
   useEffect(() => {
@@ -223,7 +288,75 @@ export function AdSlot({
         return;
       }
 
-      // Strategy C: Adsterra & Universal Partner Tag Execution via Friendly Same-Origin Frame
+      // Strategy C: Monetag Tag & Banner Strategy
+      if (provider === 'monetag' || rawCode.includes('quge5.com') || rawCode.includes('data-zone')) {
+        const zoneMatch = rawCode.match(/data-zone="([0-9]+)"/);
+        const zoneId = adConfig.monetagZoneId || (zoneMatch ? zoneMatch[1] : '295812');
+        const isPureOverlayMultiTag = (adConfig.format === 'multitag' || adConfig.format === 'vignette' || adConfig.format === 'onclick') && !rawCode.includes('<div');
+
+        // Ensure global top-level Monetag script exists
+        const existingTag = document.querySelector(`script[src*="quge5.com"], script[data-zone="${zoneId}"]`);
+        if (!existingTag) {
+          const script = document.createElement('script');
+          script.src = 'https://quge5.com/88/tag.min.js';
+          script.setAttribute('data-zone', zoneId);
+          script.setAttribute('data-cfasync', 'false');
+          script.async = true;
+          document.head.appendChild(script);
+        }
+
+        if (isPureOverlayMultiTag) {
+          setAdStatus('LOADED');
+          return;
+        }
+
+        // Visual Monetag Banners (300x250, 728x90, etc.)
+        const targetHeight = adConfig.heightPx || (adConfig.format === 'banner_300x250' ? 250 : 90);
+        const iframe = document.createElement('iframe');
+        iframe.style.width = '100%';
+        iframe.style.height = `${targetHeight}px`;
+        iframe.style.border = 'none';
+        iframe.style.overflow = 'hidden';
+        iframe.style.backgroundColor = 'transparent';
+        iframe.setAttribute('scrolling', 'no');
+        iframe.setAttribute('frameBorder', '0');
+        iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
+
+        container.appendChild(iframe);
+
+        try {
+          const iframeDoc = iframe.contentWindow?.document;
+          if (iframeDoc) {
+            iframeDoc.open();
+            iframeDoc.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="${typeof window !== 'undefined' ? window.location.origin : 'https://omnifetchpro.com'}/">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: transparent; text-align: center;
+      overflow: hidden; display: flex; justify-content: center; align-items: center;
+      width: 100%; height: 100%;
+    }
+  </style>
+</head>
+<body>
+  ${rawCode || `<script src="https://quge5.com/88/tag.min.js" data-zone="${zoneId}" async data-cfasync="false"></script>`}
+</body>
+</html>`);
+            iframeDoc.close();
+          }
+          setAdStatus('LOADED');
+        } catch {
+          setAdStatus('LOADED');
+        }
+        return;
+      }
+
+      // Strategy D: Adsterra & Universal Partner Tag Execution via Friendly Same-Origin Frame
       if (rawCode) {
         // Detect if this is a floating/in-page push or page-level script (e.g. social bar)
         const isPageLevelScript = rawCode.toLowerCase().includes('socialbar') || 
@@ -360,7 +493,14 @@ export function AdSlot({
       {adConfig?.enabled && (
         <div
           ref={containerRef}
-          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-1 sm:p-1.5 flex items-center justify-center shadow-inner overflow-hidden shrink-0"
+          onMouseEnter={() => {
+            isHoveringRef.current = true;
+          }}
+          onMouseLeave={() => {
+            isHoveringRef.current = false;
+          }}
+          onClick={handleDirectAdClick}
+          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-1 sm:p-1.5 flex items-center justify-center shadow-inner overflow-hidden shrink-0 cursor-pointer"
           style={{
             minHeight: targetMinHeight,
             containIntrinsicSize: `auto ${targetMinHeight}`,

@@ -241,7 +241,7 @@ async function startServer() {
   });
 
   // Serve Service Worker files for Monetag and PWA with root scope
-  app.get(['/sw.js', '/service-worker.js', '/service-worker.min.js', '/sw-11697581.js', '/sw-11696786.js', '/sw-11696296.js'], (req: Request, res: Response) => {
+  app.get(['/sw.js', '/sw-12033993.js', '/sw-295812.js', '/service-worker.js', '/service-worker.min.js', /^\/sw.*\.js$/, /^\/service-worker.*\.js$/], (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
     res.setHeader('Service-Worker-Allowed', '/');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -419,6 +419,9 @@ async function startServer() {
     rateLimitPerMinute: 60,
     allowMp3Conversion: true,
     watermarkFreeByDefault: true,
+    monetagEnabled: true,
+    monetagZoneId: '295812',
+    monetagScriptUrl: 'https://quge5.com/88/tag.min.js',
     headerStyle: 'sticky',
     customCss: '',
     customJs: '',
@@ -470,6 +473,9 @@ async function startServer() {
         rateLimitPerMinute: record.rateLimitPerMinute || 60,
         allowMp3Conversion: Boolean(record.allowMp3Conversion),
         watermarkFreeByDefault: Boolean(record.watermarkFreeByDefault),
+        monetagEnabled: (record as any).monetagEnabled !== undefined ? Boolean((record as any).monetagEnabled) : DEFAULT_SETTINGS.monetagEnabled,
+        monetagZoneId: (record as any).monetagZoneId || DEFAULT_SETTINGS.monetagZoneId,
+        monetagScriptUrl: (record as any).monetagScriptUrl || DEFAULT_SETTINGS.monetagScriptUrl,
         headerStyle: record.headerStyle || 'sticky',
         customCss: record.customCss || '',
         customJs: record.customJs || '',
@@ -2042,31 +2048,148 @@ async function startServer() {
     }
   });
 
+  // Monetag & Partner Ad Telemetry Ring Buffer (In-memory real-time event cache)
+  interface AdTelemetryRecord {
+    id: string;
+    timestamp: string;
+    eventType: 'IMPRESSION' | 'CLICK';
+    provider: string;
+    slotId: string;
+    format: string;
+    zoneId: string;
+    pagePath: string;
+    ip: string;
+  }
+  const adEventsLog: AdTelemetryRecord[] = [];
+  const MAX_AD_EVENTS_LOG = 300;
+
+  // Endpoint: Telemetry Ad Impression and Click Events
+  app.post('/api/telemetry/ad-event', async (req: Request, res: Response) => {
+    try {
+      const { eventType, provider, slotId, format, zoneId, pagePath, visitorId } = req.body || {};
+      const cleanEventType: 'IMPRESSION' | 'CLICK' = eventType === 'CLICK' ? 'CLICK' : 'IMPRESSION';
+      const cleanProvider = (provider || 'monetag').toString().toLowerCase().substring(0, 50);
+      const cleanSlot = (slotId || 'default').toString().substring(0, 100);
+      const cleanFormat = (format || 'multitag').toString().substring(0, 50);
+      const cleanZone = (zoneId || '295812').toString().substring(0, 50);
+      const cleanPath = (pagePath || '/').toString().substring(0, 150);
+      const ip = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
+
+      const record: AdTelemetryRecord = {
+        id: `adevt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        eventType: cleanEventType,
+        provider: cleanProvider,
+        slotId: cleanSlot,
+        format: cleanFormat,
+        zoneId: cleanZone,
+        pagePath: cleanPath,
+        ip,
+      };
+
+      adEventsLog.unshift(record);
+      if (adEventsLog.length > MAX_AD_EVENTS_LOG) {
+        adEventsLog.pop();
+      }
+
+      // Persist to PostgreSQL UserAnalytics asynchronously
+      prisma.userAnalytics.create({
+        data: {
+          event: cleanEventType === 'CLICK' ? 'AD_CLICK' : 'AD_IMPRESSION',
+          details: JSON.stringify({
+            provider: cleanProvider,
+            slotId: cleanSlot,
+            format: cleanFormat,
+            zoneId: cleanZone,
+            pagePath: cleanPath,
+            vid: visitorId,
+          }),
+          ipAddress: ip,
+        },
+      }).catch(() => {});
+
+      return res.json({ success: true, eventId: record.id });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
   // 11. User Analytics Endpoint for Admin Dashboard (REAL-TIME LIVE TRACKING METRICS)
   app.get('/api/analytics', async (req: Request, res: Response) => {
     try {
-      const totalDownloads = await prisma.downloadLog.count();
-      const recentLogs = await prisma.downloadLog.findMany({
-        orderBy: { updatedAt: 'desc' },
-        take: 10,
-      });
-
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
 
-      const todayPageviewsCount = await prisma.userAnalytics.count({
-        where: { createdAt: { gte: startOfToday } },
-      }).catch(() => 0);
-
-      const todayDownloadsCount = await prisma.downloadLog.count({
-        where: { createdAt: { gte: startOfToday } },
-      }).catch(() => 0);
+      const [totalDownloads, recentLogs, todayPageviewsCount, todayDownloadsCount] = await Promise.all([
+        withDbTimeout(prisma.downloadLog.count(), 0, 250),
+        withDbTimeout(prisma.downloadLog.findMany({ orderBy: { updatedAt: 'desc' }, take: 10 }), [], 250),
+        withDbTimeout(prisma.userAnalytics.count({ where: { createdAt: { gte: startOfToday } } }), 0, 250),
+        withDbTimeout(prisma.downloadLog.count({ where: { createdAt: { gte: startOfToday } } }), 0, 250),
+      ]);
 
       // Active live users: count of sessions active in last 3 minutes (minimum 1 when active)
       const currentActiveLiveUsers = Math.max(1, activeSessions.size);
 
       // Unique visitors today: live active users + recorded unique pageviews and downloads
       const visitorsToday = Math.max(currentActiveLiveUsers, todayPageviewsCount + todayDownloadsCount);
+
+      // Monetag Performance Metrics (DB + Live In-Memory) with fast timeout boundaries
+      const [
+        totalMonetagImpressionsDb,
+        todayMonetagImpressionsDb,
+        totalMonetagClicksDb,
+        todayMonetagClicksDb,
+      ] = await Promise.all([
+        withDbTimeout(
+          prisma.userAnalytics.count({
+            where: { event: 'AD_IMPRESSION', details: { contains: 'monetag' } },
+          }),
+          0,
+          250
+        ),
+        withDbTimeout(
+          prisma.userAnalytics.count({
+            where: { event: 'AD_IMPRESSION', details: { contains: 'monetag' }, createdAt: { gte: startOfToday } },
+          }),
+          0,
+          250
+        ),
+        withDbTimeout(
+          prisma.userAnalytics.count({
+            where: { event: 'AD_CLICK', details: { contains: 'monetag' } },
+          }),
+          0,
+          250
+        ),
+        withDbTimeout(
+          prisma.userAnalytics.count({
+            where: { event: 'AD_CLICK', details: { contains: 'monetag' }, createdAt: { gte: startOfToday } },
+          }),
+          0,
+          250
+        ),
+      ]);
+
+      const memTotalMonetagImps = adEventsLog.filter((e) => e.provider === 'monetag' && e.eventType === 'IMPRESSION').length;
+      const memTodayMonetagImps = adEventsLog.filter((e) => e.provider === 'monetag' && e.eventType === 'IMPRESSION' && new Date(e.timestamp) >= startOfToday).length;
+      const memTotalMonetagClicks = adEventsLog.filter((e) => e.provider === 'monetag' && e.eventType === 'CLICK').length;
+      const memTodayMonetagClicks = adEventsLog.filter((e) => e.provider === 'monetag' && e.eventType === 'CLICK' && new Date(e.timestamp) >= startOfToday).length;
+
+      const totalMonetagImpressions = Math.max(totalMonetagImpressionsDb, memTotalMonetagImps);
+      const todayMonetagImpressions = Math.max(todayMonetagImpressionsDb, memTodayMonetagImps);
+      const totalMonetagClicks = Math.max(totalMonetagClicksDb, memTotalMonetagClicks);
+      const todayMonetagClicks = Math.max(todayMonetagClicksDb, memTodayMonetagClicks);
+
+      const monetagCtr = totalMonetagImpressions > 0
+        ? Number(((totalMonetagClicks / totalMonetagImpressions) * 100).toFixed(2))
+        : 0;
+
+      const estimatedMonetagRevenueToday = Number(
+        ((todayMonetagImpressions / 1000) * 2.10 + todayMonetagClicks * 0.05).toFixed(2)
+      );
+      const estimatedMonetagRevenueTotal = Number(
+        ((totalMonetagImpressions / 1000) * 2.10 + totalMonetagClicks * 0.05).toFixed(2)
+      );
 
       return res.json({
         success: true,
@@ -2076,6 +2199,17 @@ async function startServer() {
           activeLiveUsers: currentActiveLiveUsers,
           visitorsToday: visitorsToday,
           adsenseRevenueToday: null, // Google AdSense API key required for live AdSense earnings
+          monetag: {
+            zoneId: '295812',
+            status: 'ACTIVE',
+            totalImpressions: totalMonetagImpressions,
+            todayImpressions: todayMonetagImpressions,
+            totalClicks: totalMonetagClicks,
+            todayClicks: todayMonetagClicks,
+            ctr: monetagCtr,
+            estimatedRevenueToday: estimatedMonetagRevenueToday,
+            estimatedRevenueTotal: estimatedMonetagRevenueTotal,
+          },
           status: 'CONNECTED_LIVE_TRACKER',
           trackerName: 'OmniAnalytics Live Engine 🟢',
         },
@@ -2218,6 +2352,155 @@ async function startServer() {
       });
 
       return res.json({ success: true, data: result });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
+  // Monetag Comprehensive Ad Performance Analytics (Impressions, Clicks, CTR, Revenue & Slot Breakdown)
+  app.get('/api/analytics/monetag', async (req: Request, res: Response) => {
+    try {
+      const timeRange = (req.query.range as string) || '7d';
+      const numDays = timeRange === 'today' ? 1 : timeRange === '30d' ? 30 : timeRange === 'all' ? 60 : 7;
+
+      const now = new Date();
+      const dayPromises = [];
+      for (let i = numDays - 1; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const label = `${d.getDate()} ${d.toLocaleString('ar-EG', { month: 'short' })}`;
+
+        const startOfDay = new Date(d);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(d);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        dayPromises.push((async () => {
+          // Parallel fast check with timeout boundary
+          const [dayImpsDb, dayClicksDb] = await Promise.all([
+            withDbTimeout(
+              prisma.userAnalytics.count({
+                where: {
+                  event: 'AD_IMPRESSION',
+                  details: { contains: 'monetag' },
+                  createdAt: { gte: startOfDay, lte: endOfDay },
+                },
+              }),
+              0,
+              150
+            ),
+            withDbTimeout(
+              prisma.userAnalytics.count({
+                where: {
+                  event: 'AD_CLICK',
+                  details: { contains: 'monetag' },
+                  createdAt: { gte: startOfDay, lte: endOfDay },
+                },
+              }),
+              0,
+              150
+            ),
+          ]);
+
+          // Live Memory events for this day
+          const dayImpsMem = adEventsLog.filter(
+            (e) => e.provider === 'monetag' && e.eventType === 'IMPRESSION' && new Date(e.timestamp) >= startOfDay && new Date(e.timestamp) <= endOfDay
+          ).length;
+          const dayClicksMem = adEventsLog.filter(
+            (e) => e.provider === 'monetag' && e.eventType === 'CLICK' && new Date(e.timestamp) >= startOfDay && new Date(e.timestamp) <= endOfDay
+          ).length;
+
+          const dayImps = Math.max(dayImpsDb, dayImpsMem);
+          const dayClicks = Math.max(dayClicksDb, dayClicksMem);
+          const dayCtr = dayImps > 0 ? Number(((dayClicks / dayImps) * 100).toFixed(2)) : 0;
+          const dayEarnings = Number(((dayImps / 1000) * 2.10 + dayClicks * 0.05).toFixed(2));
+
+          return {
+            date: dateStr,
+            label: i === 0 ? `${label} (اليوم)` : label,
+            impressions: dayImps,
+            clicks: dayClicks,
+            ctr: dayCtr,
+            estimatedEarnings: dayEarnings,
+          };
+        })());
+      }
+
+      const dailyTrend = await Promise.all(dayPromises);
+
+      // Slot breakdown calculation
+      const standardSlots = [
+        { slotId: 'HOME_TOP', name: 'أعلى الصفحة الرئيسية (Header)', format: 'multitag' },
+        { slotId: 'DOWNLOAD_CTA_ACTION', name: 'زر التحميل المباشر (On-Click CTA)', format: 'onclick_vignette' },
+        { slotId: 'before_download', name: 'قبل رابط التحميل (Pre-Download)', format: 'banner_300x250' },
+        { slotId: 'INTERSTITIAL_MODAL', name: 'نافذة الإعلان البيني (Interstitial)', format: 'interstitial' },
+        { slotId: 'post_result', name: 'بعد إتمام التحميل (Post-Result)', format: 'banner_728x90' },
+        { slotId: 'PLATFORM_TOP', name: 'صفحات المنصات (Platform Top)', format: 'multitag' },
+      ];
+
+      const slotPerformance = standardSlots.map((s) => {
+        const slotImpsMem = adEventsLog.filter((e) => e.slotId === s.slotId && e.eventType === 'IMPRESSION').length;
+        const slotClicksMem = adEventsLog.filter((e) => e.slotId === s.slotId && e.eventType === 'CLICK').length;
+        const slotCtr = slotImpsMem > 0 ? Number(((slotClicksMem / slotImpsMem) * 100).toFixed(2)) : 0;
+        return {
+          slotId: s.slotId,
+          name: s.name,
+          format: s.format,
+          impressions: slotImpsMem,
+          clicks: slotClicksMem,
+          ctr: slotCtr,
+        };
+      });
+
+      // Format breakdown
+      const formatsList = [
+        { format: 'multitag', label: 'MultiTag الذكي الموحد (AI Smart Tag)' },
+        { format: 'onclick_vignette', label: 'النقرات والبيني عند التحميل (On-Click / Vignette)' },
+        { format: 'banner_300x250', label: 'بنر مستطيل 300x250' },
+        { format: 'banner_728x90', label: 'بنر عريض Leaderboard 728x90' },
+        { format: 'in_page_push', label: 'إشعارات الدفع داخل الصفحة In-Page Push' },
+      ];
+
+      const formatPerformance = formatsList.map((f) => {
+        const fImps = adEventsLog.filter((e) => e.format.includes(f.format) && e.eventType === 'IMPRESSION').length;
+        const fClicks = adEventsLog.filter((e) => e.format.includes(f.format) && e.eventType === 'CLICK').length;
+        return {
+          format: f.format,
+          label: f.label,
+          impressions: fImps,
+          clicks: fClicks,
+          ctr: fImps > 0 ? Number(((fClicks / fImps) * 100).toFixed(2)) : 0,
+        };
+      });
+
+      // Recent 25 events
+      const recentMonetagEvents = adEventsLog
+        .filter((e) => e.provider === 'monetag')
+        .slice(0, 25);
+
+      const totalImps = dailyTrend.reduce((acc, d) => acc + d.impressions, 0);
+      const totalClicks = dailyTrend.reduce((acc, d) => acc + d.clicks, 0);
+      const totalRevenue = Number(dailyTrend.reduce((acc, d) => acc + d.estimatedEarnings, 0).toFixed(2));
+      const overallCtr = totalImps > 0 ? Number(((totalClicks / totalImps) * 100).toFixed(2)) : 0;
+
+      return res.json({
+        success: true,
+        summary: {
+          zoneId: '295812',
+          status: 'ACTIVE',
+          impressions: totalImps,
+          clicks: totalClicks,
+          ctr: overallCtr,
+          estimatedEarnings: totalRevenue,
+          averageCpm: 2.10,
+          range: timeRange,
+        },
+        dailyTrend,
+        slotPerformance,
+        formatPerformance,
+        recentEvents: recentMonetagEvents,
+      });
     } catch (e: any) {
       return res.status(500).json({ success: false, error: e?.message });
     }

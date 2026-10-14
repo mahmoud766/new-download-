@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { BatchDownloadModal } from './BatchDownloadModal';
 import { DownloadProgressBar } from './DownloadProgressBar';
+import { triggerMonetagDownloadAction } from '../lib/monetag';
 
 interface ResultCardProps {
   result: MediaResult;
@@ -369,6 +370,8 @@ export function ResultCard({
   };
 
   const handleDownload = async (fmt: MediaFormat) => {
+    // Gracefully trigger Monetag action if active
+    triggerMonetagDownloadAction('295812');
     setDownloadingFormatId(fmt.id);
     const activeContainerId = selectedContainers[fmt.id] || (globalContainer !== 'auto' ? globalContainer : fmt.format) || 'mp4';
     const activeOpt = CONTAINER_OPTIONS.find(o => o.id === activeContainerId) || CONTAINER_OPTIONS[0];

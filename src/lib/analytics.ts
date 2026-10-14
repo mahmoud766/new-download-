@@ -126,3 +126,93 @@ export function trackDownloadFailure(platform?: string): void {
   });
 }
 
+export interface AdTelemetryParams {
+  provider: string; // e.g. 'monetag', 'adsterra', 'adsense'
+  slotId: string;
+  format?: string;
+  zoneId?: string;
+  pagePath?: string;
+}
+
+/**
+ * Tracks an ad impression event in GA4 and the local PostgreSQL telemetry engine
+ */
+export function trackAdImpression(params: AdTelemetryParams): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const provider = (params.provider || 'monetag').toLowerCase();
+    const slotId = params.slotId || 'unknown_slot';
+    const format = params.format || 'multitag';
+    const zoneId = params.zoneId || '295812';
+    const pagePath = params.pagePath || window.location.pathname;
+    const vid = getOrCreateVisitorId();
+
+    // 1. Google Analytics Event
+    trackGaEvent(`${provider}_ad_impression`, {
+      ad_provider: provider,
+      ad_slot: slotId,
+      ad_format: format,
+      ad_zone: zoneId,
+      page_path: pagePath,
+    });
+
+    // 2. Local Telemetry Engine
+    fetch('/api/telemetry/ad-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventType: 'IMPRESSION',
+        provider,
+        slotId,
+        format,
+        zoneId,
+        pagePath,
+        visitorId: vid,
+      }),
+    }).catch(() => {});
+  } catch (err) {
+    // Non-blocking catch
+  }
+}
+
+/**
+ * Tracks an ad click or CTA interaction event in GA4 and the local telemetry engine
+ */
+export function trackAdClick(params: AdTelemetryParams): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const provider = (params.provider || 'monetag').toLowerCase();
+    const slotId = params.slotId || 'unknown_slot';
+    const format = params.format || 'multitag';
+    const zoneId = params.zoneId || '295812';
+    const pagePath = params.pagePath || window.location.pathname;
+    const vid = getOrCreateVisitorId();
+
+    // 1. Google Analytics Event
+    trackGaEvent(`${provider}_ad_click`, {
+      ad_provider: provider,
+      ad_slot: slotId,
+      ad_format: format,
+      ad_zone: zoneId,
+      page_path: pagePath,
+    });
+
+    // 2. Local Telemetry Engine
+    fetch('/api/telemetry/ad-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventType: 'CLICK',
+        provider,
+        slotId,
+        format,
+        zoneId,
+        pagePath,
+        visitorId: vid,
+      }),
+    }).catch(() => {});
+  } catch (err) {
+    // Non-blocking catch
+  }
+}
+

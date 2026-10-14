@@ -53,12 +53,17 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
-// Register Service Worker for offline video processing & app caching
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+// Register Service Worker for Monetag Web Push notifications, offline video processing & app caching
+if ('serviceWorker' in navigator && typeof window !== 'undefined') {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // Quietly ignore registration errors in automated test sandboxes
-    });
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .then((reg) => {
+        console.log('[SW] Monetag & OmniFetch Service Worker registered with scope:', reg.scope);
+      })
+      .catch((err) => {
+        console.warn('[SW] Service Worker registration notice:', err);
+      });
   });
 }
 

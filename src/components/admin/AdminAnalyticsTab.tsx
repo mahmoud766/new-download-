@@ -15,11 +15,13 @@ import {
   BarChart2,
   PieChart,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { SupportedLanguage } from '../../types';
 import { VisitorsTrendChart } from './VisitorsTrendChart';
 import { TopPagesChart } from './TopPagesChart';
 import { PlatformTrafficChart } from './PlatformTrafficChart';
+import { MonetagPerformanceChart } from './MonetagPerformanceChart';
 
 interface Props {
   currentLang: SupportedLanguage;
@@ -33,6 +35,15 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
     activeLiveUsers: number | null;
     visitorsToday: number | null;
     adsenseRevenueToday: number | null;
+    monetag?: {
+      totalImpressions: number;
+      todayImpressions: number;
+      totalClicks: number;
+      todayClicks: number;
+      ctr: number;
+      estimatedRevenueToday: number;
+      estimatedRevenueTotal: number;
+    };
   }>({
     totalDownloads: 0,
     activeLiveUsers: null,
@@ -51,6 +62,7 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
             activeLiveUsers: typeof data.analytics.activeLiveUsers === 'number' ? data.analytics.activeLiveUsers : null,
             visitorsToday: typeof data.analytics.visitorsToday === 'number' ? data.analytics.visitorsToday : null,
             adsenseRevenueToday: typeof data.analytics.adsenseRevenueToday === 'number' ? data.analytics.adsenseRevenueToday : null,
+            monetag: data.analytics.monetag,
           });
         }
       }
@@ -163,22 +175,29 @@ export const AdminAnalyticsTab: React.FC<Props> = ({ currentLang, onShowToast })
           </p>
         </div>
 
-        {/* AdSense Revenue */}
+        {/* Monetization & Monetag Revenue */}
         <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/30">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-amber-400 font-bold">أرباح AdSense (اليوم)</span>
+            <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5" />
+              <span>عائد إعلانات Monetag (اليوم)</span>
+            </span>
             <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl font-black text-white">
-            {stats.adsenseRevenueToday !== null ? `$${stats.adsenseRevenueToday.toFixed(2)}` : 'غير مرتبط بـ API'}
+          <div className="text-2xl font-black text-white font-mono">
+            ${stats.monetag?.estimatedRevenueToday !== undefined ? stats.monetag.estimatedRevenueToday.toFixed(2) : '0.00'}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1">
-            يتطلب Google AdSense Management API
+          <p className="text-[11px] text-amber-400 mt-1 flex items-center gap-1">
+            <ArrowUpRight className="w-3.5 h-3.5 text-amber-400" />
+            <span>Zone 295812 • {stats.monetag?.todayImpressions ?? 0} ظهور اليوم</span>
           </p>
         </div>
       </div>
+
+      {/* Monetag Comprehensive Real-Time Performance & Telemetry Dashboard */}
+      <MonetagPerformanceChart currentLang={currentLang} onShowToast={onShowToast} />
 
       {/* Visitors Trend Line Chart with Recharts & Firestore */}
       <VisitorsTrendChart onShowToast={onShowToast} />

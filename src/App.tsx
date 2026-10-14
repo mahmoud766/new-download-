@@ -5,6 +5,7 @@ import { isRTL, detectUserLanguage } from './i18n/translations';
 import { getDownloadHistory, fetchSiteSettingsFromDb, fetchAdsConfigFromDb, initRealtimeSyncLoop } from './lib/storage';
 import { DEFAULT_SITE_SETTINGS, PLATFORMS_CONFIG } from './config/siteConfig';
 import { trackPageView, initAnalyticsHeartbeat } from './lib/analytics';
+import { initMonetag, removeMonetag } from './lib/monetag';
 
 // Critical On-Screen Components
 import { Navbar } from './components/Navbar';
@@ -245,14 +246,33 @@ export default function App() {
 
   useEffect(() => {
     initRealtimeSyncLoop();
-    fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
+    fetchSiteSettingsFromDb().then((s) => {
+      setSiteSettings(s);
+      if (s.monetagEnabled !== false) {
+        initMonetag(s.monetagZoneId || '295812', s.monetagScriptUrl);
+      } else {
+        removeMonetag();
+      }
+    });
     fetchAdsConfigFromDb().catch(() => {});
 
     const handleSettingsUpdated = (e: any) => {
       if (e?.detail) {
         setSiteSettings(e.detail);
+        if (e.detail.monetagEnabled !== false) {
+          initMonetag(e.detail.monetagZoneId || '295812', e.detail.monetagScriptUrl);
+        } else {
+          removeMonetag();
+        }
       } else {
-        fetchSiteSettingsFromDb().then((s) => setSiteSettings(s));
+        fetchSiteSettingsFromDb().then((s) => {
+          setSiteSettings(s);
+          if (s.monetagEnabled !== false) {
+            initMonetag(s.monetagZoneId || '295812', s.monetagScriptUrl);
+          } else {
+            removeMonetag();
+          }
+        });
       }
     };
 

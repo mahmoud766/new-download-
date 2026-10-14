@@ -26,6 +26,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   rateLimitPerMinute: 30,
   allowMp3Conversion: true,
   watermarkFreeByDefault: true,
+  monetagEnabled: true,
+  monetagZoneId: '295812',
+  monetagScriptUrl: 'https://quge5.com/88/tag.min.js',
 };
 
 export const PLATFORMS_CONFIG: Record<PlatformSlug, PlatformConfig> = {
@@ -1250,6 +1253,8 @@ YouTube videos offer incredible 4K HDR quality. **OmniFetch Pro** extracts strea
     },
   },
 ];
+
+export const MONETAG_DEFAULT_TAG = `<script src="https://quge5.com/88/tag.min.js" data-zone="295812" async data-cfasync="false"></script>`;
 
 const ADSTERRA_728x90 = `<script type="text/javascript">
 	atOptions = {

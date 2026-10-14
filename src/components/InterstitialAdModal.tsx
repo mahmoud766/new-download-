@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Sparkles, AlertCircle } from 'lucide-react';
 import { AdPlacementConfig } from '../types';
 import { getAdsConfig } from '../lib/storage';
+import { trackAdImpression, trackAdClick } from '../lib/analytics';
 
 interface InterstitialAdModalProps {
   currentLang?: string;
@@ -67,7 +68,7 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
     }
   }, []);
 
-  // Helper to record impression in client storage
+  // Helper to record impression in client storage & analytics
   const recordImpression = useCallback((config: AdPlacementConfig) => {
     if (typeof window === 'undefined') return;
     const freq = config.frequencyControl || 'session';
@@ -82,7 +83,38 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
     } catch {
       // Ignore storage errors (private browsing, quotas)
     }
+
+    try {
+      const rawCode = config.code || config.rawCode || '';
+      const isMonetag = config.provider === 'monetag' || rawCode.includes('quge5.com') || rawCode.includes('data-zone');
+      const provider = isMonetag ? 'monetag' : (config.provider || 'custom');
+      const zoneId = config.monetagZoneId || (rawCode.match(/data-zone="([0-9]+)"/)?.[1]) || '295812';
+
+      trackAdImpression({
+        provider,
+        slotId: 'INTERSTITIAL_MODAL',
+        format: 'interstitial',
+        zoneId: isMonetag ? zoneId : undefined,
+      });
+    } catch {}
   }, []);
+
+  const handleCreativeClick = useCallback(() => {
+    if (!adConfig) return;
+    try {
+      const rawCode = adConfig.code || adConfig.rawCode || '';
+      const isMonetag = adConfig.provider === 'monetag' || rawCode.includes('quge5.com') || rawCode.includes('data-zone');
+      const provider = isMonetag ? 'monetag' : (adConfig.provider || 'custom');
+      const zoneId = adConfig.monetagZoneId || (rawCode.match(/data-zone="([0-9]+)"/)?.[1]) || '295812';
+
+      trackAdClick({
+        provider,
+        slotId: 'INTERSTITIAL_MODAL',
+        format: 'interstitial',
+        zoneId: isMonetag ? zoneId : undefined,
+      });
+    } catch {}
+  }, [adConfig]);
 
   // Sync config from local state or global storage
   const updateConfigFromStorage = useCallback(() => {
@@ -397,6 +429,7 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
                         new CustomEvent('omnifetch_interstitial_clicked', { detail: adConfig })
                       );
                     }
+                    handleCreativeClick();
                   }}
                   className="block w-full max-w-lg hover:opacity-95 transition-opacity"
                 >
@@ -411,7 +444,8 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
                 <img
                   src={adConfig.imageUrl}
                   alt={adConfig.name || 'Sponsored Interstitial Ad'}
-                  className="w-full max-h-[60vh] object-contain rounded-xl border border-slate-800 shadow-md mx-auto"
+                  onClick={handleCreativeClick}
+                  className="w-full max-h-[60vh] object-contain rounded-xl border border-slate-800 shadow-md mx-auto cursor-pointer"
                   onError={() => setHasError(true)}
                 />
               )}
@@ -423,7 +457,8 @@ export const InterstitialAdModal: React.FC<InterstitialAdModalProps> = ({
             <div
               ref={containerRef}
               id="interstitial-ad-creative-slot"
-              className="w-full min-h-[120px] max-h-[65vh] flex items-center justify-center overflow-auto text-slate-100 font-sans"
+              onClick={handleCreativeClick}
+              className="w-full min-h-[120px] max-h-[65vh] flex items-center justify-center overflow-auto text-slate-100 font-sans cursor-pointer"
             />
           )}
 
