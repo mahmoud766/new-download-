@@ -3737,6 +3737,15 @@ Allow: /ads.txt
 Disallow: /admin
 Disallow: /api/
 
+User-agent: Mediapartners-Google
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /
+
 Sitemap: ${baseUrl}/sitemap.xml`;
 
     res.setHeader('Content-Type', 'text/plain');

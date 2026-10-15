@@ -316,10 +316,10 @@ export function AdSlot({
         iframe.style.width = '100%';
         iframe.style.height = `${targetHeight}px`;
         iframe.style.border = 'none';
-        iframe.style.overflow = 'hidden';
         iframe.style.backgroundColor = 'transparent';
         iframe.setAttribute('scrolling', 'no');
         iframe.setAttribute('frameBorder', '0');
+        iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media');
         iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
 
         container.appendChild(iframe);
@@ -383,10 +383,10 @@ export function AdSlot({
         iframe.style.width = '100%';
         iframe.style.height = `${targetHeight}px`;
         iframe.style.border = 'none';
-        iframe.style.overflow = 'hidden';
         iframe.style.backgroundColor = 'transparent';
         iframe.setAttribute('scrolling', 'no');
         iframe.setAttribute('frameBorder', '0');
+        iframe.setAttribute('allow', 'autoplay; fullscreen; encrypted-media');
         iframe.setAttribute('loading', isHighPriority ? 'eager' : 'lazy');
 
         container.appendChild(iframe);
@@ -469,6 +469,23 @@ export function AdSlot({
   const baseHeight = adConfig?.heightPx || (isLargeSlot ? 250 : 90);
   const targetMinHeight = `${baseHeight + 10}px`;
 
+  // Check if this slot is a pure background overlay / MultiTag / OnClick script with no visual banner
+  const rawAdCode = (adConfig?.code || '').trim();
+  const isPureOverlay =
+    Boolean(adConfig?.enabled) &&
+    (adConfig?.format === 'multitag' || adConfig?.format === 'vignette' || adConfig?.format === 'onclick' || adConfig?.format === 'social_bar') &&
+    !(rawAdCode.includes('<div') || rawAdCode.includes('<img') || adConfig?.imageUrl);
+
+  // If pure background overlay, do not render a blank empty box (Prevents Google "Empty/Valueless Ad Placement" penalty)
+  if (isPureOverlay) {
+    if (!isDebugActive) return null;
+    return (
+      <div className="w-full max-w-4xl mx-auto my-2 p-2 bg-indigo-950/60 border border-indigo-500/30 rounded-lg text-[10px] font-mono text-indigo-300 text-center">
+        ⚡ Monetag Smart MultiTag Active (Background Overlay Unit - Zone {adConfig?.monetagZoneId || '295812'})
+      </div>
+    );
+  }
+
   // If ad is disabled and debug mode is not active, return null completely (Zero DOM footprint, Zero CLS, Zero margin)
   if ((!adConfig || !adConfig.enabled) && !isDebugActive) {
     return null;
@@ -478,18 +495,18 @@ export function AdSlot({
     <div
       ref={slotRef}
       role="region"
-      aria-label="Advertisement Banner"
-      data-placement-id={slot}
+      aria-label="Sponsored content"
+      data-slot={slot}
       className={`w-full my-3 flex-col items-center justify-center transition-all ${deviceClass} ${className}`}
     >
-      {/* Label Compliance */}
+      {/* Label Compliance - Google AdSense & Safe Browsing Standard */}
       {adConfig?.enabled && (
         <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400/80 mb-1 flex items-center gap-1 shrink-0 select-none">
           <span>إعلان (Advertisement)</span>
         </div>
       )}
 
-      {/* Ad Container Box with explicit dimensions for Zero Cumulative Layout Shift (CLS) */}
+      {/* Ad Container Box with explicit dimensions for Zero Cumulative Layout Shift (CLS) - No Click Trap */}
       {adConfig?.enabled && (
         <div
           ref={containerRef}
@@ -499,8 +516,7 @@ export function AdSlot({
           onMouseLeave={() => {
             isHoveringRef.current = false;
           }}
-          onClick={handleDirectAdClick}
-          className="w-full max-w-4xl bg-slate-900/40 border border-slate-800/60 rounded-xl p-1 sm:p-1.5 flex items-center justify-center shadow-inner overflow-hidden shrink-0 cursor-pointer"
+          className="w-full max-w-4xl bg-slate-900/30 border border-slate-800/50 rounded-xl p-1 sm:p-1.5 flex items-center justify-center shadow-inner overflow-visible shrink-0"
           style={{
             minHeight: targetMinHeight,
             containIntrinsicSize: `auto ${targetMinHeight}`,

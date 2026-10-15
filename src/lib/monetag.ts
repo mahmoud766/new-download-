@@ -327,11 +327,23 @@ export function trackMonetagClick(
 }
 
 /**
- * Triggers Monetag on-click popunder / vignette upon user download CTA
- * Respects cooldown so user experience remains premium and smooth.
+ * Triggers Monetag on-click action upon user CTA
+ * Includes Google Safe Browsing & AdSense Compliance Shield:
+ * Prevents download button hijacking that leads to "Deceptive site ahead" / "Dangerous site" flags by Google.
  */
 export function triggerMonetagDownloadAction(zoneId: string = MONETAG_DEFAULT_ZONE): boolean {
   if (typeof window === 'undefined') return false;
+
+  // GOOGLE SAFE BROWSING & ADSENSE COMPLIANCE:
+  // Google Safe Browsing strictly forbids opening unsolicited popunders or ad redirects
+  // when a user clicks an explicit "Download" button.
+  // By default, Safe Mode is ON to protect the domain from Google penalties.
+  const isSafeMode = localStorage.getItem('omnifetch_safe_download_mode') !== 'false';
+  if (isSafeMode) {
+    // Record interaction in analytics cleanly without triggering a deceptive popunder window
+    trackMonetagClick('DOWNLOAD_CTA_ACTION', 'clean_download_safe_mode', zoneId);
+    return true;
+  }
 
   const now = Date.now();
   if (now - lastDownloadTriggerTime < DOWNLOAD_TRIGGER_COOLDOWN_MS) {
